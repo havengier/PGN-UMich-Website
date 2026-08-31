@@ -5,7 +5,8 @@ import type { Request, Response } from "express";
 
 export const authRouter = Router();
 
-const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+// No clientId needed — getTokenInfo validates any access token
+const client = new OAuth2Client();
 
 const ADMIN_EMAILS = new Set(
   (process.env.ADMIN_EMAILS ?? "")
@@ -29,23 +30,26 @@ authRouter.post("/google", async (req: Request, res: Response) => {
   if (!secret) { res.status(500).json({ error: "Server misconfigured." }); return; }
 
   try {
-    const ticket = await client.verifyIdToken({
-      idToken: token,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
-    const payload = ticket.getPayload();
-    if (!payload?.email) throw new Error("No email in token payload.");
+    // Validate the access token and extract email
+    const tokenInfo = await client.getTokenInfo(token);
+    const email = tokenInfo.email?.toLowerCase();
+    if (!email) throw new Error("No email returned from token.");
 
-    const email = payload.email.toLowerCase();
     if (!email.endsWith("@umich.edu")) {
       res.status(403).json({ error: "Only @umich.edu accounts are allowed." });
       return;
     }
 
+    // Fetch the user's profile (name, picture) using the access token
+    const profileRes = await fetch(
+      `https://www.googleapis.com/oauth2/v1/userinfo?access_token=${token}`,
+    );
+    const profile = profileRes.ok ? await profileRes.json() as { name?: string; picture?: string } : {};
+
     const user = {
       email,
-      name: payload.name ?? email,
-      picture: payload.picture ?? null,
+      name: profile.name ?? email,
+      picture: profile.picture ?? null,
       isAdmin: ADMIN_EMAILS.has(email),
     };
 
