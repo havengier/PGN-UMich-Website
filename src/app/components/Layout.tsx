@@ -54,7 +54,7 @@ function Nav({ scrolled }: { scrolled: boolean }) {
                 to={path}
                 className={`transition-colors whitespace-nowrap ${
                   yellow
-                    ? "text-[#F5A623] font-semibold hover:text-[#F5A623]/80"
+                    ? "bg-[#1a0303] text-[#F5A623] font-semibold text-xs px-3 py-1.5 rounded-full hover:bg-[#2d0505] tracking-wide"
                     : `hover:text-[#C03810] ${active ? "underline underline-offset-2 font-medium" : "font-normal"}`
                 }`}
               >
@@ -96,13 +96,17 @@ function Nav({ scrolled }: { scrolled: boolean }) {
                   >
                     <Link
                       to={path}
-                      className={`block py-4 text-xl border-b border-gray-100 transition-colors ${
+                      className={`block py-4 border-b border-gray-100 transition-colors ${
                         yellow
-                          ? "text-[#F5A623] font-semibold hover:text-[#F5A623]/80"
-                          : `hover:text-[#7A0C0C] ${active ? "text-[#7A0C0C] font-semibold" : "text-gray-800 font-normal"}`
+                          ? "text-gray-800 font-normal hover:text-gray-800"
+                          : `text-xl hover:text-[#7A0C0C] ${active ? "text-[#7A0C0C] font-semibold" : "text-gray-800 font-normal"}`
                       }`}
                     >
-                      {label}
+                      {yellow ? (
+                        <span className="inline-block bg-[#1a0303] text-[#F5A623] text-sm font-semibold px-3 py-1 rounded-full tracking-wide">
+                          {label}
+                        </span>
+                      ) : label}
                     </Link>
                   </motion.div>
                 );
