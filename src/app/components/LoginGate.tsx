@@ -22,6 +22,7 @@ function LoginScreen() {
   const [pending, setPending] = useState(false);
 
   const login = useGoogleLogin({
+    scope: "email profile",
     onSuccess: async ({ access_token }) => {
       setPending(true);
       setError("");
@@ -40,7 +41,18 @@ function LoginScreen() {
         setPending(false);
       }
     },
-    onError: () => setError("Google login failed. Please try again."),
+    onError: (err) => {
+      console.error("OAuth error:", err);
+      setError("Google login failed. Please try again.");
+    },
+    onNonOAuthError: (err) => {
+      console.error("Non-OAuth error:", err);
+      if (err.type === "popup_failed_to_open" || err.type === "popup_closed") {
+        setError("Popup was blocked. Click the address bar icon to allow popups for this site, then try again.");
+      } else {
+        setError(`Login error: ${err.type ?? "unknown"}. Check the browser console.`);
+      }
+    },
   });
 
   return (
