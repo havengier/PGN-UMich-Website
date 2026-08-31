@@ -8,6 +8,7 @@ import pgnLogo from "@/imports/pgn_logo_1__1_.png";
 function LoginScreen() {
   const { setUser } = useAuth();
   const [error, setError] = useState("");
+  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
   async function handleCredential(credential: string) {
     setError("");
@@ -53,16 +54,25 @@ function LoginScreen() {
         </p>
 
         <div className="flex justify-center">
-          <GoogleLogin
-            onSuccess={({ credential }) => {
-              if (credential) handleCredential(credential);
-            }}
-            onError={() => setError("Google login failed. Please try again.")}
-            theme="filled_black"
-            shape="pill"
-            size="large"
-            text="signin_with"
-          />
+          {clientId ? (
+            <GoogleLogin
+              onSuccess={({ credential }) => {
+                if (credential) handleCredential(credential);
+              }}
+              onError={() => setError("Google login failed. Please try again.")}
+              theme="filled_black"
+              shape="pill"
+              size="large"
+              text="signin_with"
+            />
+          ) : (
+            <p
+              className="text-amber-400 text-xs border border-amber-400/30 rounded-lg px-4 py-3 max-w-xs leading-relaxed"
+              style={{ fontFamily: "'Inter', sans-serif" }}
+            >
+              <strong>Setup required:</strong> Add <code className="bg-white/10 px-1 rounded">VITE_GOOGLE_CLIENT_ID</code> to your <code className="bg-white/10 px-1 rounded">.env</code> file and restart the dev server.
+            </p>
+          )}
         </div>
 
         {error && (
