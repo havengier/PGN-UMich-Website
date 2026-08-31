@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useGoogleLogin } from "@react-oauth/google";
 import { motion } from "motion/react";
 import { ShieldX } from "lucide-react";
+import { useSearchParams } from "react-router";
 import { useAuth } from "@/app/context/AuthContext";
 import pgnLogo from "@/imports/pgn_logo_1__1_.png";
 
@@ -17,42 +18,13 @@ function GoogleIcon() {
 }
 
 function LoginScreen() {
-  const { setUser } = useAuth();
-  const [error, setError] = useState("");
-  const [pending, setPending] = useState(false);
+  const [searchParams] = useSearchParams();
+  const authError = searchParams.get("auth_error");
 
   const login = useGoogleLogin({
-    scope: "email profile",
-    onSuccess: async ({ access_token }) => {
-      setPending(true);
-      setError("");
-      try {
-        const res = await fetch("/api/auth/google", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token: access_token }),
-        });
-        const data = await res.json();
-        if (!res.ok) { setError(data.error ?? "Login failed."); return; }
-        setUser(data.user);
-      } catch {
-        setError("Network error. Please try again.");
-      } finally {
-        setPending(false);
-      }
-    },
-    onError: (err) => {
-      console.error("OAuth error:", err);
-      setError("Google login failed. Please try again.");
-    },
-    onNonOAuthError: (err) => {
-      console.error("Non-OAuth error:", err);
-      if (err.type === "popup_failed_to_open" || err.type === "popup_closed") {
-        setError("Popup was blocked. Click the address bar icon to allow popups for this site, then try again.");
-      } else {
-        setError(`Login error: ${err.type ?? "unknown"}. Check the browser console.`);
-      }
-    },
+    flow: "auth-code",
+    ux_mode: "redirect",
+    redirect_uri: `${window.location.origin}/api/auth/callback`,
   });
 
   return (
@@ -85,23 +57,22 @@ function LoginScreen() {
         <div className="flex justify-center">
           <button
             onClick={() => login()}
-            disabled={pending}
-            className="flex items-center gap-3 bg-white text-gray-700 text-sm font-medium px-6 py-3 rounded-full hover:bg-gray-100 transition-colors disabled:opacity-60 disabled:cursor-not-allowed shadow-sm"
+            className="flex items-center gap-3 bg-white text-gray-700 text-sm font-medium px-6 py-3 rounded-full hover:bg-gray-100 transition-colors shadow-sm"
             style={{ fontFamily: "'Inter', sans-serif" }}
           >
             <GoogleIcon />
-            {pending ? "Signing in…" : "Sign in with Google"}
+            Sign in with Google
           </button>
         </div>
 
-        {error && (
+        {authError && (
           <motion.p
             className="mt-5 text-sm text-red-400"
             style={{ fontFamily: "'Inter', sans-serif" }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
           >
-            {error}
+            {decodeURIComponent(authError)}
           </motion.p>
         )}
       </motion.div>

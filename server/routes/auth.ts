@@ -81,6 +81,62 @@ authRouter.post("/logout", (_req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+// Redirect-based OAuth callback — exchanges auth code for tokens, sets cookie, redirects
+authRouter.get("/callback", async (req: Request, res: Response) => {
+  const code = req.query.code as string | undefined;
+  const error = req.query.error as string | undefined;
+
+  if (error || !code) {
+    res.redirect("/apply?auth_error=" + encodeURIComponent(error ?? "Login cancelled."));
+    return;
+  }
+
+  const secret = process.env.JWT_SECRET;
+  if (!secret) { res.redirect("/apply?auth_error=Server+misconfigured."); return; }
+
+  const appUrl = process.env.APP_URL ?? "http://localhost:5173";
+  const redirectUri = `${appUrl}/api/auth/callback`;
+
+  try {
+    const oauthClient = new OAuth2Client(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      redirectUri,
+    );
+    const { tokens } = await oauthClient.getToken(code);
+
+    const profileRes = await fetch(
+      `https://www.googleapis.com/oauth2/v1/userinfo?access_token=${tokens.access_token}`,
+    );
+    const profile = profileRes.ok
+      ? await profileRes.json() as { email?: string; name?: string; picture?: string }
+      : {};
+
+    const email = profile.email?.toLowerCase();
+    if (!email) throw new Error("No email in profile.");
+
+    const domain = email.split("@")[1];
+    if (!ALLOWED_DOMAINS.includes(domain)) {
+      res.redirect("/apply?auth_error=" + encodeURIComponent(`Only ${ALLOWED_DOMAINS.join(", ")} accounts are allowed.`));
+      return;
+    }
+
+    const user = {
+      email,
+      name: profile.name ?? email,
+      picture: profile.picture ?? null,
+      isAdmin: ADMIN_EMAILS.has(email),
+    };
+
+    const signed = jwt.sign(user, secret, { expiresIn: "7d" });
+    res.cookie("auth_token", signed, COOKIE_OPTS);
+    res.redirect("/apply");
+  } catch (err) {
+    console.error("OAuth callback error:", err);
+    res.redirect("/apply?auth_error=" + encodeURIComponent("Authentication failed. Please try again."));
+  }
+});
+
 // Returns the Google client ID to the frontend at runtime
 authRouter.get("/config", (_req: Request, res: Response) => {
   res.json({ clientId: process.env.GOOGLE_CLIENT_ID ?? "" });
