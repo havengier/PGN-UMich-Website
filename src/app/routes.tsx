@@ -7,6 +7,7 @@ import Members from "./pages/Members";
 import DEI from "./pages/DEI";
 import Recruitment from "./pages/Recruitment";
 import Apply from "./pages/Apply";
+import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
 
 export const router = createBrowserRouter([
@@ -21,6 +22,7 @@ export const router = createBrowserRouter([
       { path: "dei", Component: DEI },
       { path: "recruitment", Component: Recruitment },
       { path: "apply", Component: Apply },
+      { path: "admin", Component: Admin },
       { path: "*", Component: NotFound },
     ],
   },

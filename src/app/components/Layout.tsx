@@ -12,6 +12,7 @@ const NAV_LINKS = [
   { label: "DEI", path: "/dei" },
   { label: "Recruitment F26", path: "/recruitment" },
   { label: "Apply", path: "/apply" },
+  { label: "Admin", path: "/admin", yellow: true },
 ];
 
 function Nav({ scrolled }: { scrolled: boolean }) {
@@ -45,14 +46,16 @@ function Nav({ scrolled }: { scrolled: boolean }) {
           className="hidden lg:flex items-center gap-7 text-sm text-gray-800"
           style={{ fontFamily: "'Inter', sans-serif" }}
         >
-          {NAV_LINKS.map(({ label, path }) => {
+          {NAV_LINKS.map(({ label, path, yellow }) => {
             const active = pathname === path || (path !== "/" && pathname.startsWith(path));
             return (
               <Link
                 key={label}
                 to={path}
-                className={`transition-colors hover:text-[#C03810] whitespace-nowrap ${
-                  active ? "underline underline-offset-2 font-medium" : "font-normal"
+                className={`transition-colors whitespace-nowrap ${
+                  yellow
+                    ? "text-[#F5A623] font-semibold hover:text-[#F5A623]/80"
+                    : `hover:text-[#C03810] ${active ? "underline underline-offset-2 font-medium" : "font-normal"}`
                 }`}
               >
                 {label}
@@ -82,7 +85,7 @@ function Nav({ scrolled }: { scrolled: boolean }) {
             transition={{ duration: 0.22, ease: "easeOut" }}
           >
             <nav className="flex flex-col px-8 py-8 gap-0" style={{ fontFamily: "'Inter', sans-serif" }}>
-              {NAV_LINKS.map(({ label, path }, i) => {
+              {NAV_LINKS.map(({ label, path, yellow }, i) => {
                 const active = pathname === path || (path !== "/" && pathname.startsWith(path));
                 return (
                   <motion.div
@@ -93,8 +96,10 @@ function Nav({ scrolled }: { scrolled: boolean }) {
                   >
                     <Link
                       to={path}
-                      className={`block py-4 text-xl border-b border-gray-100 transition-colors hover:text-[#7A0C0C] ${
-                        active ? "text-[#7A0C0C] font-semibold" : "text-gray-800 font-normal"
+                      className={`block py-4 text-xl border-b border-gray-100 transition-colors ${
+                        yellow
+                          ? "text-[#F5A623] font-semibold hover:text-[#F5A623]/80"
+                          : `hover:text-[#7A0C0C] ${active ? "text-[#7A0C0C] font-semibold" : "text-gray-800 font-normal"}`
                       }`}
                     >
                       {label}
