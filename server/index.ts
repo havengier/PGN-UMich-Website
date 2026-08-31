@@ -1,5 +1,7 @@
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import path from "path";
 import { fileURLToPath } from "url";
 import { applyRouter } from "./routes/apply.js";
@@ -7,11 +9,41 @@ import { runMigrations } from "./db.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT ?? 3000;
+const isProd = process.env.NODE_ENV === "production";
 
 const app = express();
 
-app.use(cors());
-app.use(express.json());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      // 'unsafe-inline' required for Tailwind's injected styles and the inline <style> in index.html
+      styleSrc: ["'self'", "'unsafe-inline'", "fonts.googleapis.com"],
+      fontSrc: ["'self'", "fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:"],
+      mediaSrc: ["'self'"],
+      connectSrc: ["'self'"],
+      frameAncestors: ["'none'"],
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+}));
+
+// In production the frontend and API share the same origin, so CORS is only needed in dev
+app.use(cors({ origin: !isProd }));
+
+app.use(express.json({ limit: "50kb" }));
+
+// Max 5 application submissions per IP per 15 minutes
+const applyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { error: "Too many submissions. Please try again later." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use("/api/apply", applyLimiter);
 
 app.use("/api", applyRouter);
 
