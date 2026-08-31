@@ -1,8 +1,7 @@
 import { useState } from "react";
-import { useGoogleLogin } from "@react-oauth/google";
+import { useGoogleOneTapLogin } from "@react-oauth/google";
 import { motion } from "motion/react";
 import { ShieldX } from "lucide-react";
-import { useSearchParams } from "react-router";
 import { useAuth } from "@/app/context/AuthContext";
 import pgnLogo from "@/imports/pgn_logo_1__1_.png";
 
@@ -18,13 +17,33 @@ function GoogleIcon() {
 }
 
 function LoginScreen() {
-  const [searchParams] = useSearchParams();
-  const authError = searchParams.get("auth_error");
+  const { setUser } = useAuth();
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
 
-  const login = useGoogleLogin({
-    flow: "auth-code",
-    ux_mode: "redirect",
-    redirect_uri: `${window.location.origin}/api/auth/callback`,
+  async function handleCredential(credential: string) {
+    setPending(true);
+    setError("");
+    try {
+      const res = await fetch("/api/auth/google", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: credential }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error ?? "Login failed."); return; }
+      setUser(data.user);
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  // One Tap auto-shows a native sign-in card — never triggers popup blockers
+  useGoogleOneTapLogin({
+    onSuccess: ({ credential }) => { if (credential) handleCredential(credential); },
+    onError: () => setError("Sign-in failed. Please try again."),
   });
 
   return (
@@ -55,24 +74,26 @@ function LoginScreen() {
         </p>
 
         <div className="flex justify-center">
+          {/* Button manually re-triggers the One Tap overlay if dismissed */}
           <button
-            onClick={() => login()}
-            className="flex items-center gap-3 bg-white text-gray-700 text-sm font-medium px-6 py-3 rounded-full hover:bg-gray-100 transition-colors shadow-sm"
+            onClick={() => (window as any).google?.accounts.id.prompt()}
+            disabled={pending}
+            className="flex items-center gap-3 bg-white text-gray-700 text-sm font-medium px-6 py-3 rounded-full hover:bg-gray-100 transition-colors disabled:opacity-60 disabled:cursor-not-allowed shadow-sm"
             style={{ fontFamily: "'Inter', sans-serif" }}
           >
             <GoogleIcon />
-            Sign in with Google
+            {pending ? "Signing in…" : "Sign in with Google"}
           </button>
         </div>
 
-        {authError && (
+        {error && (
           <motion.p
             className="mt-5 text-sm text-red-400"
             style={{ fontFamily: "'Inter', sans-serif" }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
           >
-            {decodeURIComponent(authError)}
+            {error}
           </motion.p>
         )}
       </motion.div>

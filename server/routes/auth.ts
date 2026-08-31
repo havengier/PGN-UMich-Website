@@ -5,7 +5,7 @@ import type { Request, Response } from "express";
 
 export const authRouter = Router();
 
-const client = new OAuth2Client();
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const ALLOWED_DOMAINS = (process.env.ALLOWED_DOMAINS ?? "umich.edu")
   .split(",").map((d) => d.trim().toLowerCase()).filter(Boolean);
@@ -32,10 +32,14 @@ authRouter.post("/google", async (req: Request, res: Response) => {
   if (!secret) { res.status(500).json({ error: "Server misconfigured." }); return; }
 
   try {
-    // Validate the access token and extract email
-    const tokenInfo = await client.getTokenInfo(token);
-    const email = tokenInfo.email?.toLowerCase();
-    if (!email) throw new Error("No email returned from token.");
+    // Verify the One Tap ID token
+    const ticket = await client.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    const email = payload?.email?.toLowerCase();
+    if (!email) throw new Error("No email in token.");
 
     const domain = email.split("@")[1];
     if (!ALLOWED_DOMAINS.includes(domain)) {
@@ -43,16 +47,10 @@ authRouter.post("/google", async (req: Request, res: Response) => {
       return;
     }
 
-    // Fetch the user's profile (name, picture) using the access token
-    const profileRes = await fetch(
-      `https://www.googleapis.com/oauth2/v1/userinfo?access_token=${token}`,
-    );
-    const profile = profileRes.ok ? await profileRes.json() as { name?: string; picture?: string } : {};
-
     const user = {
       email,
-      name: profile.name ?? email,
-      picture: profile.picture ?? null,
+      name: payload?.name ?? email,
+      picture: payload?.picture ?? null,
       isAdmin: ADMIN_EMAILS.has(email),
     };
 
@@ -79,62 +77,6 @@ authRouter.get("/me", (req: Request, res: Response) => {
 authRouter.post("/logout", (_req: Request, res: Response) => {
   res.clearCookie("auth_token", { ...COOKIE_OPTS, maxAge: 0 });
   res.json({ ok: true });
-});
-
-// Redirect-based OAuth callback — exchanges auth code for tokens, sets cookie, redirects
-authRouter.get("/callback", async (req: Request, res: Response) => {
-  const code = req.query.code as string | undefined;
-  const error = req.query.error as string | undefined;
-
-  if (error || !code) {
-    res.redirect("/apply?auth_error=" + encodeURIComponent(error ?? "Login cancelled."));
-    return;
-  }
-
-  const secret = process.env.JWT_SECRET;
-  if (!secret) { res.redirect("/apply?auth_error=Server+misconfigured."); return; }
-
-  const appUrl = process.env.APP_URL ?? "http://localhost:5173";
-  const redirectUri = `${appUrl}/api/auth/callback`;
-
-  try {
-    const oauthClient = new OAuth2Client(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
-      redirectUri,
-    );
-    const { tokens } = await oauthClient.getToken(code);
-
-    const profileRes = await fetch(
-      `https://www.googleapis.com/oauth2/v1/userinfo?access_token=${tokens.access_token}`,
-    );
-    const profile = profileRes.ok
-      ? await profileRes.json() as { email?: string; name?: string; picture?: string }
-      : {};
-
-    const email = profile.email?.toLowerCase();
-    if (!email) throw new Error("No email in profile.");
-
-    const domain = email.split("@")[1];
-    if (!ALLOWED_DOMAINS.includes(domain)) {
-      res.redirect("/apply?auth_error=" + encodeURIComponent(`Only ${ALLOWED_DOMAINS.join(", ")} accounts are allowed.`));
-      return;
-    }
-
-    const user = {
-      email,
-      name: profile.name ?? email,
-      picture: profile.picture ?? null,
-      isAdmin: ADMIN_EMAILS.has(email),
-    };
-
-    const signed = jwt.sign(user, secret, { expiresIn: "7d" });
-    res.cookie("auth_token", signed, COOKIE_OPTS);
-    res.redirect("/apply");
-  } catch (err) {
-    console.error("OAuth callback error:", err);
-    res.redirect("/apply?auth_error=" + encodeURIComponent("Authentication failed. Please try again."));
-  }
 });
 
 // Returns the Google client ID to the frontend at runtime
