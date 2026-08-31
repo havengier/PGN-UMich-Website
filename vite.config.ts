@@ -33,4 +33,11 @@ export default defineConfig({
 
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv', '**/*.mp4', '**/*.webm', '**/*.png', '**/*.jpg', '**/*.jpeg', '**/*.webp'],
+
+  server: {
+    // Proxy API calls to the Express server during development
+    proxy: {
+      '/api': 'http://localhost:3000',
+    },
+  },
 })

@@ -148,12 +148,13 @@ const EMPTY: FormData = {
 export default function Apply() {
   const [form, setForm] = useState<FormData>(EMPTY);
   const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const set = (key: keyof FormData) => (val: string) =>
     setForm((f) => ({ ...f, [key]: val }));
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const missing = REQUIRED_FIELDS.filter((k) => !form[k]);
     if (missing.length) {
@@ -161,8 +162,25 @@ export default function Apply() {
       return;
     }
     setError("");
-    setSubmitted(true);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    setLoading(true);
+    try {
+      const { resume: _resume, ...fields } = form;
+      const res = await fetch("/api/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fields),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error ?? "Server error");
+      }
+      setSubmitted(true);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong. Please try again or email us directly.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -393,10 +411,11 @@ export default function Apply() {
                   </p>
                   <button
                     type="submit"
-                    className="px-10 py-3.5 bg-[#7A0C0C] text-white text-sm font-bold tracking-widest uppercase rounded-full hover:bg-[#5C0A0A] transition-colors duration-200 whitespace-nowrap"
+                    disabled={loading}
+                    className="px-10 py-3.5 bg-[#7A0C0C] text-white text-sm font-bold tracking-widest uppercase rounded-full hover:bg-[#5C0A0A] transition-colors duration-200 whitespace-nowrap disabled:opacity-60 disabled:cursor-not-allowed"
                     style={{ fontFamily: "'Inter', sans-serif" }}
                   >
-                    Submit Application
+                    {loading ? "Submitting…" : "Submit Application"}
                   </button>
                 </div>
               </motion.form>
