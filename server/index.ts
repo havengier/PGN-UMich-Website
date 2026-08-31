@@ -19,14 +19,16 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'"],
+      // accounts.google.com required for the Google Identity Services script (@react-oauth/google)
+      scriptSrc: ["'self'", "accounts.google.com"],
       // 'unsafe-inline' required for Tailwind's injected styles and the inline <style> in index.html
       styleSrc: ["'self'", "'unsafe-inline'", "fonts.googleapis.com"],
       fontSrc: ["'self'", "fonts.gstatic.com"],
-      imgSrc: ["'self'", "data:"],
+      imgSrc: ["'self'", "data:", "lh3.googleusercontent.com"],
       mediaSrc: ["'self'"],
-      connectSrc: ["'self'"],
+      connectSrc: ["'self'", "accounts.google.com"],
       frameAncestors: ["'none'"],
+      frameSrc: ["accounts.google.com"],
     },
   },
   crossOriginEmbedderPolicy: false,
