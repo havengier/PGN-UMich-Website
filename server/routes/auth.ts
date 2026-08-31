@@ -5,8 +5,10 @@ import type { Request, Response } from "express";
 
 export const authRouter = Router();
 
-// No clientId needed — getTokenInfo validates any access token
 const client = new OAuth2Client();
+
+const ALLOWED_DOMAINS = (process.env.ALLOWED_DOMAINS ?? "umich.edu")
+  .split(",").map((d) => d.trim().toLowerCase()).filter(Boolean);
 
 const ADMIN_EMAILS = new Set(
   (process.env.ADMIN_EMAILS ?? "")
@@ -35,8 +37,9 @@ authRouter.post("/google", async (req: Request, res: Response) => {
     const email = tokenInfo.email?.toLowerCase();
     if (!email) throw new Error("No email returned from token.");
 
-    if (!email.endsWith("@umich.edu")) {
-      res.status(403).json({ error: "Only @umich.edu accounts are allowed." });
+    const domain = email.split("@")[1];
+    if (!ALLOWED_DOMAINS.includes(domain)) {
+      res.status(403).json({ error: `Only ${ALLOWED_DOMAINS.join(", ")} accounts are allowed.` });
       return;
     }
 
@@ -76,4 +79,9 @@ authRouter.get("/me", (req: Request, res: Response) => {
 authRouter.post("/logout", (_req: Request, res: Response) => {
   res.clearCookie("auth_token", { ...COOKIE_OPTS, maxAge: 0 });
   res.json({ ok: true });
+});
+
+// Returns the Google client ID to the frontend at runtime
+authRouter.get("/config", (_req: Request, res: Response) => {
+  res.json({ clientId: process.env.GOOGLE_CLIENT_ID ?? "" });
 });
