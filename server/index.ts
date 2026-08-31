@@ -2,9 +2,11 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
+import cookieParser from "cookie-parser";
 import path from "path";
 import { fileURLToPath } from "url";
 import { applyRouter } from "./routes/apply.js";
+import { authRouter } from "./routes/auth.js";
 import { runMigrations } from "./db.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -33,6 +35,7 @@ app.use(helmet({
 // In production the frontend and API share the same origin, so CORS is only needed in dev
 app.use(cors({ origin: !isProd }));
 
+app.use(cookieParser());
 app.use(express.json({ limit: "50kb" }));
 
 // Max 5 application submissions per IP per 15 minutes
@@ -45,6 +48,7 @@ const applyLimiter = rateLimit({
 });
 app.use("/api/apply", applyLimiter);
 
+app.use("/api/auth", authRouter);
 app.use("/api", applyRouter);
 
 app.get("/health", (_req, res) => res.json({ ok: true }));

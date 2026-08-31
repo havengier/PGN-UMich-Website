@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, Outlet, useLocation } from "react-router";
-import { Instagram, Linkedin, Facebook, Menu, X } from "lucide-react";
+import { Instagram, Linkedin, Facebook, Menu, X, LogOut } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { useAuth } from "@/app/context/AuthContext";
 import pgnLogo from "@/imports/pgn_logo_1__1_.png";
 
 const NAV_LINKS = [
@@ -12,12 +13,14 @@ const NAV_LINKS = [
   { label: "DEI", path: "/dei" },
   { label: "Recruitment F26", path: "/recruitment" },
   { label: "Apply", path: "/apply" },
-  { label: "Admin", path: "/admin", yellow: true },
+  { label: "Admin", path: "/admin", yellow: true, adminOnly: true },
 ];
 
 function Nav({ scrolled }: { scrolled: boolean }) {
   const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
+  const { user, logout } = useAuth();
+  const visibleLinks = NAV_LINKS.filter((l) => !l.adminOnly || user?.isAdmin);
 
   useEffect(() => {
     setOpen(false);
@@ -46,7 +49,7 @@ function Nav({ scrolled }: { scrolled: boolean }) {
           className="hidden lg:flex items-center gap-7 text-sm text-gray-800"
           style={{ fontFamily: "'Inter', sans-serif" }}
         >
-          {NAV_LINKS.map(({ label, path, yellow }) => {
+          {visibleLinks.map(({ label, path, yellow }) => {
             const active = pathname === path || (path !== "/" && pathname.startsWith(path));
             return (
               <Link
@@ -62,6 +65,24 @@ function Nav({ scrolled }: { scrolled: boolean }) {
               </Link>
             );
           })}
+
+          {/* Signed-in user pill + logout */}
+          {user && (
+            <div className="flex items-center gap-2 ml-2 pl-4 border-l border-gray-200">
+              {user.picture
+                ? <img src={user.picture} alt={user.name} className="w-7 h-7 rounded-full" referrerPolicy="no-referrer" />
+                : <div className="w-7 h-7 rounded-full bg-[#7A0C0C] flex items-center justify-center text-white text-xs font-bold">{user.name[0]}</div>
+              }
+              <button
+                onClick={logout}
+                className="text-gray-400 hover:text-[#7A0C0C] transition-colors"
+                title="Sign out"
+                aria-label="Sign out"
+              >
+                <LogOut size={15} />
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Hamburger button */}
@@ -85,7 +106,7 @@ function Nav({ scrolled }: { scrolled: boolean }) {
             transition={{ duration: 0.22, ease: "easeOut" }}
           >
             <nav className="flex flex-col px-8 py-8 gap-0" style={{ fontFamily: "'Inter', sans-serif" }}>
-              {NAV_LINKS.map(({ label, path, yellow }, i) => {
+              {visibleLinks.map(({ label, path, yellow }, i) => {
                 const active = pathname === path || (path !== "/" && pathname.startsWith(path));
                 return (
                   <motion.div
@@ -112,6 +133,23 @@ function Nav({ scrolled }: { scrolled: boolean }) {
                 );
               })}
             </nav>
+
+            {/* Signed-in user in mobile drawer */}
+            {user && (
+              <div className="px-8 pb-4 flex items-center gap-3">
+                {user.picture
+                  ? <img src={user.picture} alt={user.name} className="w-8 h-8 rounded-full" referrerPolicy="no-referrer" />
+                  : <div className="w-8 h-8 rounded-full bg-[#7A0C0C] flex items-center justify-center text-white text-xs font-bold">{user.name[0]}</div>
+                }
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate" style={{ fontFamily: "'Inter', sans-serif" }}>{user.name}</p>
+                  <p className="text-xs text-gray-400 truncate" style={{ fontFamily: "'Inter', sans-serif" }}>{user.email}</p>
+                </div>
+                <button onClick={logout} className="text-gray-400 hover:text-[#7A0C0C] transition-colors" aria-label="Sign out">
+                  <LogOut size={18} />
+                </button>
+              </div>
+            )}
 
             <div className="mt-auto px-8 pb-10 flex gap-5">
               {[

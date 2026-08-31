@@ -4,6 +4,7 @@ import {
   Home, Info, Briefcase, Users, Heart, UserPlus, FileText,
   ArrowRight,
 } from "lucide-react";
+import { LoginGate } from "@/app/components/LoginGate";
 
 const PAGES = [
   {
@@ -51,6 +52,14 @@ const PAGES = [
 ];
 
 export default function Admin() {
+  return (
+    <LoginGate requireAdmin>
+      <AdminContent />
+    </LoginGate>
+  );
+}
+
+function AdminContent() {
   return (
     <div className="min-h-screen bg-[#FAFAF9]">
       {/* Header */}

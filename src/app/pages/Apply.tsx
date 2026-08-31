@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { motion } from "motion/react";
 import { CheckCircle, ChevronDown } from "lucide-react";
+import { LoginGate } from "@/app/components/LoginGate";
 
 type FormData = {
   firstName: string;
@@ -146,6 +147,14 @@ const EMPTY: FormData = {
 };
 
 export default function Apply() {
+  return (
+    <LoginGate>
+      <ApplyContent />
+    </LoginGate>
+  );
+}
+
+function ApplyContent() {
   const [form, setForm] = useState<FormData>(EMPTY);
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
