@@ -53,6 +53,7 @@ function AdminProfessionalContent() {
     try {
       const res = await fetch("/api/content", {
         method: "PUT",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(fields),
       });

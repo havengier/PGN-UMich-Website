@@ -82,6 +82,7 @@ function AdminMembersContent() {
     setApiError("");
     const res = await fetch(`/api/members/${id}`, {
       method: "PUT",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...editForm, sort_order: members.find((m) => m.id === id)?.sort_order ?? 0 }),
     });
@@ -98,7 +99,7 @@ function AdminMembersContent() {
 
   async function deleteMember(id: number) {
     if (!confirm("Delete this member?")) return;
-    const res = await fetch(`/api/members/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/members/${id}`, { method: "DELETE", credentials: "include" });
     if (res.ok) { setOpStatus("ok"); fetchMembers(); }
     else setOpStatus("error");
   }
@@ -111,6 +112,7 @@ function AdminMembersContent() {
     }
     const res = await fetch("/api/members", {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...addForm, sort_order: members.length }),
     });
