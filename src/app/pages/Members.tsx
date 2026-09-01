@@ -91,7 +91,7 @@ function MemberCard({ member, index }: { member: Member; index: number }) {
         </div>
       </div>
 
-      {/* Name */}}
+      {/* Name */}
       <p
         className="text-gray-900 font-bold text-lg leading-tight mb-1"
         style={{ fontFamily: "'Inter', sans-serif" }}
