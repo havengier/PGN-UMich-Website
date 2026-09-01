@@ -9,43 +9,43 @@ import { LoginGate } from "@/app/components/LoginGate";
 const PAGES = [
   {
     label: "Home",
-    path: "/",
+    path: "/admin/home",
     icon: Home,
     description: "Hero video, President's Welcome section.",
   },
   {
     label: "About Us",
-    path: "/about",
+    path: "/admin/about",
     icon: Info,
     description: "What's PGN, the Four Pillars accordion.",
   },
   {
     label: "Professional",
-    path: "/professional",
+    path: "/admin/professional",
     icon: Briefcase,
     description: "Internship summary, features, alumni testimonials.",
   },
   {
     label: "Members",
-    path: "/members",
+    path: "/admin/members",
     icon: Users,
     description: "Board, Chairs, and Actives tabbed grid.",
   },
   {
     label: "DEI",
-    path: "/dei",
+    path: "/admin/dei",
     icon: Heart,
     description: "DEI mission statement and photo gallery.",
   },
   {
     label: "Recruitment",
-    path: "/recruitment",
+    path: "/admin/recruitment",
     icon: UserPlus,
     description: "Fall 2026 recruitment splash and interest form CTA.",
   },
   {
     label: "Apply",
-    path: "/apply",
+    path: "/admin/apply",
     icon: FileText,
     description: "Full application form with database submission.",
   },
@@ -138,7 +138,7 @@ function AdminContent() {
                   <span
                     className="text-[0.7rem] font-mono text-gray-400"
                   >
-                    {path === "/" ? "/" : path}
+                    {path}
                   </span>
                 </div>
               </Link>

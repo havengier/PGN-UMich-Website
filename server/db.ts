@@ -28,7 +28,34 @@ export async function runMigrations() {
       strengths   TEXT         NOT NULL,
       involvement TEXT,
       questions   TEXT,
+      extra_answers JSONB DEFAULT '{}',
       submitted_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    ALTER TABLE applications
+      ADD COLUMN IF NOT EXISTS extra_answers JSONB DEFAULT '{}'
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS site_content (
+      key        VARCHAR(255) PRIMARY KEY,
+      value      TEXT         NOT NULL,
+      updated_at TIMESTAMPTZ  DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS members (
+      id         SERIAL PRIMARY KEY,
+      first_name VARCHAR(100) NOT NULL,
+      last_name  VARCHAR(100) NOT NULL,
+      role       VARCHAR(200),
+      major      VARCHAR(100),
+      minor      VARCHAR(100),
+      photo_url  TEXT,
+      hue        TEXT         DEFAULT 'from-amber-900 via-amber-800 to-stone-700',
+      categories TEXT[]       DEFAULT '{}',
+      sort_order INT          DEFAULT 0,
+      created_at TIMESTAMPTZ  DEFAULT NOW()
     )
   `);
   console.log("Database migrations complete.");

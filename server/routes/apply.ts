@@ -12,11 +12,13 @@ function cap(s: string | undefined, max: number): string | null {
 }
 
 applyRouter.post("/apply", async (req: Request, res: Response) => {
+  const body = req.body as Record<string, string>;
   const {
     firstName, lastName, email, phone,
     year, major, minor, gpa,
     whyPGN, strengths, involvement, questions,
-  } = req.body as Record<string, string>;
+    ...extraFields
+  } = body;
 
   const missing = [firstName, lastName, email, year, major, whyPGN, strengths].some((v) => !v?.trim());
   if (missing) {
@@ -39,11 +41,19 @@ applyRouter.post("/apply", async (req: Request, res: Response) => {
     return;
   }
 
+  // Sanitise extra fields — only string values, max 2000 chars each
+  const safeExtras: Record<string, string> = {};
+  for (const [k, v] of Object.entries(extraFields)) {
+    if (typeof v === "string" && /^[a-z0-9_]+$/i.test(k)) {
+      safeExtras[k] = v.slice(0, 2000);
+    }
+  }
+
   try {
     await pool.query(
       `INSERT INTO applications
-         (first_name, last_name, email, phone, year, major, minor, gpa, why_pgn, strengths, involvement, questions)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+         (first_name, last_name, email, phone, year, major, minor, gpa, why_pgn, strengths, involvement, questions, extra_answers)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
       [
         cap(firstName, 100), cap(lastName, 100),
         cap(email, 255), cap(phone, 20),
@@ -51,6 +61,7 @@ applyRouter.post("/apply", async (req: Request, res: Response) => {
         cap(minor, 100), cap(gpa, 10),
         cap(whyPGN, 5000), cap(strengths, 5000),
         cap(involvement, 5000), cap(questions, 2000),
+        JSON.stringify(safeExtras),
       ],
     );
     res.json({ ok: true });

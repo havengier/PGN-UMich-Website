@@ -1,58 +1,56 @@
-import { useState } from "react";
+﻿import { useState, useEffect } from "react";
 import { motion } from "motion/react";
 import { CheckCircle, ChevronDown } from "lucide-react";
 import { LoginGate } from "@/app/components/LoginGate";
 
-type FormData = {
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
-  year: string;
-  major: string;
-  minor: string;
-  gpa: string;
-  whyPGN: string;
-  strengths: string;
-  involvement: string;
-  questions: string;
-  resume: File | null;
+// ── Config types ──────────────────────────────────────────────────────────────
+type FieldType = "text" | "email" | "tel" | "textarea" | "select" | "file";
+
+type ConfigField = {
+  id: string;
+  type: FieldType;
+  label: string;
+  placeholder?: string;
+  hint?: string;
+  options?: string[];
+  required: boolean;
 };
 
-const YEARS = ["Freshman", "Sophomore", "Junior", "Senior", "Graduate Student"];
-
-const REQUIRED_FIELDS: (keyof FormData)[] = [
-  "firstName", "lastName", "email", "year", "major", "whyPGN", "strengths",
-];
-
-function Select({
-  label,
-  value,
-  options,
-  onChange,
-  required,
-}: {
+type ConfigSection = {
+  id: string;
   label: string;
+  fields: ConfigField[];
+};
+
+type ApplyConfig = {
+  sections: ConfigSection[];
+};
+
+// ── Dynamic form components ───────────────────────────────────────────────────
+function DynamicSelect({
+  field,
+  value,
+  onChange,
+}: {
+  field: ConfigField;
   value: string;
-  options: string[];
   onChange: (v: string) => void;
-  required?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-1.5">
       <label className="text-sm font-semibold text-gray-700" style={{ fontFamily: "'Inter', sans-serif" }}>
-        {label}{required && <span className="text-[#7A0C0C] ml-0.5">*</span>}
+        {field.label}{field.required && <span className="text-[#7A0C0C] ml-0.5">*</span>}
       </label>
       <div className="relative">
         <select
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          required={required}
+          required={field.required}
           className="w-full appearance-none border border-gray-200 rounded-lg px-4 py-3 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#7A0C0C]/30 focus:border-[#7A0C0C] transition-colors pr-10"
           style={{ fontFamily: "'Inter', sans-serif" }}
         >
           <option value="">Select…</option>
-          {options.map((o) => (
+          {(field.options ?? []).map((o) => (
             <option key={o} value={o}>{o}</option>
           ))}
         </select>
@@ -62,76 +60,30 @@ function Select({
   );
 }
 
-function Field({
-  label,
-  name,
+function DynamicTextarea({
+  field,
   value,
   onChange,
-  placeholder,
-  type = "text",
-  required,
 }: {
-  label: string;
-  name: string;
+  field: ConfigField;
   value: string;
   onChange: (v: string) => void;
-  placeholder?: string;
-  type?: string;
-  required?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={name} className="text-sm font-semibold text-gray-700" style={{ fontFamily: "'Inter', sans-serif" }}>
-        {label}{required && <span className="text-[#7A0C0C] ml-0.5">*</span>}
+      <label htmlFor={field.id} className="text-sm font-semibold text-gray-700" style={{ fontFamily: "'Inter', sans-serif" }}>
+        {field.label}{field.required && <span className="text-[#7A0C0C] ml-0.5">*</span>}
       </label>
-      <input
-        id={name}
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        required={required}
-        className="border border-gray-200 rounded-lg px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#7A0C0C]/30 focus:border-[#7A0C0C] transition-colors"
-        style={{ fontFamily: "'Inter', sans-serif" }}
-      />
-    </div>
-  );
-}
-
-function Textarea({
-  label,
-  name,
-  value,
-  onChange,
-  placeholder,
-  hint,
-  rows = 5,
-  required,
-}: {
-  label: string;
-  name: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  hint?: string;
-  rows?: number;
-  required?: boolean;
-}) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <label htmlFor={name} className="text-sm font-semibold text-gray-700" style={{ fontFamily: "'Inter', sans-serif" }}>
-        {label}{required && <span className="text-[#7A0C0C] ml-0.5">*</span>}
-      </label>
-      {hint && (
-        <p className="text-xs text-gray-500 -mt-0.5" style={{ fontFamily: "'Inter', sans-serif" }}>{hint}</p>
+      {field.hint && (
+        <p className="text-xs text-gray-500 -mt-0.5" style={{ fontFamily: "'Inter', sans-serif" }}>{field.hint}</p>
       )}
       <textarea
-        id={name}
+        id={field.id}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        required={required}
-        rows={rows}
+        placeholder={field.placeholder}
+        required={field.required}
+        rows={5}
         className="border border-gray-200 rounded-lg px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#7A0C0C]/30 focus:border-[#7A0C0C] transition-colors resize-none"
         style={{ fontFamily: "'Inter', sans-serif" }}
       />
@@ -139,12 +91,33 @@ function Textarea({
   );
 }
 
-const EMPTY: FormData = {
-  firstName: "", lastName: "", email: "", phone: "",
-  year: "", major: "", minor: "", gpa: "",
-  whyPGN: "", strengths: "", involvement: "", questions: "",
-  resume: null,
-};
+function DynamicInput({
+  field,
+  value,
+  onChange,
+}: {
+  field: ConfigField;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={field.id} className="text-sm font-semibold text-gray-700" style={{ fontFamily: "'Inter', sans-serif" }}>
+        {field.label}{field.required && <span className="text-[#7A0C0C] ml-0.5">*</span>}
+      </label>
+      <input
+        id={field.id}
+        type={field.type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={field.placeholder}
+        required={field.required}
+        className="border border-gray-200 rounded-lg px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#7A0C0C]/30 focus:border-[#7A0C0C] transition-colors"
+        style={{ fontFamily: "'Inter', sans-serif" }}
+      />
+    </div>
+  );
+}
 
 export default function Apply() {
   return (
@@ -155,33 +128,51 @@ export default function Apply() {
 }
 
 function ApplyContent() {
-  const [form, setForm] = useState<FormData>(EMPTY);
+  const [config, setConfig] = useState<ApplyConfig | null>(null);
+  const [formValues, setFormValues] = useState<Record<string, string>>({});
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const set = (key: keyof FormData) => (val: string) =>
-    setForm((f) => ({ ...f, [key]: val }));
+  useEffect(() => {
+    fetch("/api/apply-config")
+      .then((r) => r.json())
+      .then((data: ApplyConfig) => setConfig(data))
+      .catch(() => {});
+  }, []);
+
+  function setValue(fieldId: string, val: string) {
+    setFormValues((prev) => ({ ...prev, [fieldId]: val }));
+  }
+
+  function getValue(fieldId: string): string {
+    return formValues[fieldId] ?? "";
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const missing = REQUIRED_FIELDS.filter((k) => !form[k]);
+    if (!config) return;
+
+    // Validate required fields from config
+    const requiredIds = config.sections.flatMap((s) => s.fields.filter((f) => f.required && f.type !== "file").map((f) => f.id));
+    const missing = requiredIds.filter((id) => !formValues[id]?.trim());
     if (missing.length) {
       setError("Please fill in all required fields before submitting.");
       return;
     }
+
     setError("");
     setLoading(true);
     try {
-      const { resume: _resume, ...fields } = form;
       const res = await fetch("/api/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(fields),
+        body: JSON.stringify(formValues),
       });
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error((data as { error?: string }).error ?? "Server error");
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(data.error ?? "Server error");
       }
       setSubmitted(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -248,7 +239,7 @@ function ApplyContent() {
                 Application Submitted
               </h2>
               <p className="text-gray-600 text-base max-w-md leading-relaxed" style={{ fontFamily: "'Inter', sans-serif" }}>
-                Thank you, {form.firstName}! We have received your application and will be in touch via email. We look forward to meeting you.
+                Thank you, {getValue("firstName") || "applicant"}! We have received your application and will be in touch via email. We look forward to meeting you.
               </p>
               <div className="mt-8 h-px w-24 bg-[#F5A623]" />
               <p className="mt-8 text-sm text-gray-500" style={{ fontFamily: "'Inter', sans-serif" }}>
@@ -260,7 +251,6 @@ function ApplyContent() {
             </motion.div>
           ) : (
             <>
-              {/* Intro */}
               <motion.div
                 className="mb-12"
                 initial={{ opacity: 0, y: 20 }}
@@ -280,157 +270,108 @@ function ApplyContent() {
                 </p>
               </motion.div>
 
-              <motion.form
-                onSubmit={handleSubmit}
-                className="space-y-10"
-                initial={{ opacity: 0, y: 24 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.1 }}
-              >
-                {/* ── Section: Personal Info ────────────────────────────── */}
-                <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-                  <h3
-                    className="text-xs font-bold tracking-[0.18em] uppercase text-[#7A0C0C] mb-6"
-                    style={{ fontFamily: "'Inter', sans-serif" }}
-                  >
-                    Personal Information
-                  </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                    <Field label="First Name" name="firstName" value={form.firstName} onChange={set("firstName")} placeholder="Jane" required />
-                    <Field label="Last Name" name="lastName" value={form.lastName} onChange={set("lastName")} placeholder="Doe" required />
-                    <Field label="University Email" name="email" value={form.email} onChange={set("email")} type="email" placeholder="jdoe@umich.edu" required />
-                    <Field label="Phone Number" name="phone" value={form.phone} onChange={set("phone")} type="tel" placeholder="(555) 000-0000" />
+              {config ? (
+                <motion.form
+                  onSubmit={handleSubmit}
+                  className="space-y-10"
+                  initial={{ opacity: 0, y: 24 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.6, delay: 0.1 }}
+                >
+                  {config.sections.map((section) => (
+                    <section key={section.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+                      <h3
+                        className="text-xs font-bold tracking-[0.18em] uppercase text-[#7A0C0C] mb-6"
+                        style={{ fontFamily: "'Inter', sans-serif" }}
+                      >
+                        {section.label}
+                      </h3>
+                      <div className={`grid gap-5 ${section.fields.some((f) => f.type === "textarea" || f.type === "file") ? "" : "sm:grid-cols-2"}`}>
+                        {section.fields.map((field) => {
+                          if (field.type === "select") {
+                            return (
+                              <DynamicSelect
+                                key={field.id}
+                                field={field}
+                                value={getValue(field.id)}
+                                onChange={(v) => setValue(field.id, v)}
+                              />
+                            );
+                          }
+                          if (field.type === "textarea") {
+                            return (
+                              <div key={field.id} className="sm:col-span-2">
+                                <DynamicTextarea
+                                  field={field}
+                                  value={getValue(field.id)}
+                                  onChange={(v) => setValue(field.id, v)}
+                                />
+                              </div>
+                            );
+                          }
+                          if (field.type === "file") {
+                            return (
+                              <div key={field.id} className="flex flex-col gap-1.5 sm:col-span-2">
+                                <label className="text-sm font-semibold text-gray-700" style={{ fontFamily: "'Inter', sans-serif" }}>
+                                  {field.label} <span className="text-gray-400 font-normal">(PDF, max 5 MB)</span>
+                                </label>
+                                <label className="flex items-center gap-4 border-2 border-dashed border-gray-200 rounded-xl px-6 py-5 cursor-pointer hover:border-[#7A0C0C]/40 transition-colors group">
+                                  <div className="flex-1">
+                                    <p className="text-sm text-gray-500 group-hover:text-gray-700 transition-colors" style={{ fontFamily: "'Inter', sans-serif" }}>
+                                      {resumeFile ? resumeFile.name : "Click to upload or drag and drop"}
+                                    </p>
+                                  </div>
+                                  <span className="px-4 py-2 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600 bg-gray-50">Browse</span>
+                                  <input
+                                    type="file"
+                                    accept=".pdf"
+                                    className="hidden"
+                                    onChange={(e) => setResumeFile(e.target.files?.[0] ?? null)}
+                                  />
+                                </label>
+                              </div>
+                            );
+                          }
+                          return (
+                            <DynamicInput
+                              key={field.id}
+                              field={field}
+                              value={getValue(field.id)}
+                              onChange={(v) => setValue(field.id, v)}
+                            />
+                          );
+                        })}
+                      </div>
+                    </section>
+                  ))}
+
+                  {error && (
+                    <p className="text-sm text-red-600 font-medium" style={{ fontFamily: "'Inter', sans-serif" }}>
+                      {error}
+                    </p>
+                  )}
+
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-2">
+                    <p className="text-xs text-gray-500 leading-relaxed max-w-sm" style={{ fontFamily: "'Inter', sans-serif" }}>
+                      By submitting this form you confirm that all information provided is accurate. We will contact you at the email address provided.
+                    </p>
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="px-10 py-3.5 bg-[#7A0C0C] text-white text-sm font-bold tracking-widest uppercase rounded-full hover:bg-[#5C0A0A] transition-colors duration-200 whitespace-nowrap disabled:opacity-60 disabled:cursor-not-allowed"
+                      style={{ fontFamily: "'Inter', sans-serif" }}
+                    >
+                      {loading ? "Submitting…" : "Submit Application"}
+                    </button>
                   </div>
-                </section>
-
-                {/* ── Section: Academic Background ─────────────────────── */}
-                <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-                  <h3
-                    className="text-xs font-bold tracking-[0.18em] uppercase text-[#7A0C0C] mb-6"
-                    style={{ fontFamily: "'Inter', sans-serif" }}
-                  >
-                    Academic Background
-                  </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                    <Select label="Year" value={form.year} options={YEARS} onChange={set("year")} required />
-                    <Field label="Major" name="major" value={form.major} onChange={set("major")} placeholder="e.g. Business Administration" required />
-                    <Field label="Minor (if applicable)" name="minor" value={form.minor} onChange={set("minor")} placeholder="e.g. Psychology" />
-                    <Field label="Cumulative GPA" name="gpa" value={form.gpa} onChange={set("gpa")} placeholder="e.g. 3.7" />
-                  </div>
-                </section>
-
-                {/* ── Section: Short Answers ────────────────────────────── */}
-                <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-                  <h3
-                    className="text-xs font-bold tracking-[0.18em] uppercase text-[#7A0C0C] mb-6"
-                    style={{ fontFamily: "'Inter', sans-serif" }}
-                  >
-                    Short Answers
-                  </h3>
-                  <div className="space-y-6">
-                    <Textarea
-                      label="Why do you want to join Phi Gamma Nu?"
-                      name="whyPGN"
-                      value={form.whyPGN}
-                      onChange={set("whyPGN")}
-                      hint="Tell us what drew you to PGN and what you hope to gain from membership. (150–300 words)"
-                      placeholder="I am drawn to PGN because..."
-                      required
-                    />
-                    <Textarea
-                      label="What unique strengths would you bring to PGN?"
-                      name="strengths"
-                      value={form.strengths}
-                      onChange={set("strengths")}
-                      hint="Highlight specific skills, experiences, or perspectives. (150–300 words)"
-                      placeholder="One strength I would bring is..."
-                      required
-                    />
-                    <Textarea
-                      label="Describe your previous involvement in campus or professional organizations."
-                      name="involvement"
-                      value={form.involvement}
-                      onChange={set("involvement")}
-                      hint="Include clubs, internships, research, volunteer work, or leadership roles."
-                      placeholder="I have been involved in..."
-                      rows={4}
-                    />
-                  </div>
-                </section>
-
-                {/* ── Section: Resume + Additional ─────────────────────── */}
-                <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-                  <h3
-                    className="text-xs font-bold tracking-[0.18em] uppercase text-[#7A0C0C] mb-6"
-                    style={{ fontFamily: "'Inter', sans-serif" }}
-                  >
-                    Resume & Additional Information
-                  </h3>
-                  <div className="space-y-6">
-                    {/* Resume upload */}
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-sm font-semibold text-gray-700" style={{ fontFamily: "'Inter', sans-serif" }}>
-                        Upload Resume <span className="text-gray-400 font-normal">(PDF, max 5 MB)</span>
-                      </label>
-                      <label className="flex items-center gap-4 border-2 border-dashed border-gray-200 rounded-xl px-6 py-5 cursor-pointer hover:border-[#7A0C0C]/40 transition-colors group">
-                        <div className="flex-1">
-                          <p className="text-sm text-gray-500 group-hover:text-gray-700 transition-colors" style={{ fontFamily: "'Inter', sans-serif" }}>
-                            {form.resume ? form.resume.name : "Click to upload or drag and drop"}
-                          </p>
-                        </div>
-                        <span
-                          className="px-4 py-2 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600 bg-gray-50 group-hover:border-[#7A0C0C]/40 transition-colors"
-                          style={{ fontFamily: "'Inter', sans-serif" }}
-                        >
-                          Browse
-                        </span>
-                        <input
-                          type="file"
-                          accept=".pdf"
-                          className="hidden"
-                          onChange={(e) => {
-                            const f = e.target.files?.[0] ?? null;
-                            setForm((prev) => ({ ...prev, resume: f }));
-                          }}
-                        />
-                      </label>
-                    </div>
-
-                    <Textarea
-                      label="Any questions or additional comments?"
-                      name="questions"
-                      value={form.questions}
-                      onChange={set("questions")}
-                      placeholder="Feel free to share anything else you would like us to know."
-                      rows={3}
-                    />
-                  </div>
-                </section>
-
-                {/* ── Error + Submit ────────────────────────────────────── */}
-                {error && (
-                  <p className="text-sm text-red-600 font-medium" style={{ fontFamily: "'Inter', sans-serif" }}>
-                    {error}
-                  </p>
-                )}
-
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-2">
-                  <p className="text-xs text-gray-500 leading-relaxed max-w-sm" style={{ fontFamily: "'Inter', sans-serif" }}>
-                    By submitting this form you confirm that all information provided is accurate. We will contact you at the email address provided.
-                  </p>
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="px-10 py-3.5 bg-[#7A0C0C] text-white text-sm font-bold tracking-widest uppercase rounded-full hover:bg-[#5C0A0A] transition-colors duration-200 whitespace-nowrap disabled:opacity-60 disabled:cursor-not-allowed"
-                    style={{ fontFamily: "'Inter', sans-serif" }}
-                  >
-                    {loading ? "Submitting…" : "Submit Application"}
-                  </button>
+                </motion.form>
+              ) : (
+                <div className="flex justify-center py-24">
+                  <div className="w-6 h-6 rounded-full border-2 border-[#7A0C0C] border-t-transparent animate-spin" />
                 </div>
-              </motion.form>
+              )}
             </>
           )}
-
         </div>
       </div>
     </>

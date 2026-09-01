@@ -7,6 +7,9 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { applyRouter } from "./routes/apply.js";
 import { authRouter } from "./routes/auth.js";
+import { contentRouter } from "./routes/content.js";
+import { membersApiRouter } from "./routes/members-api.js";
+import { applyConfigRouter } from "./routes/apply-config.js";
 import { runMigrations } from "./db.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -24,7 +27,7 @@ app.use(helmet({
       // 'unsafe-inline' required for Tailwind's injected styles and the inline <style> in index.html
       styleSrc: ["'self'", "'unsafe-inline'", "fonts.googleapis.com"],
       fontSrc: ["'self'", "fonts.gstatic.com"],
-      imgSrc: ["'self'", "data:", "lh3.googleusercontent.com"],
+      imgSrc: ["'self'", "data:", "lh3.googleusercontent.com", "https:"],
       mediaSrc: ["'self'"],
       connectSrc: ["'self'", "accounts.google.com"],
       frameAncestors: ["'none'"],
@@ -52,6 +55,9 @@ app.use("/api/apply", applyLimiter);
 
 app.use("/api/auth", authRouter);
 app.use("/api", applyRouter);
+app.use("/api/content", contentRouter);
+app.use("/api/members", membersApiRouter);
+app.use("/api/apply-config", applyConfigRouter);
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
