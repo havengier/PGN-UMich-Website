@@ -16,8 +16,11 @@ const DEFAULTS = {
   "home.hero.button_2_url": "#",
   // President's Welcome
   "home.president.image_url": "",
+  "home.president.image_width": "288",
   "home.president.yellow_text": "Welcome to PGN at the University of Michigan!",
   "home.president.heading": "President's Welcome",
+  "home.president.heading_font_size": "42",
+  "home.president.body_font_size": "15",
   "home.president.body": DEFAULT_PRESIDENT_BODY,
 };
 
@@ -202,14 +205,80 @@ function AdminHomeContent() {
               placeholder="https://example.com/president.jpg"
               className={inputCls}
             />
-            {fields["home.president.image_url"] && (
-              <img
-                src={fields["home.president.image_url"]}
-                alt="Preview"
-                className="mt-3 w-28 h-36 object-cover rounded-xl border border-gray-200"
-              />
-            )}
           </Field>
+
+          {/* Image Size Control */}
+          <Field
+            label={`President Photo Size: ${fields["home.president.image_width"] || "288"}px`}
+            hint="Adjust the display width of the President's portrait photo on the home page."
+          >
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              {[
+                { label: "Small (220px)", val: "220" },
+                { label: "Medium (288px - Default)", val: "288" },
+                { label: "Large (360px)", val: "360" },
+                { label: "Extra Large (440px)", val: "440" },
+              ].map(({ label, val }) => {
+                const active = (fields["home.president.image_width"] || "288") === val;
+                return (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => setFields((f) => ({ ...f, "home.president.image_width": val }))}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      active
+                        ? "bg-[#7A0C0C] text-white shadow-sm"
+                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min="200"
+                max="500"
+                step="4"
+                value={fields["home.president.image_width"] || "288"}
+                onChange={(e) =>
+                  setFields((f) => ({ ...f, "home.president.image_width": e.target.value }))
+                }
+                className="w-full accent-[#7A0C0C] cursor-pointer"
+              />
+              <span className="text-xs font-mono text-gray-500 w-12 text-right">
+                {fields["home.president.image_width"] || "288"}px
+              </span>
+            </div>
+
+            {/* Photo Preview */}
+            <div className="mt-3 p-4 rounded-xl bg-stone-100/60 border border-stone-200/60 flex flex-col items-center">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-gray-400 mb-2">
+                Photo Dimension Preview ({fields["home.president.image_width"] || "288"}px)
+              </span>
+              <div
+                className="rounded-xl overflow-hidden shadow-md aspect-[3/4] bg-gradient-to-br from-amber-950 via-stone-800 to-stone-900 flex items-center justify-center transition-all duration-200"
+                style={{
+                  width: `${Math.min(Number(fields["home.president.image_width"] || 288) * 0.55, 240)}px`,
+                }}
+              >
+                {fields["home.president.image_url"] ? (
+                  <img
+                    src={fields["home.president.image_url"]}
+                    alt="President Preview"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="text-amber-200/40 text-[10px] tracking-widest uppercase">
+                    President
+                  </span>
+                )}
+              </div>
+            </div>
+          </Field>
+
           <Field label="Yellow caption text (above photo)">
             <input
               type="text"
@@ -218,6 +287,7 @@ function AdminHomeContent() {
               className={inputCls}
             />
           </Field>
+
           <Field label="Section heading">
             <input
               type="text"
@@ -226,6 +296,56 @@ function AdminHomeContent() {
               className={inputCls}
             />
           </Field>
+
+          {/* Heading Font Size Control */}
+          <Field
+            label={`Section Heading Font Size: ${fields["home.president.heading_font_size"] || "42"}px`}
+            hint="Adjust the font size for the 'President's Welcome' main heading."
+          >
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              {[
+                { label: "Small (34px)", val: "34" },
+                { label: "Medium (42px - Default)", val: "42" },
+                { label: "Large (50px)", val: "50" },
+                { label: "Extra Large (58px)", val: "58" },
+              ].map(({ label, val }) => {
+                const active = (fields["home.president.heading_font_size"] || "42") === val;
+                return (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() =>
+                      setFields((f) => ({ ...f, "home.president.heading_font_size": val }))
+                    }
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      active
+                        ? "bg-[#7A0C0C] text-white shadow-sm"
+                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min="28"
+                max="64"
+                step="2"
+                value={fields["home.president.heading_font_size"] || "42"}
+                onChange={(e) =>
+                  setFields((f) => ({ ...f, "home.president.heading_font_size": e.target.value }))
+                }
+                className="w-full accent-[#7A0C0C] cursor-pointer"
+              />
+              <span className="text-xs font-mono text-gray-500 w-12 text-right">
+                {fields["home.president.heading_font_size"] || "42"}px
+              </span>
+            </div>
+          </Field>
+
           <Field
             label="Welcome message / Body paragraphs"
             hint="Type as many paragraphs as you'd like. Separate paragraphs with a blank line (press Enter twice) to create line gaps on the page."
@@ -237,6 +357,80 @@ function AdminHomeContent() {
               placeholder="Write the welcome message here..."
               className={textareaCls}
             />
+          </Field>
+
+          {/* Body Font Size Control */}
+          <Field
+            label={`Body Text Font Size: ${fields["home.president.body_font_size"] || "15"}px`}
+            hint="Adjust the font size of the welcome message body paragraphs."
+          >
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              {[
+                { label: "Compact (14px)", val: "14" },
+                { label: "Standard (15px - Default)", val: "15" },
+                { label: "Medium (17px)", val: "17" },
+                { label: "Large (19px)", val: "19" },
+                { label: "Extra Large (22px)", val: "22" },
+              ].map(({ label, val }) => {
+                const active = (fields["home.president.body_font_size"] || "15") === val;
+                return (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() =>
+                      setFields((f) => ({ ...f, "home.president.body_font_size": val }))
+                    }
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      active
+                        ? "bg-[#7A0C0C] text-white shadow-sm"
+                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min="12"
+                max="26"
+                step="1"
+                value={fields["home.president.body_font_size"] || "15"}
+                onChange={(e) =>
+                  setFields((f) => ({ ...f, "home.president.body_font_size": e.target.value }))
+                }
+                className="w-full accent-[#7A0C0C] cursor-pointer"
+              />
+              <span className="text-xs font-mono text-gray-500 w-12 text-right">
+                {fields["home.president.body_font_size"] || "15"}px
+              </span>
+            </div>
+
+            {/* Typography Live Preview */}
+            <div className="mt-3 p-5 rounded-xl bg-stone-50 border border-stone-200/80">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-gray-400 block mb-2">
+                Live Text Sizing Preview
+              </span>
+              <h4
+                className="font-normal text-gray-900 leading-tight mb-2"
+                style={{
+                  fontFamily: "'Playfair Display', serif",
+                  fontSize: `${fields["home.president.heading_font_size"] || "42"}px`,
+                }}
+              >
+                {fields["home.president.heading"] || "President's Welcome"}
+              </h4>
+              <p
+                className="text-gray-700 leading-relaxed"
+                style={{
+                  fontSize: `${fields["home.president.body_font_size"] || "15"}px`,
+                }}
+              >
+                On behalf of the brotherhood, it is my pleasure to welcome you to Phi Gamma Nu...
+              </p>
+            </div>
           </Field>
         </Section>
 

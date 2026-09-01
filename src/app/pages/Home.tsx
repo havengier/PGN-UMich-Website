@@ -59,8 +59,11 @@ function PresidentWelcome() {
   const { get } = useContent("home");
 
   const imageUrl = get("home.president.image_url", "");
+  const imageWidth = Number(get("home.president.image_width", "288")) || 288;
   const yellowText = get("home.president.yellow_text", "Welcome to PGN at the University of Michigan!");
   const heading = get("home.president.heading", "President's Welcome");
+  const headingFontSize = Number(get("home.president.heading_font_size", "42")) || 42;
+  const bodyFontSize = Number(get("home.president.body_font_size", "15")) || 15;
 
   const DEFAULT_BODY =
     "On behalf of the brotherhood, it is my pleasure to welcome you to Phi Gamma Nu at the University of Michigan. Thank you for taking the time to learn more about our organization, our values, and our people.\n\nPGN is one of the largest professional business fraternities in the United States, with a rich history dating back to 1927. Our Delta Phi chapter here at Michigan is proud to uphold these traditions while forging new paths as future business leaders.";
@@ -82,7 +85,8 @@ function PresidentWelcome() {
     >
       <div className="max-w-5xl mx-auto flex flex-col md:flex-row gap-10 md:gap-16 items-start">
         <motion.div
-          className="w-full md:w-72 md:flex-shrink-0 rounded-2xl overflow-hidden shadow-xl aspect-[3/4] bg-gradient-to-br from-amber-950 via-stone-800 to-stone-900"
+          className="w-full md:flex-shrink-0 rounded-2xl overflow-hidden shadow-xl aspect-[3/4] bg-gradient-to-br from-amber-950 via-stone-800 to-stone-900"
+          style={{ width: "100%", maxWidth: `${imageWidth}px` }}
           initial={{ opacity: 0, x: -60 }}
           whileInView={{ opacity: 1, x: 0 }}
           viewport={{ once: true, amount: 0.3 }}
@@ -98,15 +102,18 @@ function PresidentWelcome() {
         </motion.div>
 
         <motion.div
-          className="pt-0 md:pt-2 flex-1"
+          className="pt-0 md:pt-2 flex-1 min-w-0"
           initial={{ opacity: 0, x: 60 }}
           whileInView={{ opacity: 1, x: 0 }}
           viewport={{ once: true, amount: 0.3 }}
           transition={{ duration: 0.7, ease: "easeOut", delay: 0.15 }}
         >
           <h2
-            className="text-[2.6rem] font-normal text-gray-900 mb-7 leading-tight"
-            style={{ fontFamily: "'Playfair Display', serif" }}
+            className="font-normal text-gray-900 mb-7 leading-tight"
+            style={{
+              fontFamily: "'Playfair Display', serif",
+              fontSize: `${headingFontSize}px`,
+            }}
           >
             {heading}
           </h2>
@@ -115,7 +122,11 @@ function PresidentWelcome() {
           </h3>
           <div className="space-y-4">
             {paragraphs.map((paragraph, idx) => (
-              <p key={idx} className="text-gray-700 leading-relaxed text-[0.95rem] whitespace-pre-line">
+              <p
+                key={idx}
+                className="text-gray-700 leading-relaxed whitespace-pre-line"
+                style={{ fontSize: `${bodyFontSize}px` }}
+              >
                 {paragraph}
               </p>
             ))}
