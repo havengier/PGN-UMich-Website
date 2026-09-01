@@ -39,6 +39,7 @@ function AdminApplyContent() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<"idle" | "ok" | "error">("idle");
+  const [errMsg, setErrMsg] = useState("");
 
   useEffect(() => {
     fetch("/api/apply-config")
@@ -52,6 +53,7 @@ function AdminApplyContent() {
     if (!config) return;
     setSaving(true);
     setStatus("idle");
+    setErrMsg("");
     try {
       const res = await fetch("/api/apply-config", {
         method: "PUT",
@@ -59,7 +61,13 @@ function AdminApplyContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(config),
       });
-      setStatus(res.ok ? "ok" : "error");
+      if (res.ok) {
+        setStatus("ok");
+      } else {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        setErrMsg(body.error ?? `HTTP ${res.status}`);
+        setStatus("error");
+      }
     } catch {
       setStatus("error");
     } finally {
@@ -218,7 +226,7 @@ function AdminApplyContent() {
           )}
           {status === "error" && (
             <span className="flex items-center gap-1.5 text-sm text-red-600 font-medium">
-              <AlertCircle size={15} /> Failed to save
+              <AlertCircle size={15} /> Failed to save{errMsg ? `: ${errMsg}` : ""}
             </span>
           )}
         </div>

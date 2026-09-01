@@ -18,6 +18,7 @@ function AdminRecruitmentContent() {
   const [fields, setFields] = useState<Fields>({ ...DEFAULTS });
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<"idle" | "ok" | "error">("idle");
+  const [errMsg, setErrMsg] = useState("");
 
   useEffect(() => {
     fetch(`/api/content?ns=${NS}`)
@@ -32,6 +33,7 @@ function AdminRecruitmentContent() {
   async function handleSave() {
     setSaving(true);
     setStatus("idle");
+    setErrMsg("");
     try {
       const res = await fetch("/api/content", {
         method: "PUT",
@@ -39,7 +41,13 @@ function AdminRecruitmentContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(fields),
       });
-      setStatus(res.ok ? "ok" : "error");
+      if (res.ok) {
+        setStatus("ok");
+      } else {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        setErrMsg(body.error ?? `HTTP ${res.status}`);
+        setStatus("error");
+      }
     } catch {
       setStatus("error");
     } finally {
@@ -95,7 +103,7 @@ function AdminRecruitmentContent() {
           )}
         </Section>
 
-        <SaveBar saving={saving} status={status} onSave={handleSave} />
+        <SaveBar saving={saving} status={status} errMsg={errMsg} onSave={handleSave} />
       </div>
     </div>
   );
@@ -128,7 +136,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   );
 }
 
-function SaveBar({ saving, status, onSave }: { saving: boolean; status: "idle" | "ok" | "error"; onSave: () => void }) {
+function SaveBar({ saving, status, errMsg, onSave }: { saving: boolean; status: "idle" | "ok" | "error"; errMsg: string; onSave: () => void }) {
   return (
     <div className="flex items-center gap-4 pt-2">
       <button
@@ -146,7 +154,7 @@ function SaveBar({ saving, status, onSave }: { saving: boolean; status: "idle" |
       )}
       {status === "error" && (
         <span className="flex items-center gap-1.5 text-sm text-red-600 font-medium">
-          <AlertCircle size={15} /> Failed to save
+          <AlertCircle size={15} /> Failed to save{errMsg ? `: ${errMsg}` : ""}
         </span>
       )}
     </div>
