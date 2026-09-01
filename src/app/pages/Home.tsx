@@ -15,7 +15,7 @@ function Hero() {
       </video>
       <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/20 to-black/55" />
 
-      <div className="absolute bottom-10 left-0 right-0 z-10 flex justify-center">
+      <div className="absolute bottom-20 left-0 right-0 z-10 flex justify-center">
         <div className="flex flex-col sm:flex-row items-center gap-8 sm:gap-24">
           {["W26 Application", "Interest Form"].map((label) => (
             <a
