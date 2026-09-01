@@ -5,6 +5,9 @@ import { LoginGate } from "@/app/components/LoginGate";
 
 const NS = "home";
 
+const DEFAULT_PRESIDENT_BODY =
+  "On behalf of the brotherhood, it is my pleasure to welcome you to Phi Gamma Nu at the University of Michigan. Thank you for taking the time to learn more about our organization, our values, and our people.\n\nPGN is one of the largest professional business fraternities in the United States, with a rich history dating back to 1927. Our Delta Phi chapter here at Michigan is proud to uphold these traditions while forging new paths as future business leaders.";
+
 const DEFAULTS = {
   // Hero Action Buttons
   "home.hero.button_1_text": "W26 Application",
@@ -15,10 +18,7 @@ const DEFAULTS = {
   "home.president.image_url": "",
   "home.president.yellow_text": "Welcome to PGN at the University of Michigan!",
   "home.president.heading": "President's Welcome",
-  "home.president.body_1":
-    "On behalf of the brotherhood, it is my pleasure to welcome you to Phi Gamma Nu at the University of Michigan. Thank you for taking the time to learn more about our organization, our values, and our people.",
-  "home.president.body_2":
-    "PGN is one of the largest professional business fraternities in the United States, with a rich history dating back to 1927. Our Delta Phi chapter here at Michigan is proud to uphold these traditions while forging new paths as future business leaders.",
+  "home.president.body": DEFAULT_PRESIDENT_BODY,
 };
 
 type Fields = typeof DEFAULTS;
@@ -32,8 +32,18 @@ function AdminHomeContent() {
   useEffect(() => {
     fetch(`/api/content?ns=${NS}`)
       .then((r) => r.json())
-      .then((data: Partial<Fields>) => {
-        setFields((prev) => ({ ...prev, ...data }));
+      .then((data: Record<string, string>) => {
+        setFields((prev) => {
+          let body = data["home.president.body"];
+          if (!body && (data["home.president.body_1"] || data["home.president.body_2"])) {
+            body = [data["home.president.body_1"], data["home.president.body_2"]].filter(Boolean).join("\n\n");
+          }
+          return {
+            ...prev,
+            ...data,
+            ...(body !== undefined ? { "home.president.body": body } : {}),
+          };
+        });
       })
       .catch(() => {});
   }, []);
@@ -216,19 +226,15 @@ function AdminHomeContent() {
               className={inputCls}
             />
           </Field>
-          <Field label="Body paragraph 1">
+          <Field
+            label="Welcome message / Body paragraphs"
+            hint="Type as many paragraphs as you'd like. Separate paragraphs with a blank line (press Enter twice) to create line gaps on the page."
+          >
             <textarea
-              value={fields["home.president.body_1"]}
-              onChange={set("home.president.body_1")}
-              rows={4}
-              className={textareaCls}
-            />
-          </Field>
-          <Field label="Body paragraph 2">
-            <textarea
-              value={fields["home.president.body_2"]}
-              onChange={set("home.president.body_2")}
-              rows={4}
+              value={fields["home.president.body"]}
+              onChange={set("home.president.body")}
+              rows={8}
+              placeholder="Write the welcome message here..."
               className={textareaCls}
             />
           </Field>

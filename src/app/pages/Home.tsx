@@ -61,14 +61,19 @@ function PresidentWelcome() {
   const imageUrl = get("home.president.image_url", "");
   const yellowText = get("home.president.yellow_text", "Welcome to PGN at the University of Michigan!");
   const heading = get("home.president.heading", "President's Welcome");
-  const body1 = get(
-    "home.president.body_1",
-    "On behalf of the brotherhood, it is my pleasure to welcome you to Phi Gamma Nu at the University of Michigan. Thank you for taking the time to learn more about our organization, our values, and our people.",
-  );
-  const body2 = get(
-    "home.president.body_2",
-    "PGN is one of the largest professional business fraternities in the United States, with a rich history dating back to 1927. Our Delta Phi chapter here at Michigan is proud to uphold these traditions while forging new paths as future business leaders.",
-  );
+
+  const DEFAULT_BODY =
+    "On behalf of the brotherhood, it is my pleasure to welcome you to Phi Gamma Nu at the University of Michigan. Thank you for taking the time to learn more about our organization, our values, and our people.\n\nPGN is one of the largest professional business fraternities in the United States, with a rich history dating back to 1927. Our Delta Phi chapter here at Michigan is proud to uphold these traditions while forging new paths as future business leaders.";
+
+  const rawBody =
+    get("home.president.body", "") ||
+    [get("home.president.body_1", ""), get("home.president.body_2", "")].filter(Boolean).join("\n\n") ||
+    DEFAULT_BODY;
+
+  const paragraphs = rawBody
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean);
 
   return (
     <section
@@ -93,7 +98,7 @@ function PresidentWelcome() {
         </motion.div>
 
         <motion.div
-          className="pt-0 md:pt-2"
+          className="pt-0 md:pt-2 flex-1"
           initial={{ opacity: 0, x: 60 }}
           whileInView={{ opacity: 1, x: 0 }}
           viewport={{ once: true, amount: 0.3 }}
@@ -108,8 +113,13 @@ function PresidentWelcome() {
           <h3 className="text-base font-bold text-gray-900 mb-4 leading-snug">
             {yellowText}
           </h3>
-          <p className="text-gray-700 leading-relaxed mb-4 text-[0.95rem]">{body1}</p>
-          <p className="text-gray-700 leading-relaxed text-[0.95rem]">{body2}</p>
+          <div className="space-y-4">
+            {paragraphs.map((paragraph, idx) => (
+              <p key={idx} className="text-gray-700 leading-relaxed text-[0.95rem] whitespace-pre-line">
+                {paragraph}
+              </p>
+            ))}
+          </div>
         </motion.div>
       </div>
     </section>
