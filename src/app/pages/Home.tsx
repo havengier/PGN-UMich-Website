@@ -3,7 +3,7 @@ import pgnVideo from "@/imports/PGN_Michigan__1_.mp4";
 
 function Hero() {
   return (
-    <div className="relative h-screen overflow-hidden">
+    <div className="relative h-dvh overflow-hidden">
       <video
         autoPlay
         muted
@@ -15,7 +15,7 @@ function Hero() {
       </video>
       <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/20 to-black/55" />
 
-      <div className="relative z-10 flex flex-col items-center h-full pt-20">
+      <div className="relative z-10 flex flex-col items-center h-dvh pt-20">
         <div className="flex-1" />
 
         <div className="flex flex-col sm:flex-row items-center gap-8 sm:gap-24 mb-10">
