@@ -31,6 +31,10 @@ contentRouter.get("/", async (req: Request, res: Response) => {
 
 // PUT /api/content  — admin only, batch upsert { [key]: value }
 contentRouter.put("/", requireAdmin, async (req: Request, res: Response) => {
+  if (!process.env.DATABASE_URL) {
+    res.status(503).json({ error: "Database not configured" });
+    return;
+  }
   const updates = req.body as Record<string, string>;
   if (typeof updates !== "object" || Array.isArray(updates) || updates === null) {
     res.status(400).json({ error: "Body must be a plain object" });
@@ -52,8 +56,9 @@ contentRouter.put("/", requireAdmin, async (req: Request, res: Response) => {
     }
   }
 
-  const client = await pool.connect();
+  let client;
   try {
+    client = await pool.connect();
     await client.query("BEGIN");
     for (const [key, value] of Object.entries(updates)) {
       await client.query(
@@ -66,10 +71,10 @@ contentRouter.put("/", requireAdmin, async (req: Request, res: Response) => {
     await client.query("COMMIT");
     res.json({ ok: true });
   } catch (err) {
-    await client.query("ROLLBACK");
+    if (client) await client.query("ROLLBACK").catch(() => {});
     console.error("Content update error:", err);
     res.status(500).json({ error: "Failed to save content" });
   } finally {
-    client.release();
+    if (client) client.release();
   }
 });
