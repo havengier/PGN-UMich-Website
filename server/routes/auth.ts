@@ -115,3 +115,8 @@ authRouter.post("/logout", (_req: Request, res: Response) => {
   res.clearCookie("auth_token", { ...COOKIE_OPTS, maxAge: 0 });
   res.json({ ok: true });
 });
+
+// Temporary: shows the exact redirect URI this server will send to Google
+authRouter.get("/debug-redirect-uri", (_req: Request, res: Response) => {
+  res.json({ redirectUri: `${process.env.APP_URL}/api/auth/callback` });
+});
