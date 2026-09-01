@@ -3,8 +3,15 @@ import pgnVideo from "@/imports/PGN_Michigan__1_.mp4";
 import { useContent } from "@/app/hooks/useContent";
 
 function Hero() {
-  const { get } = useContent("recruitment");
-  const interestFormUrl = get("recruitment.interest_form_url", "#");
+  const { get } = useContent("home");
+  const button1Text = get("home.hero.button_1_text", "W26 Application");
+  const button1Url = get("home.hero.button_1_url", "/apply");
+  const button2Text = get("home.hero.button_2_text", "Interest Form");
+  const button2Url = get("home.hero.button_2_url", "#");
+
+  const isButton1External = button1Url.startsWith("http://") || button1Url.startsWith("https://");
+  const isButton2External = button2Url.startsWith("http://") || button2Url.startsWith("https://");
+
   return (
     <div className="relative h-dvh overflow-hidden">
       <video
@@ -20,22 +27,28 @@ function Hero() {
 
       <div className="absolute bottom-20 left-0 right-0 z-10 flex justify-center">
         <div className="flex flex-col sm:flex-row items-center gap-8 sm:gap-24">
-          <a
-            href="/apply"
-            className="text-white text-xl font-light border-b-2 border-white pb-1.5 tracking-wide hover:text-[#F5A623] hover:border-[#F5A623] transition-colors"
-            style={{ fontFamily: "'Inter', sans-serif" }}
-          >
-            W26 Application
-          </a>
-          <a
-            href={interestFormUrl}
-            target={interestFormUrl !== "#" ? "_blank" : undefined}
-            rel="noopener noreferrer"
-            className="text-white text-xl font-light border-b-2 border-white pb-1.5 tracking-wide hover:text-[#F5A623] hover:border-[#F5A623] transition-colors"
-            style={{ fontFamily: "'Inter', sans-serif" }}
-          >
-            Interest Form
-          </a>
+          {button1Text && (
+            <a
+              href={button1Url || "#"}
+              target={isButton1External ? "_blank" : undefined}
+              rel={isButton1External ? "noopener noreferrer" : undefined}
+              className="text-white text-xl font-light border-b-2 border-white pb-1.5 tracking-wide hover:text-[#F5A623] hover:border-[#F5A623] transition-colors"
+              style={{ fontFamily: "'Inter', sans-serif" }}
+            >
+              {button1Text}
+            </a>
+          )}
+          {button2Text && (
+            <a
+              href={button2Url || "#"}
+              target={isButton2External ? "_blank" : undefined}
+              rel={isButton2External ? "noopener noreferrer" : undefined}
+              className="text-white text-xl font-light border-b-2 border-white pb-1.5 tracking-wide hover:text-[#F5A623] hover:border-[#F5A623] transition-colors"
+              style={{ fontFamily: "'Inter', sans-serif" }}
+            >
+              {button2Text}
+            </a>
+          )}
         </div>
       </div>
     </div>

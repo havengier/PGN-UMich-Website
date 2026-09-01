@@ -11,7 +11,7 @@ const PAGES = [
     label: "Home",
     path: "/admin/home",
     icon: Home,
-    description: "Hero video, President's Welcome section.",
+    description: "Hero action buttons, President's Welcome section.",
   },
   {
     label: "About Us",

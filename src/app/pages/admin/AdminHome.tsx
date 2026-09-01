@@ -6,6 +6,12 @@ import { LoginGate } from "@/app/components/LoginGate";
 const NS = "home";
 
 const DEFAULTS = {
+  // Hero Action Buttons
+  "home.hero.button_1_text": "W26 Application",
+  "home.hero.button_1_url": "/apply",
+  "home.hero.button_2_text": "Interest Form",
+  "home.hero.button_2_url": "#",
+  // President's Welcome
   "home.president.image_url": "",
   "home.president.yellow_text": "Welcome to PGN at the University of Michigan!",
   "home.president.heading": "President's Welcome",
@@ -70,10 +76,111 @@ function AdminHomeContent() {
         <h1 className="text-white font-normal" style={{ fontFamily: "'Playfair Display', serif", fontSize: "clamp(1.8rem, 4vw, 2.8rem)" }}>
           Home Page
         </h1>
-        <p className="text-white/40 text-sm mt-2">Edit the President's Welcome section.</p>
+        <p className="text-white/40 text-sm mt-2">Edit the Hero buttons and President's Welcome section.</p>
       </div>
 
       <div className="px-8 md:px-16 py-12 max-w-4xl">
+
+        {/* Hero Action Buttons */}
+        <Section title="Hero Action Buttons">
+          <p className="text-xs text-gray-500 mb-2">
+            Configure the two call-to-action buttons that appear at the bottom of the video hero on the home page.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 rounded-2xl bg-stone-50 border border-stone-200/70">
+            {/* Button 1 */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-[#7A0C0C]">
+                  Primary Button (Left)
+                </span>
+                <span className="text-[11px] text-gray-400 font-mono">Button 1</span>
+              </div>
+
+              <Field label="Button Text">
+                <input
+                  type="text"
+                  value={fields["home.hero.button_1_text"]}
+                  onChange={set("home.hero.button_1_text")}
+                  placeholder="e.g. W26 Application"
+                  className={inputCls}
+                />
+              </Field>
+
+              <Field
+                label="Destination Link / URL"
+                hint="Internal path (e.g. /apply) or external URL (https://…)"
+              >
+                <input
+                  type="text"
+                  value={fields["home.hero.button_1_url"]}
+                  onChange={set("home.hero.button_1_url")}
+                  placeholder="e.g. /apply or https://..."
+                  className={inputCls}
+                />
+              </Field>
+            </div>
+
+            {/* Button 2 */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-[#7A0C0C]">
+                  Secondary Button (Right)
+                </span>
+                <span className="text-[11px] text-gray-400 font-mono">Button 2</span>
+              </div>
+
+              <Field label="Button Text">
+                <input
+                  type="text"
+                  value={fields["home.hero.button_2_text"]}
+                  onChange={set("home.hero.button_2_text")}
+                  placeholder="e.g. Interest Form"
+                  className={inputCls}
+                />
+              </Field>
+
+              <Field
+                label="Destination Link / URL"
+                hint="Internal path (e.g. /recruitment), external form URL, or # to disable"
+              >
+                <input
+                  type="text"
+                  value={fields["home.hero.button_2_url"]}
+                  onChange={set("home.hero.button_2_url")}
+                  placeholder="e.g. https://forms.gle/… or #"
+                  className={inputCls}
+                />
+              </Field>
+            </div>
+          </div>
+
+          {/* Live Preview */}
+          <div className="mt-4 p-5 rounded-xl bg-[#140202] text-white flex flex-col items-center gap-3">
+            <span className="text-[10px] uppercase font-bold tracking-[0.2em] text-[#F5A623]">
+              Hero Button Preview
+            </span>
+            <div className="flex flex-wrap items-center justify-center gap-6 sm:gap-12 py-2">
+              {fields["home.hero.button_1_text"] ? (
+                <span className="text-white text-base font-light border-b-2 border-white pb-1 tracking-wide">
+                  {fields["home.hero.button_1_text"]}
+                </span>
+              ) : (
+                <span className="text-white/30 text-xs italic">(Button 1 hidden)</span>
+              )}
+              {fields["home.hero.button_2_text"] ? (
+                <span className="text-white text-base font-light border-b-2 border-white pb-1 tracking-wide">
+                  {fields["home.hero.button_2_text"]}
+                </span>
+              ) : (
+                <span className="text-white/30 text-xs italic">(Button 2 hidden)</span>
+              )}
+            </div>
+            <span className="text-[11px] text-white/40">
+              Links: &ldquo;{fields["home.hero.button_1_url"] || "(none)"}&rdquo; &bull; &ldquo;{fields["home.hero.button_2_url"] || "(none)"}&rdquo;
+            </span>
+          </div>
+        </Section>
 
         {/* President's Welcome */}
         <Section title="President's Welcome">

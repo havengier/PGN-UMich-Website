@@ -6,9 +6,10 @@ import { requireAdmin } from "../middleware/admin.js";
 export const contentRouter = Router();
 
 function isValidHttpUrl(url: string): boolean {
+  if (url === "#" || url.startsWith("/") || url.startsWith("#")) return true;
   try {
     const u = new URL(url);
-    return u.protocol === "http:" || u.protocol === "https:";
+    return u.protocol === "http:" || u.protocol === "https:" || u.protocol === "mailto:";
   } catch {
     return false;
   }
