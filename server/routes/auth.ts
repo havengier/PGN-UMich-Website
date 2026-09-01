@@ -5,8 +5,6 @@ import type { Request, Response } from "express";
 
 export const authRouter = Router();
 
-const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
-
 const ALLOWED_DOMAINS = (process.env.ALLOWED_DOMAINS ?? "umich.edu")
   .split(",").map((d) => d.trim().toLowerCase()).filter(Boolean);
 
@@ -24,17 +22,56 @@ const COOKIE_OPTS = {
   maxAge: 7 * 24 * 60 * 60 * 1000,
 };
 
-authRouter.post("/google", async (req: Request, res: Response) => {
-  const { token } = req.body as { token?: string };
-  if (!token) { res.status(400).json({ error: "Missing token." }); return; }
+function getClient() {
+  return new OAuth2Client(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    `${process.env.APP_URL}/api/auth/callback`,
+  );
+}
+
+// Only allow same-origin redirect paths to prevent open redirect attacks
+function safeRedirectPath(raw: unknown): string {
+  if (typeof raw !== "string" || !raw.startsWith("/") || raw.includes("://")) return "/";
+  return raw;
+}
+
+// Step 1: redirect browser to Google's OAuth consent screen
+authRouter.get("/google", (req: Request, res: Response) => {
+  if (!process.env.GOOGLE_CLIENT_SECRET || !process.env.APP_URL) {
+    res.status(500).send("Server misconfigured: GOOGLE_CLIENT_SECRET or APP_URL is missing.");
+    return;
+  }
+  const redirectTo = safeRedirectPath(req.query.redirect);
+  const state = Buffer.from(redirectTo).toString("base64url");
+  const authUrl = getClient().generateAuthUrl({
+    access_type: "online",
+    scope: ["openid", "email", "profile"],
+    state,
+  });
+  res.redirect(authUrl);
+});
+
+// Step 2: Google redirects back here with the auth code
+authRouter.get("/callback", async (req: Request, res: Response) => {
+  const { code, state, error: oauthError } = req.query as Record<string, string>;
+  const redirectTo = state ? safeRedirectPath(Buffer.from(state, "base64url").toString()) : "/";
+
+  if (oauthError) {
+    res.redirect(`${redirectTo}?auth_error=${encodeURIComponent(oauthError)}`);
+    return;
+  }
 
   const secret = process.env.JWT_SECRET;
-  if (!secret) { res.status(500).json({ error: "Server misconfigured." }); return; }
+  if (!secret) { res.status(500).send("Server misconfigured."); return; }
 
   try {
-    // Verify the One Tap ID token
-    const ticket = await client.verifyIdToken({
-      idToken: token,
+    const oauthClient = getClient();
+    const { tokens } = await oauthClient.getToken(code);
+    if (!tokens.id_token) throw new Error("No ID token received.");
+
+    const ticket = await new OAuth2Client(process.env.GOOGLE_CLIENT_ID).verifyIdToken({
+      idToken: tokens.id_token,
       audience: process.env.GOOGLE_CLIENT_ID,
     });
     const payload = ticket.getPayload();
@@ -43,7 +80,7 @@ authRouter.post("/google", async (req: Request, res: Response) => {
 
     const domain = email.split("@")[1];
     if (!ALLOWED_DOMAINS.includes(domain)) {
-      res.status(403).json({ error: `Only ${ALLOWED_DOMAINS.join(", ")} accounts are allowed.` });
+      res.redirect(`${redirectTo}?auth_error=domain_not_allowed`);
       return;
     }
 
@@ -56,10 +93,10 @@ authRouter.post("/google", async (req: Request, res: Response) => {
 
     const signed = jwt.sign(user, secret, { expiresIn: "7d" });
     res.cookie("auth_token", signed, COOKIE_OPTS);
-    res.json({ ok: true, user });
+    res.redirect(redirectTo);
   } catch (err) {
-    console.error("Auth error:", err);
-    res.status(401).json({ error: "Authentication failed. Please try again." });
+    console.error("OAuth callback error:", err);
+    res.redirect(`${redirectTo}?auth_error=auth_failed`);
   }
 });
 
@@ -77,9 +114,4 @@ authRouter.get("/me", (req: Request, res: Response) => {
 authRouter.post("/logout", (_req: Request, res: Response) => {
   res.clearCookie("auth_token", { ...COOKIE_OPTS, maxAge: 0 });
   res.json({ ok: true });
-});
-
-// Returns the Google client ID to the frontend at runtime
-authRouter.get("/config", (_req: Request, res: Response) => {
-  res.json({ clientId: process.env.GOOGLE_CLIENT_ID ?? "" });
 });

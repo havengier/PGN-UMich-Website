@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { useGoogleOneTapLogin } from "@react-oauth/google";
+import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import { ShieldX } from "lucide-react";
 import { useAuth } from "@/app/context/AuthContext";
@@ -16,35 +15,25 @@ function GoogleIcon() {
   );
 }
 
+const AUTH_ERROR_MESSAGES: Record<string, string> = {
+  domain_not_allowed: "Only @umich.edu accounts are allowed.",
+  access_denied: "Access was denied. Please try again.",
+  auth_failed: "Sign-in failed. Please try again.",
+};
+
 function LoginScreen() {
-  const { setUser } = useAuth();
   const [error, setError] = useState("");
-  const [pending, setPending] = useState(false);
 
-  async function handleCredential(credential: string) {
-    setPending(true);
-    setError("");
-    try {
-      const res = await fetch("/api/auth/google", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: credential }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setError(data.error ?? "Login failed."); return; }
-      setUser(data.user);
-    } catch {
-      setError("Network error. Please try again.");
-    } finally {
-      setPending(false);
-    }
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("auth_error");
+    if (code) setError(AUTH_ERROR_MESSAGES[code] ?? "Sign-in failed. Please try again.");
+  }, []);
+
+  function handleSignIn() {
+    const redirectTo = window.location.pathname;
+    window.location.href = `/api/auth/google?redirect=${encodeURIComponent(redirectTo)}`;
   }
-
-  // One Tap auto-shows a native sign-in card — never triggers popup blockers
-  useGoogleOneTapLogin({
-    onSuccess: ({ credential }) => { if (credential) handleCredential(credential); },
-    onError: () => setError("Sign-in failed. Please try again."),
-  });
 
   return (
     <div className="min-h-[calc(100vh-64px)] flex items-center justify-center px-6 bg-[#0e0202]">
@@ -74,15 +63,13 @@ function LoginScreen() {
         </p>
 
         <div className="flex justify-center">
-          {/* Button manually re-triggers the One Tap overlay if dismissed */}
           <button
-            onClick={() => (window as any).google?.accounts.id.prompt()}
-            disabled={pending}
-            className="flex items-center gap-3 bg-white text-gray-700 text-sm font-medium px-6 py-3 rounded-full hover:bg-gray-100 transition-colors disabled:opacity-60 disabled:cursor-not-allowed shadow-sm"
+            onClick={handleSignIn}
+            className="flex items-center gap-3 bg-white text-gray-700 text-sm font-medium px-6 py-3 rounded-full hover:bg-gray-100 transition-colors shadow-sm"
             style={{ fontFamily: "'Inter', sans-serif" }}
           >
             <GoogleIcon />
-            {pending ? "Signing in…" : "Sign in with Google"}
+            Sign in with Google
           </button>
         </div>
 
