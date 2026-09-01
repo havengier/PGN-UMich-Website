@@ -124,7 +124,7 @@ function PresidentWelcome() {
             {paragraphs.map((paragraph, idx) => (
               <p
                 key={idx}
-                className="text-gray-700 leading-relaxed whitespace-pre-line"
+                className="text-black leading-relaxed whitespace-pre-line"
                 style={{ fontSize: `${bodyFontSize}px` }}
               >
                 {paragraph}

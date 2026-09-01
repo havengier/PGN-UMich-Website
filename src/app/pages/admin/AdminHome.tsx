@@ -423,7 +423,7 @@ function AdminHomeContent() {
                 {fields["home.president.heading"] || "President's Welcome"}
               </h4>
               <p
-                className="text-gray-700 leading-relaxed"
+                className="text-black leading-relaxed"
                 style={{
                   fontSize: `${fields["home.president.body_font_size"] || "15"}px`,
                 }}
