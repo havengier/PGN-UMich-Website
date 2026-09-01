@@ -80,10 +80,10 @@ function PresidentWelcome() {
 
   return (
     <section
-      className="py-16 md:py-24 px-6 md:px-12"
+      className="py-20 md:py-28 px-6 sm:px-12 md:px-16 lg:px-24"
       style={{ fontFamily: "'Inter', sans-serif" }}
     >
-      <div className="max-w-5xl mx-auto flex flex-col md:flex-row gap-10 md:gap-16 items-start">
+      <div className="max-w-7xl mx-auto flex flex-col md:flex-row gap-12 md:gap-16 lg:gap-20 items-start">
         <motion.div
           className="w-full md:flex-shrink-0 rounded-2xl overflow-hidden shadow-xl aspect-[3/4] bg-gradient-to-br from-amber-950 via-stone-800 to-stone-900"
           style={{ width: "100%", maxWidth: `${imageWidth}px` }}
