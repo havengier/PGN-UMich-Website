@@ -53,6 +53,7 @@ export async function runMigrations() {
       major        VARCHAR(100),
       minor        VARCHAR(100),
       pledge_class VARCHAR(100),
+      linkedin_url TEXT,
       photo_url    TEXT,
       hue          TEXT         DEFAULT 'from-amber-900 via-amber-800 to-stone-700',
       categories   TEXT[]       DEFAULT '{}',
@@ -64,6 +65,7 @@ export async function runMigrations() {
     ALTER TABLE members
       ADD COLUMN IF NOT EXISTS name VARCHAR(200),
       ADD COLUMN IF NOT EXISTS pledge_class VARCHAR(100),
+      ADD COLUMN IF NOT EXISTS linkedin_url TEXT,
       ALTER COLUMN first_name DROP NOT NULL,
       ALTER COLUMN last_name DROP NOT NULL
   `);
