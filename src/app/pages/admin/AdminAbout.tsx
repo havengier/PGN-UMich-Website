@@ -6,7 +6,9 @@ import { LoginGate } from "@/app/components/LoginGate";
 const NS = "about";
 
 const DEFAULTS = {
+  "about.banner.hide_image": "false",
   "about.banner.image_url": "",
+  "about.pgn.hide_image": "false",
   "about.pgn.image_url": "",
   "about.pgn.overline": "About Us",
   "about.pgn.heading": "What's PGN?",
@@ -45,6 +47,9 @@ function AdminAboutContent() {
 
   const set = (key: keyof Fields) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setFields((f) => ({ ...f, [key]: e.target.value }));
+
+  const toggleHide = (key: keyof Fields) => () =>
+    setFields((f) => ({ ...f, [key]: f[key] === "true" ? "false" : "true" }));
 
   async function handleSave() {
     setSaving(true);
@@ -92,6 +97,8 @@ function AdminAboutContent() {
             label="Banner background image URL"
             value={fields["about.banner.image_url"]}
             onChange={set("about.banner.image_url")}
+            hideValue={fields["about.banner.hide_image"]}
+            onToggleHide={toggleHide("about.banner.hide_image")}
           />
         </Section>
 
@@ -100,6 +107,8 @@ function AdminAboutContent() {
             label="Chapter photo URL"
             value={fields["about.pgn.image_url"]}
             onChange={set("about.pgn.image_url")}
+            hideValue={fields["about.pgn.hide_image"]}
+            onToggleHide={toggleHide("about.pgn.hide_image")}
           />
           <Field label="Overline label">
             <input type="text" value={fields["about.pgn.overline"]} onChange={set("about.pgn.overline")} className={inputCls} />
@@ -179,18 +188,50 @@ function ImageField({
   label,
   value,
   onChange,
+  hideValue = "false",
+  onToggleHide,
 }: {
   label: string;
   value: string;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  hideValue?: string;
+  onToggleHide?: () => void;
 }) {
+  const isHidden = hideValue === "true";
   return (
-    <Field label={label} hint="Paste a direct image link (https://…). Leave blank to use the default placeholder.">
-      <input type="url" value={value} onChange={onChange} placeholder="https://example.com/photo.jpg" className={inputCls} />
-      {value && (
-        <img src={value} alt="Preview" className="mt-3 w-40 h-28 object-cover rounded-xl border border-gray-200" />
+    <div className="space-y-3">
+      {onToggleHide && (
+        <div className="flex items-center justify-between p-3.5 rounded-xl bg-stone-50 border border-stone-200/70">
+          <div>
+            <p className="text-xs font-semibold text-gray-800">Display Image on Page</p>
+            <p className="text-[11px] text-gray-500">
+              {isHidden ? "Image is currently hidden completely on the public page." : "Image is visible on the public page."}
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={!isHidden}
+            onClick={onToggleHide}
+            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+              !isHidden ? "bg-[#7A0C0C]" : "bg-gray-300"
+            }`}
+          >
+            <span
+              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                !isHidden ? "translate-x-5" : "translate-x-0"
+              }`}
+            />
+          </button>
+        </div>
       )}
-    </Field>
+      <Field label={label} hint="Paste a direct image link (https://…). Leave blank to use the default placeholder.">
+        <input type="url" value={value} onChange={onChange} placeholder="https://example.com/photo.jpg" className={inputCls} />
+        {value && !isHidden && (
+          <img src={value} alt="Preview" className="mt-3 w-40 h-28 object-cover rounded-xl border border-gray-200" />
+        )}
+      </Field>
+    </div>
   );
 }
 

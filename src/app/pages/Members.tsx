@@ -329,7 +329,27 @@ export default function Members() {
             exit={{ opacity: 0, y: -15 }}
             transition={{ duration: 0.3 }}
           >
-            {activeTab === "ACTIVES" ? (
+            {onlyShowBoard ? (
+              <div className="max-w-7xl mx-auto space-y-8">
+                <div className="pb-3 border-b border-stone-200">
+                  <h2
+                    className="text-2xl md:text-3xl font-normal text-stone-900 tracking-tight"
+                    style={{ fontFamily: "'Playfair Display', serif" }}
+                  >
+                    Our Executive Board
+                  </h2>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-5">
+                  {members.map((m, i) => (
+                    <MemberCard
+                      key={`${m.name || m.first || ""}-${m.last || ""}-${i}`}
+                      member={m}
+                      index={i}
+                    />
+                  ))}
+                </div>
+              </div>
+            ) : activeTab === "ACTIVES" ? (
               <div className="max-w-7xl mx-auto space-y-16">
                 {groupedActives.map(({ name: groupTitle, members: groupMembers }, groupIdx) => (
                   <div key={groupTitle} className="space-y-6">

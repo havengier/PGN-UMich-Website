@@ -10,8 +10,10 @@ const DEFAULTS = {
     "In Phi Gamma Nu, as one of our four pillars, diversity, equity, and inclusion (DEI) is crucial because it enriches our community, fosters innovation, and promotes equality. When people from different backgrounds, cultures, and perspectives come together, it creates a tapestry of experiences and ideas that drive social progress. DEI enhances our community by celebrating the uniqueness of individuals. It recognizes that each person has a distinct set of qualities shaped by their race, ethnicity, gender, sexual orientation, religion, abilities, and more. Embracing this diversity allows us to appreciate and learn from different traditions, languages, customs, and perspectives, fostering a more inclusive and tolerant society.",
   "dei.intro_2":
     "DEI ensures that everyone has a voice, their perspectives are heard, and their contributions are valued, regardless of their background, which is why PGN hosts biweekly DEI roundtables in which our own members share information and facilitate discussions about important DEI topics. PGN also hosts celebrations of different cultural holidays throughout the school year that are for members to learn about different cultures, their histories, values, and unique practices. We believe that DEI should always be celebrated as we are driven to create a world that is more diverse, inclusive, and equitable for every one.",
+  "dei.photo_0.hide_image": "false",
   "dei.photo_0.label": "Lunar New Year Celebration",
   "dei.photo_0.image_url": "",
+  "dei.photo_1.hide_image": "false",
   "dei.photo_1.label": "Holi Celebration",
   "dei.photo_1.image_url": "",
 };
@@ -33,6 +35,9 @@ function AdminDEIContent() {
 
   const set = (key: keyof Fields) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setFields((f) => ({ ...f, [key]: e.target.value }));
+
+  const toggleHide = (key: keyof Fields) => () =>
+    setFields((f) => ({ ...f, [key]: f[key] === "true" ? "false" : "true" }));
 
   async function handleSave() {
     setSaving(true);
@@ -83,35 +88,62 @@ function AdminDEIContent() {
         </Section>
 
         <Section title="Photo Gallery">
-          {([0, 1] as const).map((i) => (
-            <div key={i} className="border border-gray-100 rounded-xl p-5 space-y-4">
-              <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Photo {i + 1}</p>
-              <Field label="Caption label">
-                <input
-                  type="text"
-                  value={fields[`dei.photo_${i}.label` as keyof Fields]}
-                  onChange={set(`dei.photo_${i}.label` as keyof Fields)}
-                  className={inputCls}
-                />
-              </Field>
-              <Field label="Image URL" hint="Paste a direct image link (https://…). Leave blank to use the default gradient placeholder.">
-                <input
-                  type="url"
-                  value={fields[`dei.photo_${i}.image_url` as keyof Fields]}
-                  onChange={set(`dei.photo_${i}.image_url` as keyof Fields)}
-                  placeholder="https://example.com/photo.jpg"
-                  className={inputCls}
-                />
-                {fields[`dei.photo_${i}.image_url` as keyof Fields] && (
-                  <img
-                    src={fields[`dei.photo_${i}.image_url` as keyof Fields]}
-                    alt="Preview"
-                    className="mt-3 w-48 h-32 object-cover rounded-xl border border-gray-200"
+          {([0, 1] as const).map((i) => {
+            const hideKey = `dei.photo_${i}.hide_image` as keyof Fields;
+            const isHidden = fields[hideKey] === "true";
+
+            return (
+              <div key={i} className="border border-gray-100 rounded-xl p-5 space-y-4 bg-white shadow-sm">
+                <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                  <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Photo {i + 1}</p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500 font-medium">Show Photo:</span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={!isHidden}
+                      onClick={toggleHide(hideKey)}
+                      className={`relative inline-flex h-5 w-10 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        !isHidden ? "bg-[#7A0C0C]" : "bg-gray-300"
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                          !isHidden ? "translate-x-5" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+
+                <Field label="Caption label">
+                  <input
+                    type="text"
+                    value={fields[`dei.photo_${i}.label` as keyof Fields]}
+                    onChange={set(`dei.photo_${i}.label` as keyof Fields)}
+                    className={inputCls}
                   />
-                )}
-              </Field>
-            </div>
-          ))}
+                </Field>
+
+                <Field label="Image URL" hint="Paste a direct image link (https://…). Leave blank to use the default gradient placeholder.">
+                  <input
+                    type="url"
+                    value={fields[`dei.photo_${i}.image_url` as keyof Fields]}
+                    onChange={set(`dei.photo_${i}.image_url` as keyof Fields)}
+                    placeholder="https://example.com/photo.jpg"
+                    className={inputCls}
+                  />
+                  {fields[`dei.photo_${i}.image_url` as keyof Fields] && !isHidden && (
+                    <img
+                      src={fields[`dei.photo_${i}.image_url` as keyof Fields]}
+                      alt="Preview"
+                      className="mt-3 w-48 h-32 object-cover rounded-xl border border-gray-200"
+                    />
+                  )}
+                </Field>
+              </div>
+            );
+          })}
         </Section>
 
         <SaveBar saving={saving} status={status} errMsg={errMsg} onSave={handleSave} />

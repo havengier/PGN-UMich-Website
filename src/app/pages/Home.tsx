@@ -58,6 +58,7 @@ function Hero() {
 function PresidentWelcome() {
   const { get } = useContent("home");
 
+  const hideImage = get("home.president.hide_image", "false") === "true";
   const imageUrl = get("home.president.image_url", "");
   const imageWidth = Number(get("home.president.image_width", "288")) || 288;
   const yellowText = get("home.president.yellow_text", "Welcome to PGN at the University of Michigan!");
@@ -83,28 +84,30 @@ function PresidentWelcome() {
       className="py-20 md:py-28 px-6 sm:px-12 md:px-16 lg:px-24"
       style={{ fontFamily: "'Inter', sans-serif" }}
     >
-      <div className="max-w-7xl mx-auto flex flex-col md:flex-row gap-12 md:gap-16 lg:gap-20 items-start">
-        <motion.div
-          className="w-full md:flex-shrink-0 rounded-2xl overflow-hidden shadow-xl aspect-[3/4] bg-gradient-to-br from-amber-950 via-stone-800 to-stone-900"
-          style={{ width: "100%", maxWidth: `${imageWidth}px` }}
-          initial={{ opacity: 0, x: -60 }}
-          whileInView={{ opacity: 1, x: 0 }}
-          viewport={{ once: true, amount: 0.3 }}
-          transition={{ duration: 0.7, ease: "easeOut" }}
-        >
-          {imageUrl ? (
-            <img src={imageUrl} alt="President" className="w-full h-full object-cover" />
-          ) : (
-            <div className="w-full h-full flex items-end justify-center pb-8">
-              <span className="text-amber-200/40 text-xs tracking-widest uppercase">President</span>
-            </div>
-          )}
-        </motion.div>
+      <div className={`max-w-7xl mx-auto flex flex-col md:flex-row ${hideImage ? "items-center justify-center" : "gap-12 md:gap-16 lg:gap-20 items-start"}`}>
+        {!hideImage && (
+          <motion.div
+            className="w-full md:flex-shrink-0 rounded-2xl overflow-hidden shadow-xl aspect-[3/4] bg-gradient-to-br from-amber-950 via-stone-800 to-stone-900"
+            style={{ width: "100%", maxWidth: `${imageWidth}px` }}
+            initial={{ opacity: 0, x: -60 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true, amount: 0.3 }}
+            transition={{ duration: 0.7, ease: "easeOut" }}
+          >
+            {imageUrl ? (
+              <img src={imageUrl} alt="President" className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full flex items-end justify-center pb-8">
+                <span className="text-amber-200/40 text-xs tracking-widest uppercase">President</span>
+              </div>
+            )}
+          </motion.div>
+        )}
 
         <motion.div
-          className="pt-0 md:pt-2 flex-1 min-w-0"
-          initial={{ opacity: 0, x: 60 }}
-          whileInView={{ opacity: 1, x: 0 }}
+          className={`pt-0 md:pt-2 flex-1 min-w-0 ${hideImage ? "max-w-4xl w-full" : ""}`}
+          initial={{ opacity: 0, x: hideImage ? 0 : 60, y: hideImage ? 30 : 0 }}
+          whileInView={{ opacity: 1, x: 0, y: 0 }}
           viewport={{ once: true, amount: 0.3 }}
           transition={{ duration: 0.7, ease: "easeOut", delay: 0.15 }}
         >

@@ -1,4 +1,4 @@
-﻿import { motion } from "motion/react";
+import { motion } from "motion/react";
 import { Plane, GraduationCap, Briefcase } from "lucide-react";
 import defaultInternshipSummary from "@/imports/image-8.png";
 import { useContent } from "@/app/hooks/useContent";
@@ -26,6 +26,7 @@ const TESTIMONIAL_DEFAULTS = [
 export default function Professional() {
   const { get } = useContent("professional");
 
+  const hideInternshipImage = get("professional.internship.hide_image", "false") === "true";
   const internshipImageUrl = get("professional.internship_image_url", "");
   const features = [0, 1, 2].map((i) => get(`professional.feature_${i}.body`, FEATURE_DEFAULTS[i]));
   const testimonials = [0, 1, 2].map((i) => ({
@@ -33,24 +34,27 @@ export default function Professional() {
     name: get(`professional.testimonial_${i}.name`, TESTIMONIAL_DEFAULTS[i].name),
     classYear: get(`professional.testimonial_${i}.classYear`, TESTIMONIAL_DEFAULTS[i].classYear),
     photoUrl: get(`professional.testimonial_${i}.photo_url`, ""),
+    hidePhoto: get(`professional.testimonial_${i}.hide_photo`, "false") === "true",
     photoCls: TESTIMONIAL_DEFAULTS[i].photoCls,
   }));
 
   return (
     <>
-      {/* â”€â”€ Section 1: Internship Summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <section className="bg-black pt-20 pb-12 flex items-center justify-center">
-        <motion.img
-          src={internshipImageUrl || defaultInternshipSummary}
-          alt="Internship Summary â€” company logos"
-          className="w-full max-w-[121rem] object-contain"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.7, ease: "easeOut" }}
-        />
-      </section>
+      {/* ── Section 1: Internship Summary ──────────────────────────── */}
+      {!hideInternshipImage && (
+        <section className="bg-black pt-20 pb-12 flex items-center justify-center">
+          <motion.img
+            src={internshipImageUrl || defaultInternshipSummary}
+            alt="Internship Summary — company logos"
+            className="w-full max-w-[121rem] object-contain"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, ease: "easeOut" }}
+          />
+        </section>
+      )}
 
-      {/* â”€â”€ Section 2: Three Features â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ── Section 2: Three Features ────────────────────────────────────────── */}
       <section className="bg-white py-16 md:py-24 px-6 md:px-16">
         <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-12 md:gap-16">
           {features.map((body, i) => (
@@ -78,27 +82,29 @@ export default function Professional() {
         </div>
       </section>
 
-      {/* â”€â”€ Section 3: Testimonials â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ── Section 3: Testimonials ────────────────────────────────────────── */}
       <section className="bg-white py-16 px-6 md:px-16 pb-20 md:pb-28">
         <div className="max-w-2xl mx-auto flex flex-col gap-12 md:gap-16">
           {testimonials.map((t, i) => (
             <div key={t.name} className="flex flex-col sm:flex-row items-start gap-6 sm:gap-8">
-              <motion.div
-                className={`w-28 h-28 rounded-full bg-gradient-to-br ${t.photoCls} flex-shrink-0 overflow-hidden flex items-end justify-center pb-2`}
-                initial={{ opacity: 0, scale: 0.5 }}
-                whileInView={{ opacity: 1, scale: 1 }}
-                viewport={{ once: true, amount: 0.3 }}
-                transition={{ duration: 0.5, ease: "easeOut", delay: i * 0.05 }}
-              >
-                {t.photoUrl ? (
-                  <img src={t.photoUrl} alt={t.name} className="w-full h-full object-cover" />
-                ) : (
-                  <span className="text-white/30 text-[0.6rem] tracking-widest uppercase">photo</span>
-                )}
-              </motion.div>
+              {!t.hidePhoto && (
+                <motion.div
+                  className={`w-28 h-28 rounded-full bg-gradient-to-br ${t.photoCls} flex-shrink-0 overflow-hidden flex items-end justify-center pb-2`}
+                  initial={{ opacity: 0, scale: 0.5 }}
+                  whileInView={{ opacity: 1, scale: 1 }}
+                  viewport={{ once: true, amount: 0.3 }}
+                  transition={{ duration: 0.5, ease: "easeOut", delay: i * 0.05 }}
+                >
+                  {t.photoUrl ? (
+                    <img src={t.photoUrl} alt={t.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-white/30 text-[0.6rem] tracking-widest uppercase">photo</span>
+                  )}
+                </motion.div>
+              )}
 
               <motion.div
-                initial={{ opacity: 0, x: 30 }}
+                initial={{ opacity: 0, x: t.hidePhoto ? 0 : 30 }}
                 whileInView={{ opacity: 1, x: 0 }}
                 viewport={{ once: true, amount: 0.3 }}
                 transition={{ duration: 0.6, ease: "easeOut", delay: i * 0.05 + 0.15 }}

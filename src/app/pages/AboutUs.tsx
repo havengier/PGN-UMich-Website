@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Plus, Minus } from "lucide-react";
 import { useContent } from "@/app/hooks/useContent";
@@ -89,7 +89,10 @@ function PillarAccordion() {
 export default function AboutUs() {
   const { get } = useContent("about");
 
-  const bannerImageUrl = get("about.banner.image_url", "");
+  const hideBannerImage = get("about.banner.hide_image", "false") === "true";
+  const hidePgnImage = get("about.pgn.hide_image", "false") === "true";
+
+  const bannerImageUrl = hideBannerImage ? "" : get("about.banner.image_url", "");
   const pgn = {
     imageUrl: get("about.pgn.image_url", ""),
     overline: get("about.pgn.overline", "About Us"),
@@ -113,9 +116,11 @@ export default function AboutUs() {
         ) : (
           <>
             <div className="absolute inset-0 bg-gradient-to-br from-stone-600 via-stone-700 to-stone-800" />
-            <div className="absolute inset-0 opacity-30"
+            <div
+              className="absolute inset-0 opacity-30"
               style={{
-                backgroundImage: "radial-gradient(ellipse at 30% 50%, #78350f 0%, transparent 60%), radial-gradient(ellipse at 70% 40%, #44403c 0%, transparent 50%)",
+                backgroundImage:
+                  "radial-gradient(ellipse at 30% 50%, #78350f 0%, transparent 60%), radial-gradient(ellipse at 70% 40%, #44403c 0%, transparent 50%)",
               }}
             />
           </>
@@ -136,9 +141,9 @@ export default function AboutUs() {
 
       {/* What's PGN */}
       <section className="py-20 px-16" style={{ fontFamily: "'Inter', sans-serif" }}>
-        <div className="max-w-6xl mx-auto flex gap-16 items-start">
+        <div className={`max-w-6xl mx-auto flex ${hidePgnImage ? "justify-center" : "gap-16 items-start"}`}>
           <motion.div
-            className="flex-1"
+            className={hidePgnImage ? "max-w-3xl w-full text-center" : "flex-1"}
             initial={{ opacity: 0, y: 40 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.3 }}
@@ -156,19 +161,21 @@ export default function AboutUs() {
             <p className="text-gray-700 leading-relaxed text-[0.95rem]">{pgn.body}</p>
           </motion.div>
 
-          <motion.div
-            className="w-[420px] flex-shrink-0 rounded-xl overflow-hidden shadow-lg aspect-[4/5] bg-gradient-to-br from-stone-300 via-stone-400 to-stone-500 flex items-end justify-center pb-6"
-            initial={{ opacity: 0, x: 50 }}
-            whileInView={{ opacity: 1, x: 0 }}
-            viewport={{ once: true, amount: 0.3 }}
-            transition={{ duration: 0.6, ease: "easeOut", delay: 0.15 }}
-          >
-            {pgn.imageUrl ? (
-              <img src={pgn.imageUrl} alt="Chapter" className="w-full h-full object-cover" />
-            ) : (
-              <span className="text-stone-600/60 text-xs tracking-widest uppercase">Chapter Photo</span>
-            )}
-          </motion.div>
+          {!hidePgnImage && (
+            <motion.div
+              className="w-[420px] flex-shrink-0 rounded-xl overflow-hidden shadow-lg aspect-[4/5] bg-gradient-to-br from-stone-300 via-stone-400 to-stone-500 flex items-end justify-center pb-6"
+              initial={{ opacity: 0, x: 50 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true, amount: 0.3 }}
+              transition={{ duration: 0.6, ease: "easeOut", delay: 0.15 }}
+            >
+              {pgn.imageUrl ? (
+                <img src={pgn.imageUrl} alt="Chapter" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-stone-600/60 text-xs tracking-widest uppercase">Chapter Photo</span>
+              )}
+            </motion.div>
+          )}
         </div>
       </section>
 

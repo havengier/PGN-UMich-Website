@@ -171,7 +171,7 @@ function ApplicationOpeningSoon() {
       </p>
 
       {/* Quick Action Buttons */}
-      <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-8">
+      <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
         <a
           href="https://www.instagram.com/pgnuofm/"
           target="_blank"
@@ -188,17 +188,6 @@ function ApplicationOpeningSoon() {
         >
           <Users size={14} /> Meet Our Members
         </Link>
-      </div>
-
-      {/* Info note */}
-      <div className="bg-stone-50 rounded-xl p-4 border border-stone-200/60 text-left flex items-start gap-3">
-        <Info size={16} className="text-stone-400 flex-shrink-0 mt-0.5" />
-        <p className="text-xs text-stone-500 leading-relaxed" style={{ fontFamily: "'Inter', sans-serif" }}>
-          Have questions regarding rush, eligibility, or recruitment events? Feel free to reach out to our recruitment team at{" "}
-          <a href="mailto:pgnmichigan@gmail.com" className="text-[#7A0C0C] font-semibold hover:underline">
-            pgnmichigan@gmail.com
-          </a>.
-        </p>
       </div>
     </motion.div>
   );

@@ -15,6 +15,7 @@ const DEFAULTS = {
   "home.hero.button_2_text": "Interest Form",
   "home.hero.button_2_url": "#",
   // President's Welcome
+  "home.president.hide_image": "false",
   "home.president.image_url": "",
   "home.president.image_width": "288",
   "home.president.yellow_text": "Welcome to PGN at the University of Michigan!",
@@ -197,6 +198,38 @@ function AdminHomeContent() {
 
         {/* President's Welcome */}
         <Section title="President's Welcome">
+          {/* Toggle: Display President Photo */}
+          <div className="flex items-center justify-between p-4 rounded-xl bg-stone-50 border border-stone-200/70 mb-4">
+            <div>
+              <p className="text-sm font-semibold text-gray-900">Show President Photo on Page</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {fields["home.president.hide_image"] === "true"
+                  ? "Image is currently removed completely. The welcome text will display full-width."
+                  : "Image is currently visible alongside the welcome text."}
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={fields["home.president.hide_image"] !== "true"}
+              onClick={() =>
+                setFields((f) => ({
+                  ...f,
+                  "home.president.hide_image": f["home.president.hide_image"] === "true" ? "false" : "true",
+                }))
+              }
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                fields["home.president.hide_image"] !== "true" ? "bg-[#7A0C0C]" : "bg-gray-300"
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                  fields["home.president.hide_image"] !== "true" ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </button>
+          </div>
+
           <Field label="President Photo URL" hint="Paste a direct image link (https://…). Leave blank to use the default placeholder.">
             <input
               type="url"
