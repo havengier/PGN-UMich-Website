@@ -28,7 +28,7 @@ membersApiRouter.get("/", async (_req: Request, res: Response) => {
 
 // POST /api/members  — admin only
 membersApiRouter.post("/", requireAdmin, async (req: Request, res: Response) => {
-  const { first_name, last_name, role, major, minor, photo_url, hue, categories, sort_order } = req.body;
+  const { first_name, last_name, role, major, minor, pledge_class, photo_url, hue, categories, sort_order } = req.body;
   if (!first_name || !last_name) {
     res.status(400).json({ error: "first_name and last_name are required" });
     return;
@@ -39,14 +39,15 @@ membersApiRouter.post("/", requireAdmin, async (req: Request, res: Response) => 
   }
   try {
     const { rows } = await pool.query(
-      `INSERT INTO members (first_name, last_name, role, major, minor, photo_url, hue, categories, sort_order)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      `INSERT INTO members (first_name, last_name, role, major, minor, pledge_class, photo_url, hue, categories, sort_order)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
       [
         first_name,
         last_name,
         role ?? "",
         major ?? "",
         minor ?? "",
+        pledge_class ?? "",
         photo_url || null,
         hue ?? "from-amber-900 via-amber-800 to-stone-700",
         categories ?? [],
@@ -64,7 +65,7 @@ membersApiRouter.post("/", requireAdmin, async (req: Request, res: Response) => 
 membersApiRouter.put("/:id", requireAdmin, async (req: Request, res: Response) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const { first_name, last_name, role, major, minor, photo_url, hue, categories, sort_order } = req.body;
+  const { first_name, last_name, role, major, minor, pledge_class, photo_url, hue, categories, sort_order } = req.body;
   if (!first_name || !last_name) {
     res.status(400).json({ error: "first_name and last_name are required" });
     return;
@@ -76,10 +77,10 @@ membersApiRouter.put("/:id", requireAdmin, async (req: Request, res: Response) =
   try {
     const { rows } = await pool.query(
       `UPDATE members
-       SET first_name=$1, last_name=$2, role=$3, major=$4, minor=$5,
-           photo_url=$6, hue=$7, categories=$8, sort_order=$9
-       WHERE id=$10 RETURNING *`,
-      [first_name, last_name, role, major, minor, photo_url || null, hue, categories, sort_order, id],
+       SET first_name=$1, last_name=$2, role=$3, major=$4, minor=$5, pledge_class=$6,
+           photo_url=$7, hue=$8, categories=$9, sort_order=$10
+       WHERE id=$11 RETURNING *`,
+      [first_name, last_name, role, major, minor, pledge_class ?? "", photo_url || null, hue, categories, sort_order, id],
     );
     if (!rows.length) { res.status(404).json({ error: "Member not found" }); return; }
     res.json(rows[0]);

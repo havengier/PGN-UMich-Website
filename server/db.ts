@@ -45,18 +45,23 @@ export async function runMigrations() {
   `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS members (
-      id         SERIAL PRIMARY KEY,
-      first_name VARCHAR(100) NOT NULL,
-      last_name  VARCHAR(100) NOT NULL,
-      role       VARCHAR(200),
-      major      VARCHAR(100),
-      minor      VARCHAR(100),
-      photo_url  TEXT,
-      hue        TEXT         DEFAULT 'from-amber-900 via-amber-800 to-stone-700',
-      categories TEXT[]       DEFAULT '{}',
-      sort_order INT          DEFAULT 0,
-      created_at TIMESTAMPTZ  DEFAULT NOW()
+      id           SERIAL PRIMARY KEY,
+      first_name   VARCHAR(100) NOT NULL,
+      last_name    VARCHAR(100) NOT NULL,
+      role         VARCHAR(200),
+      major        VARCHAR(100),
+      minor        VARCHAR(100),
+      pledge_class VARCHAR(100),
+      photo_url    TEXT,
+      hue          TEXT         DEFAULT 'from-amber-900 via-amber-800 to-stone-700',
+      categories   TEXT[]       DEFAULT '{}',
+      sort_order   INT          DEFAULT 0,
+      created_at   TIMESTAMPTZ  DEFAULT NOW()
     )
+  `);
+  await pool.query(`
+    ALTER TABLE members
+      ADD COLUMN IF NOT EXISTS pledge_class VARCHAR(100)
   `);
   console.log("Database migrations complete.");
 }

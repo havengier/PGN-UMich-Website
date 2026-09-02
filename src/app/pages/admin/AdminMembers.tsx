@@ -13,6 +13,7 @@ type DBMember = {
   role: string;
   major: string;
   minor: string;
+  pledge_class: string | null;
   photo_url: string | null;
   hue: string;
   categories: Category[];
@@ -25,6 +26,7 @@ type MemberForm = {
   role: string;
   major: string;
   minor: string;
+  pledge_class: string;
   photo_url: string;
   categories: Category[];
 };
@@ -35,6 +37,7 @@ const EMPTY_FORM: MemberForm = {
   role: "",
   major: "",
   minor: "",
+  pledge_class: "",
   photo_url: "",
   categories: [],
 };
@@ -73,6 +76,7 @@ function AdminMembersContent() {
       role: m.role ?? "",
       major: m.major ?? "",
       minor: m.minor ?? "",
+      pledge_class: m.pledge_class ?? "",
       photo_url: m.photo_url ?? "",
       categories: m.categories ?? [],
     });
@@ -250,7 +254,14 @@ function AdminMembersContent() {
 
                   {/* Info */}
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm text-gray-900">{m.first_name} {m.last_name}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-semibold text-sm text-gray-900">{m.first_name} {m.last_name}</p>
+                      {m.pledge_class && (
+                        <span className="text-[0.65rem] font-medium bg-amber-50 text-amber-900 border border-amber-200/60 px-2 py-0.5 rounded-full">
+                          {m.pledge_class}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-[#7A0C0C]">{m.role}</p>
                     <div className="flex flex-wrap gap-1 mt-1">
                       {(m.categories ?? []).map((c) => (
@@ -308,10 +319,13 @@ function MemberFormFields({
       </div>
       <LabeledInput label="Role / Title" value={form.role} onChange={set("role")} placeholder="e.g. President" />
       <div className="grid grid-cols-2 gap-4">
-        <LabeledInput label="Major" value={form.major} onChange={set("major")} />
-        <LabeledInput label="Minor" value={form.minor} onChange={set("minor")} />
+        <LabeledInput label="Major" value={form.major} onChange={set("major")} placeholder="e.g. Business Administration" />
+        <LabeledInput label="Minor" value={form.minor} onChange={set("minor")} placeholder="e.g. Philosophy" />
       </div>
-      <LabeledInput label="Photo URL" value={form.photo_url} onChange={set("photo_url")} placeholder="https://…" type="url" />
+      <div className="grid grid-cols-2 gap-4">
+        <LabeledInput label="Pledge Class" value={form.pledge_class} onChange={set("pledge_class")} placeholder="e.g. Fall 2024, Alpha Class" />
+        <LabeledInput label="Photo URL" value={form.photo_url} onChange={set("photo_url")} placeholder="https://…" type="url" />
+      </div>
       {form.photo_url && (
         <img src={form.photo_url} alt="Preview" className="w-12 h-12 rounded-full object-cover border border-gray-200" />
       )}

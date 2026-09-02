@@ -11,6 +11,7 @@ type Member = {
   role: string;
   major: string;
   minor?: string;
+  pledge_class?: string;
   hue: string;
   photo_url?: string;
   categories?: string[];
@@ -18,47 +19,47 @@ type Member = {
 
 // ── Hardcoded fallback data ───────────────────────────────────────────────────
 const BOARD: Member[] = [
-  { first: "Elliott", last: "Nederhood", role: "President", major: "Business Administration", minor: "Minor in Philosophy", hue: "from-amber-900 via-amber-800 to-stone-700", categories: ["BOARD"] },
-  { first: "Jing", last: "Li", role: "VP Professional Development", major: "Business Administration", hue: "from-slate-700 via-slate-600 to-slate-500", categories: ["BOARD"] },
-  { first: "Alden", last: "King", role: "VP Internal", major: "Business Administration", hue: "from-stone-600 via-stone-500 to-stone-400", categories: ["BOARD"] },
-  { first: "Ruth", last: "Dai", role: "VP External", major: "Business Administration", minor: "Minor in Political Science", hue: "from-rose-900 via-rose-800 to-rose-700", categories: ["BOARD"] },
-  { first: "Claire", last: "Guo", role: "VP Membership", major: "Business Administration", minor: "Minor in Sustainability", hue: "from-zinc-700 via-zinc-600 to-zinc-500", categories: ["BOARD"] },
-  { first: "Marcus", last: "Chen", role: "VP Finance", major: "Economics", minor: "Minor in Statistics", hue: "from-amber-800 via-amber-700 to-amber-600", categories: ["BOARD"] },
-  { first: "Priya", last: "Sharma", role: "VP Marketing", major: "Business Administration", minor: "Minor in Psychology", hue: "from-stone-500 via-stone-400 to-stone-300", categories: ["BOARD"] },
-  { first: "Daniel", last: "Park", role: "VP Alumni Relations", major: "Economics", hue: "from-slate-600 via-slate-500 to-slate-400", categories: ["BOARD"] },
-  { first: "Sophia", last: "Williams", role: "VP Events", major: "Business Administration", hue: "from-rose-800 via-rose-700 to-rose-600", categories: ["BOARD"] },
-  { first: "James", last: "Liu", role: "Secretary", major: "Business Administration", minor: "Minor in Data Science", hue: "from-zinc-800 via-zinc-700 to-zinc-600", categories: ["BOARD"] },
+  { first: "Elliott", last: "Nederhood", role: "President", major: "Business Administration", minor: "Minor in Philosophy", pledge_class: "Fall 2023", hue: "from-amber-900 via-amber-800 to-stone-700", categories: ["BOARD"] },
+  { first: "Jing", last: "Li", role: "VP Professional Development", major: "Business Administration", pledge_class: "Winter 2024", hue: "from-slate-700 via-slate-600 to-slate-500", categories: ["BOARD"] },
+  { first: "Alden", last: "King", role: "VP Internal", major: "Business Administration", pledge_class: "Fall 2023", hue: "from-stone-600 via-stone-500 to-stone-400", categories: ["BOARD"] },
+  { first: "Ruth", last: "Dai", role: "VP External", major: "Business Administration", minor: "Minor in Political Science", pledge_class: "Winter 2024", hue: "from-rose-900 via-rose-800 to-rose-700", categories: ["BOARD"] },
+  { first: "Claire", last: "Guo", role: "VP Membership", major: "Business Administration", minor: "Minor in Sustainability", pledge_class: "Fall 2024", hue: "from-zinc-700 via-zinc-600 to-zinc-500", categories: ["BOARD"] },
+  { first: "Marcus", last: "Chen", role: "VP Finance", major: "Economics", minor: "Minor in Statistics", pledge_class: "Winter 2024", hue: "from-amber-800 via-amber-700 to-amber-600", categories: ["BOARD"] },
+  { first: "Priya", last: "Sharma", role: "VP Marketing", major: "Business Administration", minor: "Minor in Psychology", pledge_class: "Fall 2024", hue: "from-stone-500 via-stone-400 to-stone-300", categories: ["BOARD"] },
+  { first: "Daniel", last: "Park", role: "VP Alumni Relations", major: "Economics", pledge_class: "Fall 2023", hue: "from-slate-600 via-slate-500 to-slate-400", categories: ["BOARD"] },
+  { first: "Sophia", last: "Williams", role: "VP Events", major: "Business Administration", pledge_class: "Winter 2024", hue: "from-rose-800 via-rose-700 to-rose-600", categories: ["BOARD"] },
+  { first: "James", last: "Liu", role: "Secretary", major: "Business Administration", minor: "Minor in Data Science", pledge_class: "Fall 2024", hue: "from-zinc-800 via-zinc-700 to-zinc-600", categories: ["BOARD"] },
 ];
 
 const CHAIRS: Member[] = [
-  { first: "Amy", last: "Zhang", role: "Director of Recruitment", major: "Business Administration", hue: "from-amber-700 via-amber-600 to-amber-500", categories: ["CHAIRS"] },
-  { first: "Kevin", last: "Wu", role: "Director of Professional Dev", major: "Computer Science", minor: "Minor in Business", hue: "from-stone-600 via-stone-500 to-stone-400", categories: ["CHAIRS"] },
-  { first: "Nadia", last: "Patel", role: "Director of Philanthropy", major: "Business Administration", minor: "Minor in Sociology", hue: "from-rose-700 via-rose-600 to-rose-500", categories: ["CHAIRS"] },
-  { first: "Tyler", last: "Johnson", role: "Director of DEI", major: "Economics", hue: "from-slate-500 via-slate-400 to-slate-300", categories: ["CHAIRS"] },
-  { first: "Lily", last: "Wang", role: "Director of Alumni", major: "Business Administration", minor: "Minor in Finance", hue: "from-zinc-600 via-zinc-500 to-zinc-400", categories: ["CHAIRS"] },
-  { first: "Ryan", last: "Kim", role: "Director of Events", major: "Business Administration", hue: "from-amber-800 via-amber-700 to-stone-600", categories: ["CHAIRS"] },
-  { first: "Sarah", last: "Martinez", role: "Director of Marketing", major: "Marketing", minor: "Minor in Design", hue: "from-stone-700 via-stone-600 to-stone-500", categories: ["CHAIRS"] },
-  { first: "David", last: "Lee", role: "Director of Finance", major: "Economics", minor: "Minor in Mathematics", hue: "from-rose-800 via-rose-700 to-rose-600", categories: ["CHAIRS"] },
-  { first: "Emma", last: "Brown", role: "Director of Membership", major: "Business Administration", hue: "from-slate-600 via-slate-500 to-slate-400", categories: ["CHAIRS"] },
-  { first: "Chris", last: "Nguyen", role: "Director of External Affairs", major: "International Business", hue: "from-zinc-700 via-zinc-600 to-zinc-500", categories: ["CHAIRS"] },
+  { first: "Amy", last: "Zhang", role: "Director of Recruitment", major: "Business Administration", pledge_class: "Fall 2024", hue: "from-amber-700 via-amber-600 to-amber-500", categories: ["CHAIRS"] },
+  { first: "Kevin", last: "Wu", role: "Director of Professional Dev", major: "Computer Science", minor: "Minor in Business", pledge_class: "Winter 2024", hue: "from-stone-600 via-stone-500 to-stone-400", categories: ["CHAIRS"] },
+  { first: "Nadia", last: "Patel", role: "Director of Philanthropy", major: "Business Administration", minor: "Minor in Sociology", pledge_class: "Fall 2024", hue: "from-rose-700 via-rose-600 to-rose-500", categories: ["CHAIRS"] },
+  { first: "Tyler", last: "Johnson", role: "Director of DEI", major: "Economics", pledge_class: "Winter 2024", hue: "from-slate-500 via-slate-400 to-slate-300", categories: ["CHAIRS"] },
+  { first: "Lily", last: "Wang", role: "Director of Alumni", major: "Business Administration", minor: "Minor in Finance", pledge_class: "Fall 2024", hue: "from-zinc-600 via-zinc-500 to-zinc-400", categories: ["CHAIRS"] },
+  { first: "Ryan", last: "Kim", role: "Director of Events", major: "Business Administration", pledge_class: "Fall 2024", hue: "from-amber-800 via-amber-700 to-stone-600", categories: ["CHAIRS"] },
+  { first: "Sarah", last: "Martinez", role: "Director of Marketing", major: "Marketing", minor: "Minor in Design", pledge_class: "Winter 2025", hue: "from-stone-700 via-stone-600 to-stone-500", categories: ["CHAIRS"] },
+  { first: "David", last: "Lee", role: "Director of Finance", major: "Economics", minor: "Minor in Mathematics", pledge_class: "Fall 2024", hue: "from-rose-800 via-rose-700 to-rose-600", categories: ["CHAIRS"] },
+  { first: "Emma", last: "Brown", role: "Director of Membership", major: "Business Administration", pledge_class: "Winter 2025", hue: "from-slate-600 via-slate-500 to-slate-400", categories: ["CHAIRS"] },
+  { first: "Chris", last: "Nguyen", role: "Director of External Affairs", major: "International Business", pledge_class: "Winter 2025", hue: "from-zinc-700 via-zinc-600 to-zinc-500", categories: ["CHAIRS"] },
 ];
 
 const ACTIVES: Member[] = [
-  { first: "Alex", last: "Torres", role: "Active Member", major: "Business Administration", hue: "from-amber-700 via-amber-600 to-amber-500", categories: ["ACTIVES"] },
-  { first: "Jordan", last: "Smith", role: "Active Member", major: "Economics", minor: "Minor in CS", hue: "from-stone-500 via-stone-400 to-stone-300", categories: ["ACTIVES"] },
-  { first: "Morgan", last: "Davis", role: "Active Member", major: "Business Administration", hue: "from-rose-700 via-rose-600 to-rose-500", categories: ["ACTIVES"] },
-  { first: "Taylor", last: "Wilson", role: "Active Member", major: "Finance", hue: "from-slate-600 via-slate-500 to-slate-400", categories: ["ACTIVES"] },
-  { first: "Casey", last: "Anderson", role: "Active Member", major: "Business Administration", minor: "Minor in French", hue: "from-zinc-600 via-zinc-500 to-zinc-400", categories: ["ACTIVES"] },
-  { first: "Riley", last: "Thomas", role: "Active Member", major: "Economics", hue: "from-amber-800 via-amber-700 to-amber-600", categories: ["ACTIVES"] },
-  { first: "Drew", last: "Jackson", role: "Active Member", major: "Business Administration", hue: "from-stone-600 via-stone-500 to-stone-400", categories: ["ACTIVES"] },
-  { first: "Quinn", last: "White", role: "Active Member", major: "Marketing", hue: "from-rose-800 via-rose-700 to-rose-600", categories: ["ACTIVES"] },
-  { first: "Avery", last: "Harris", role: "Active Member", major: "Business Administration", minor: "Minor in Spanish", hue: "from-slate-700 via-slate-600 to-slate-500", categories: ["ACTIVES"] },
-  { first: "Reese", last: "Martin", role: "Active Member", major: "Economics", hue: "from-zinc-700 via-zinc-600 to-zinc-500", categories: ["ACTIVES"] },
-  { first: "Logan", last: "Garcia", role: "Active Member", major: "Business Administration", hue: "from-amber-900 via-amber-800 to-amber-700", categories: ["ACTIVES"] },
-  { first: "Parker", last: "Rodriguez", role: "Active Member", major: "Finance", minor: "Minor in Data Science", hue: "from-stone-700 via-stone-600 to-stone-500", categories: ["ACTIVES"] },
-  { first: "Sage", last: "Lewis", role: "Active Member", major: "Business Administration", hue: "from-rose-900 via-rose-800 to-rose-700", categories: ["ACTIVES"] },
-  { first: "Finley", last: "Lee", role: "Active Member", major: "Economics", hue: "from-slate-500 via-slate-400 to-slate-300", categories: ["ACTIVES"] },
-  { first: "Blake", last: "Walker", role: "Active Member", major: "Business Administration", minor: "Minor in Philosophy", hue: "from-zinc-500 via-zinc-400 to-zinc-300", categories: ["ACTIVES"] },
+  { first: "Alex", last: "Torres", role: "Active Member", major: "Business Administration", pledge_class: "Fall 2024", hue: "from-amber-700 via-amber-600 to-amber-500", categories: ["ACTIVES"] },
+  { first: "Jordan", last: "Smith", role: "Active Member", major: "Economics", minor: "Minor in CS", pledge_class: "Winter 2025", hue: "from-stone-500 via-stone-400 to-stone-300", categories: ["ACTIVES"] },
+  { first: "Morgan", last: "Davis", role: "Active Member", major: "Business Administration", pledge_class: "Winter 2025", hue: "from-rose-700 via-rose-600 to-rose-500", categories: ["ACTIVES"] },
+  { first: "Taylor", last: "Wilson", role: "Active Member", major: "Finance", pledge_class: "Fall 2024", hue: "from-slate-600 via-slate-500 to-slate-400", categories: ["ACTIVES"] },
+  { first: "Casey", last: "Anderson", role: "Active Member", major: "Business Administration", minor: "Minor in French", pledge_class: "Winter 2025", hue: "from-zinc-600 via-zinc-500 to-zinc-400", categories: ["ACTIVES"] },
+  { first: "Riley", last: "Thomas", role: "Active Member", major: "Economics", pledge_class: "Fall 2024", hue: "from-amber-800 via-amber-700 to-amber-600", categories: ["ACTIVES"] },
+  { first: "Drew", last: "Jackson", role: "Active Member", major: "Business Administration", pledge_class: "Winter 2025", hue: "from-stone-600 via-stone-500 to-stone-400", categories: ["ACTIVES"] },
+  { first: "Quinn", last: "White", role: "Active Member", major: "Marketing", pledge_class: "Winter 2025", hue: "from-rose-800 via-rose-700 to-rose-600", categories: ["ACTIVES"] },
+  { first: "Avery", last: "Harris", role: "Active Member", major: "Business Administration", minor: "Minor in Spanish", pledge_class: "Fall 2024", hue: "from-slate-700 via-slate-600 to-slate-500", categories: ["ACTIVES"] },
+  { first: "Reese", last: "Martin", role: "Active Member", major: "Economics", pledge_class: "Winter 2025", hue: "from-zinc-700 via-zinc-600 to-zinc-500", categories: ["ACTIVES"] },
+  { first: "Logan", last: "Garcia", role: "Active Member", major: "Business Administration", pledge_class: "Fall 2024", hue: "from-amber-900 via-amber-800 to-amber-700", categories: ["ACTIVES"] },
+  { first: "Parker", last: "Rodriguez", role: "Active Member", major: "Finance", minor: "Minor in Data Science", pledge_class: "Winter 2025", hue: "from-stone-700 via-stone-600 to-stone-500", categories: ["ACTIVES"] },
+  { first: "Sage", last: "Lewis", role: "Active Member", major: "Business Administration", pledge_class: "Fall 2024", hue: "from-rose-900 via-rose-800 to-rose-700", categories: ["ACTIVES"] },
+  { first: "Finley", last: "Lee", role: "Active Member", major: "Economics", pledge_class: "Winter 2025", hue: "from-slate-500 via-slate-400 to-slate-300", categories: ["ACTIVES"] },
+  { first: "Blake", last: "Walker", role: "Active Member", major: "Business Administration", minor: "Minor in Philosophy", pledge_class: "Fall 2024", hue: "from-zinc-500 via-zinc-400 to-zinc-300", categories: ["ACTIVES"] },
 ];
 
 const FALLBACK_ALL: Member[] = [...BOARD, ...CHAIRS, ...ACTIVES];
@@ -109,10 +110,15 @@ function MemberCard({ member, index }: { member: Member; index: number }) {
         {member.role}
       </p>
 
-      {/* Major / Minor */}
+      {/* Major / Minor / Pledge Class */}
       <div className="text-gray-500 text-sm leading-relaxed" style={{ fontFamily: "'Inter', sans-serif" }}>
         <p>{member.major}</p>
         {member.minor && <p>{member.minor}</p>}
+        {member.pledge_class && (
+          <p className="text-xs text-stone-400 font-medium mt-1.5">
+            {member.pledge_class}
+          </p>
+        )}
       </div>
     </motion.div>
   );
@@ -135,7 +141,7 @@ export default function Members() {
   useEffect(() => {
     fetch("/api/members")
       .then((r) => r.json())
-      .then((rows: { id: number; first_name: string; last_name: string; role: string; major: string; minor: string; photo_url: string | null; hue: string; categories: string[] }[]) => {
+      .then((rows: { id: number; first_name: string; last_name: string; role: string; major: string; minor: string; pledge_class: string | null; photo_url: string | null; hue: string; categories: string[] }[]) => {
         if (rows.length > 0) {
           setAllMembers(
             rows.map((m) => ({
@@ -144,6 +150,7 @@ export default function Members() {
               role: m.role ?? "",
               major: m.major ?? "",
               minor: m.minor || undefined,
+              pledge_class: m.pledge_class || undefined,
               hue: m.hue ?? "from-amber-900 via-amber-800 to-stone-700",
               photo_url: m.photo_url ?? undefined,
               categories: m.categories ?? [],
