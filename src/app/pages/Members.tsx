@@ -6,8 +6,9 @@ const WORDS = ["philanthropists", "professionals", "brothers", "leaders", "innov
 
 // ── Member types ──────────────────────────────────────────────────────────────
 type Member = {
-  first: string;
-  last: string;
+  name?: string;
+  first?: string;
+  last?: string;
   role: string;
   major: string;
   minor?: string;
@@ -69,6 +70,14 @@ type Tab = typeof TABS[number];
 
 // ── Member Card ───────────────────────────────────────────────────────────────
 function MemberCard({ member, index }: { member: Member; index: number }) {
+  const displayName = member.name || [member.first, member.last].filter(Boolean).join(" ");
+  const initials = displayName
+    .split(/\s+/)
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase() || "PGN";
+
   return (
     <motion.div
       className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col"
@@ -83,10 +92,10 @@ function MemberCard({ member, index }: { member: Member; index: number }) {
           className={`w-24 h-24 rounded-full bg-gradient-to-br ${member.hue} ring-2 ring-[#7A0C0C] ring-offset-2 flex items-center justify-center overflow-hidden`}
         >
           {member.photo_url ? (
-            <img src={member.photo_url} alt={member.first} className="w-full h-full object-cover" />
+            <img src={member.photo_url} alt={displayName} className="w-full h-full object-cover" />
           ) : (
             <span className="text-white/70 text-lg font-semibold" style={{ fontFamily: "'Inter', sans-serif" }}>
-              {member.first[0]}{member.last[0]}
+              {initials}
             </span>
           )}
         </div>
@@ -97,9 +106,7 @@ function MemberCard({ member, index }: { member: Member; index: number }) {
         className="text-gray-900 font-bold text-lg leading-tight mb-1"
         style={{ fontFamily: "'Inter', sans-serif" }}
       >
-        {member.first}
-        <br />
-        {member.last}
+        {displayName}
       </p>
 
       {/* Role */}
@@ -141,10 +148,11 @@ export default function Members() {
   useEffect(() => {
     fetch("/api/members")
       .then((r) => r.json())
-      .then((rows: { id: number; first_name: string; last_name: string; role: string; major: string; minor: string; pledge_class: string | null; photo_url: string | null; hue: string; categories: string[] }[]) => {
+      .then((rows: { id: number; name?: string; first_name?: string; last_name?: string; role: string; major: string; minor: string; pledge_class: string | null; photo_url: string | null; hue: string; categories: string[] }[]) => {
         if (rows.length > 0) {
           setAllMembers(
             rows.map((m) => ({
+              name: m.name || [m.first_name, m.last_name].filter(Boolean).join(" "),
               first: m.first_name,
               last: m.last_name,
               role: m.role ?? "",

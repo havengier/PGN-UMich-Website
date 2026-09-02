@@ -46,8 +46,9 @@ export async function runMigrations() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS members (
       id           SERIAL PRIMARY KEY,
-      first_name   VARCHAR(100) NOT NULL,
-      last_name    VARCHAR(100) NOT NULL,
+      name         VARCHAR(200),
+      first_name   VARCHAR(100),
+      last_name    VARCHAR(100),
       role         VARCHAR(200),
       major        VARCHAR(100),
       minor        VARCHAR(100),
@@ -61,7 +62,10 @@ export async function runMigrations() {
   `);
   await pool.query(`
     ALTER TABLE members
-      ADD COLUMN IF NOT EXISTS pledge_class VARCHAR(100)
+      ADD COLUMN IF NOT EXISTS name VARCHAR(200),
+      ADD COLUMN IF NOT EXISTS pledge_class VARCHAR(100),
+      ALTER COLUMN first_name DROP NOT NULL,
+      ALTER COLUMN last_name DROP NOT NULL
   `);
   console.log("Database migrations complete.");
 }

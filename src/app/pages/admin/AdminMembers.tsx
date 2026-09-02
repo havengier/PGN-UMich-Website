@@ -8,8 +8,9 @@ const TABS: Category[] = ["BOARD", "CHAIRS", "ACTIVES"];
 
 type DBMember = {
   id: number;
-  first_name: string;
-  last_name: string;
+  name?: string;
+  first_name?: string;
+  last_name?: string;
   role: string;
   major: string;
   minor: string;
@@ -21,8 +22,7 @@ type DBMember = {
 };
 
 type MemberForm = {
-  first_name: string;
-  last_name: string;
+  name: string;
   role: string;
   major: string;
   minor: string;
@@ -32,8 +32,7 @@ type MemberForm = {
 };
 
 const EMPTY_FORM: MemberForm = {
-  first_name: "",
-  last_name: "",
+  name: "",
   role: "",
   major: "",
   minor: "",
@@ -70,9 +69,9 @@ function AdminMembersContent() {
 
   function startEdit(m: DBMember) {
     setEditingId(m.id);
+    const fullName = m.name || [m.first_name, m.last_name].filter(Boolean).join(" ");
     setEditForm({
-      first_name: m.first_name,
-      last_name: m.last_name,
+      name: fullName,
       role: m.role ?? "",
       major: m.major ?? "",
       minor: m.minor ?? "",
@@ -110,8 +109,8 @@ function AdminMembersContent() {
 
   async function addMember() {
     setApiError("");
-    if (!addForm.first_name || !addForm.last_name) {
-      setApiError("First and last name are required.");
+    if (!addForm.name.trim()) {
+      setApiError("Member name is required.");
       return;
     }
     const res = await fetch("/api/members", {
@@ -217,10 +216,18 @@ function AdminMembersContent() {
           </div>
         ) : (
           <div className="space-y-3">
-            {visible.map((m) =>
-              editingId === m.id ? (
+            {visible.map((m) => {
+              const displayName = m.name || [m.first_name, m.last_name].filter(Boolean).join(" ");
+              const initials = displayName
+                .split(/\s+/)
+                .map((w) => w[0])
+                .slice(0, 2)
+                .join("")
+                .toUpperCase() || "PGN";
+
+              return editingId === m.id ? (
                 <div key={m.id} className="bg-white rounded-2xl border border-[#7A0C0C]/20 shadow-sm p-6">
-                  <p className="text-xs font-bold tracking-[0.18em] uppercase text-[#7A0C0C] mb-5">Editing {m.first_name} {m.last_name}</p>
+                  <p className="text-xs font-bold tracking-[0.18em] uppercase text-[#7A0C0C] mb-5">Editing {displayName}</p>
                   <MemberFormFields form={editForm} onChange={setEditForm} toggleCat={(cat) => setEditForm((f) => toggleCat(f, cat))} />
                   {apiError && <p className="text-sm text-red-600 mt-3">{apiError}</p>}
                   <div className="flex gap-3 mt-5">
@@ -248,14 +255,14 @@ function AdminMembersContent() {
                     {m.photo_url ? (
                       <img src={m.photo_url} alt="" className="w-full h-full rounded-full object-cover" />
                     ) : (
-                      <span className="text-white/80 text-xs font-semibold">{m.first_name[0]}{m.last_name[0]}</span>
+                      <span className="text-white/80 text-xs font-semibold">{initials}</span>
                     )}
                   </div>
 
                   {/* Info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <p className="font-semibold text-sm text-gray-900">{m.first_name} {m.last_name}</p>
+                      <p className="font-semibold text-sm text-gray-900">{displayName}</p>
                       {m.pledge_class && (
                         <span className="text-[0.65rem] font-medium bg-amber-50 text-amber-900 border border-amber-200/60 px-2 py-0.5 rounded-full">
                           {m.pledge_class}
@@ -290,8 +297,8 @@ function AdminMembersContent() {
                     </button>
                   </div>
                 </div>
-              )
-            )}
+              );
+            })}
           </div>
         )}
       </div>
@@ -313,10 +320,7 @@ function MemberFormFields({
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
-        <LabeledInput label="First Name *" value={form.first_name} onChange={set("first_name")} />
-        <LabeledInput label="Last Name *" value={form.last_name} onChange={set("last_name")} />
-      </div>
+      <LabeledInput label="Full Name *" value={form.name} onChange={set("name")} placeholder="e.g. Elliott Nederhood" />
       <LabeledInput label="Role / Title" value={form.role} onChange={set("role")} placeholder="e.g. President" />
       <div className="grid grid-cols-2 gap-4">
         <LabeledInput label="Major" value={form.major} onChange={set("major")} placeholder="e.g. Business Administration" />

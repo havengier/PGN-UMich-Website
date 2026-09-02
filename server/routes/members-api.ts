@@ -28,22 +28,28 @@ membersApiRouter.get("/", async (_req: Request, res: Response) => {
 
 // POST /api/members  — admin only
 membersApiRouter.post("/", requireAdmin, async (req: Request, res: Response) => {
-  const { first_name, last_name, role, major, minor, pledge_class, photo_url, hue, categories, sort_order } = req.body;
-  if (!first_name || !last_name) {
-    res.status(400).json({ error: "first_name and last_name are required" });
+  const { name, first_name, last_name, role, major, minor, pledge_class, photo_url, hue, categories, sort_order } = req.body;
+  const fullName = (name || [first_name, last_name].filter(Boolean).join(" ")).trim();
+  if (!fullName) {
+    res.status(400).json({ error: "Name is required" });
     return;
   }
+  const parts = fullName.split(/\s+/);
+  const finalFirstName = first_name || parts[0] || "";
+  const finalLastName = last_name || parts.slice(1).join(" ") || "";
+
   if (photo_url && !isValidHttpUrl(photo_url)) {
     res.status(400).json({ error: "Invalid photo_url" });
     return;
   }
   try {
     const { rows } = await pool.query(
-      `INSERT INTO members (first_name, last_name, role, major, minor, pledge_class, photo_url, hue, categories, sort_order)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      `INSERT INTO members (name, first_name, last_name, role, major, minor, pledge_class, photo_url, hue, categories, sort_order)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
       [
-        first_name,
-        last_name,
+        fullName,
+        finalFirstName,
+        finalLastName,
         role ?? "",
         major ?? "",
         minor ?? "",
@@ -65,11 +71,16 @@ membersApiRouter.post("/", requireAdmin, async (req: Request, res: Response) => 
 membersApiRouter.put("/:id", requireAdmin, async (req: Request, res: Response) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const { first_name, last_name, role, major, minor, pledge_class, photo_url, hue, categories, sort_order } = req.body;
-  if (!first_name || !last_name) {
-    res.status(400).json({ error: "first_name and last_name are required" });
+  const { name, first_name, last_name, role, major, minor, pledge_class, photo_url, hue, categories, sort_order } = req.body;
+  const fullName = (name || [first_name, last_name].filter(Boolean).join(" ")).trim();
+  if (!fullName) {
+    res.status(400).json({ error: "Name is required" });
     return;
   }
+  const parts = fullName.split(/\s+/);
+  const finalFirstName = first_name || parts[0] || "";
+  const finalLastName = last_name || parts.slice(1).join(" ") || "";
+
   if (photo_url && !isValidHttpUrl(photo_url)) {
     res.status(400).json({ error: "Invalid photo_url" });
     return;
@@ -77,10 +88,10 @@ membersApiRouter.put("/:id", requireAdmin, async (req: Request, res: Response) =
   try {
     const { rows } = await pool.query(
       `UPDATE members
-       SET first_name=$1, last_name=$2, role=$3, major=$4, minor=$5, pledge_class=$6,
-           photo_url=$7, hue=$8, categories=$9, sort_order=$10
-       WHERE id=$11 RETURNING *`,
-      [first_name, last_name, role, major, minor, pledge_class ?? "", photo_url || null, hue, categories, sort_order, id],
+       SET name=$1, first_name=$2, last_name=$3, role=$4, major=$5, minor=$6, pledge_class=$7,
+           photo_url=$8, hue=$9, categories=$10, sort_order=$11
+       WHERE id=$12 RETURNING *`,
+      [fullName, finalFirstName, finalLastName, role, major, minor, pledge_class ?? "", photo_url || null, hue, categories, sort_order, id],
     );
     if (!rows.length) { res.status(404).json({ error: "Member not found" }); return; }
     res.json(rows[0]);
