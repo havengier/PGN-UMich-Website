@@ -1,6 +1,16 @@
-﻿import { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
+import { Link } from "react-router";
 import { motion } from "motion/react";
-import { CheckCircle, ChevronDown } from "lucide-react";
+import {
+  CheckCircle,
+  ChevronDown,
+  Lock,
+  Instagram,
+  Users,
+  Sparkles,
+  ArrowRight,
+  Info,
+} from "lucide-react";
 import { LoginGate } from "@/app/components/LoginGate";
 
 // ── Config types ──────────────────────────────────────────────────────────────
@@ -23,6 +33,7 @@ type ConfigSection = {
 };
 
 type ApplyConfig = {
+  isOpen?: boolean;
   sections: ConfigSection[];
 };
 
@@ -105,6 +116,9 @@ function DynamicInput({
       <label htmlFor={field.id} className="text-sm font-semibold text-gray-700" style={{ fontFamily: "'Inter', sans-serif" }}>
         {field.label}{field.required && <span className="text-[#7A0C0C] ml-0.5">*</span>}
       </label>
+      {field.hint && (
+        <p className="text-xs text-gray-500 -mt-0.5" style={{ fontFamily: "'Inter', sans-serif" }}>{field.hint}</p>
+      )}
       <input
         id={field.id}
         type={field.type}
@@ -119,69 +133,186 @@ function DynamicInput({
   );
 }
 
-export default function Apply() {
+// ── Application Opening Soon Screen ──────────────────────────────────────────
+function ApplicationOpeningSoon() {
   return (
-    <LoginGate>
-      <ApplyContent />
-    </LoginGate>
+    <motion.div
+      className="bg-white rounded-3xl shadow-sm border border-stone-200/80 p-8 sm:p-14 text-center max-w-2xl mx-auto"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.6 }}
+    >
+      <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-200/60 text-[#7A0C0C] flex items-center justify-center mx-auto mb-6 shadow-sm">
+        <Lock size={28} strokeWidth={1.75} />
+      </div>
+
+      <p
+        className="text-[#7A0C0C] text-xs font-bold tracking-[0.25em] uppercase mb-3"
+        style={{ fontFamily: "'Inter', sans-serif" }}
+      >
+        Recruitment Application
+      </p>
+
+      <h2
+        className="text-3xl sm:text-4xl font-normal text-stone-900 mb-4 tracking-tight"
+        style={{ fontFamily: "'Playfair Display', serif" }}
+      >
+        Application Opening Soon
+      </h2>
+
+      <div className="h-0.5 w-16 bg-[#F5A623] mx-auto mb-6" />
+
+      <p
+        className="text-stone-600 text-sm sm:text-base leading-relaxed mb-8 max-w-lg mx-auto"
+        style={{ fontFamily: "'Inter', sans-serif" }}
+      >
+        Applications for our upcoming recruitment cycle are currently closed and will be opening soon.
+        Follow our Instagram or check back here for official announcements, rush dates, and timeline updates.
+      </p>
+
+      {/* Quick Action Buttons */}
+      <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-8">
+        <a
+          href="https://www.instagram.com/pgnuofm/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 bg-[#7A0C0C] hover:bg-[#5C0A0A] text-white text-xs font-bold tracking-widest uppercase rounded-full shadow-sm transition-colors"
+          style={{ fontFamily: "'Inter', sans-serif" }}
+        >
+          <Instagram size={14} /> Follow @pgnuofm
+        </a>
+        <Link
+          to="/members"
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-bold tracking-widest uppercase rounded-full transition-colors border border-stone-200"
+          style={{ fontFamily: "'Inter', sans-serif" }}
+        >
+          <Users size={14} /> Meet Our Members
+        </Link>
+      </div>
+
+      {/* Info note */}
+      <div className="bg-stone-50 rounded-xl p-4 border border-stone-200/60 text-left flex items-start gap-3">
+        <Info size={16} className="text-stone-400 flex-shrink-0 mt-0.5" />
+        <p className="text-xs text-stone-500 leading-relaxed" style={{ fontFamily: "'Inter', sans-serif" }}>
+          Have questions regarding rush, eligibility, or recruitment events? Feel free to reach out to our recruitment team at{" "}
+          <a href="mailto:pgnmichigan@gmail.com" className="text-[#7A0C0C] font-semibold hover:underline">
+            pgnmichigan@gmail.com
+          </a>.
+        </p>
+      </div>
+    </motion.div>
   );
 }
 
-function ApplyContent() {
+const DEFAULT_FALLBACK_CONFIG: ApplyConfig = {
+  isOpen: false,
+  sections: [
+    {
+      id: "personal",
+      label: "Personal Information",
+      fields: [
+        { id: "firstName", type: "text", label: "First Name", placeholder: "Jane", required: true },
+        { id: "lastName", type: "text", label: "Last Name", placeholder: "Doe", required: true },
+        { id: "email", type: "email", label: "University Email", placeholder: "jdoe@umich.edu", required: true },
+        { id: "phone", type: "tel", label: "Phone Number", placeholder: "(555) 000-0000", required: false },
+      ],
+    },
+    {
+      id: "academic",
+      label: "Academic Background",
+      fields: [
+        { id: "year", type: "select", label: "Year", options: ["Freshman", "Sophomore", "Junior", "Senior", "Graduate Student"], required: true },
+        { id: "major", type: "text", label: "Major", placeholder: "e.g. Business Administration", required: true },
+        { id: "minor", type: "text", label: "Minor (if applicable)", placeholder: "e.g. Psychology", required: false },
+        { id: "gpa", type: "text", label: "Cumulative GPA", placeholder: "e.g. 3.7", required: false },
+      ],
+    },
+    {
+      id: "shortAnswers",
+      label: "Short Answers",
+      fields: [
+        { id: "whyPGN", type: "textarea", label: "Why do you want to join Phi Gamma Nu?", hint: "Tell us what drew you to PGN and what you hope to gain from membership. (150–300 words)", placeholder: "I am drawn to PGN because...", required: true },
+        { id: "strengths", type: "textarea", label: "What unique strengths would you bring to PGN?", hint: "Highlight specific skills, experiences, or perspectives. (150–300 words)", placeholder: "One strength I would bring is...", required: true },
+        { id: "involvement", type: "textarea", label: "Describe your previous involvement in campus or professional organizations.", hint: "Include clubs, internships, research, volunteer work, or leadership roles.", placeholder: "I have been involved in...", required: false },
+      ],
+    },
+    {
+      id: "resumeAdditional",
+      label: "Resume & Additional Information",
+      fields: [
+        { id: "resume", type: "file", label: "Upload Resume", required: false },
+        { id: "questions", type: "textarea", label: "Any questions or additional comments?", placeholder: "Feel free to share anything else you would like us to know.", required: false },
+      ],
+    },
+  ],
+};
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
+export default function Apply() {
   const [config, setConfig] = useState<ApplyConfig | null>(null);
-  const [formValues, setFormValues] = useState<Record<string, string>>({});
+  const [formData, setFormData] = useState<Record<string, string>>({});
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/apply-config")
-      .then((r) => r.json())
-      .then((data: ApplyConfig) => setConfig(data))
-      .catch(() => {});
+      .then((r) => {
+        if (!r.ok) throw new Error("Failed to load");
+        return r.json();
+      })
+      .then((data: ApplyConfig) => {
+        setConfig(data);
+        const defaults: Record<string, string> = {};
+        data.sections?.forEach((section) => {
+          section.fields.forEach((field) => {
+            defaults[field.id] = "";
+          });
+        });
+        setFormData(defaults);
+      })
+      .catch(() => {
+        setConfig(DEFAULT_FALLBACK_CONFIG);
+      });
   }, []);
 
-  function setValue(fieldId: string, val: string) {
-    setFormValues((prev) => ({ ...prev, [fieldId]: val }));
+  function getValue(id: string): string {
+    return formData[id] ?? "";
   }
 
-  function getValue(fieldId: string): string {
-    return formValues[fieldId] ?? "";
+  function setValue(id: string, value: string) {
+    setFormData((prev) => ({ ...prev, [id]: value }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!config) return;
-
-    // Validate required fields from config
-    const requiredIds = config.sections.flatMap((s) => s.fields.filter((f) => f.required && f.type !== "file").map((f) => f.id));
-    const missing = requiredIds.filter((id) => !formValues[id]?.trim());
-    if (missing.length) {
-      setError("Please fill in all required fields before submitting.");
-      return;
-    }
-
-    setError("");
     setLoading(true);
+    setError(null);
+
+    const payload: Record<string, string> = { ...formData };
+
     try {
       const res = await fetch("/api/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formValues),
+        body: JSON.stringify(payload),
       });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
       if (!res.ok) {
-        const data = await res.json().catch(() => ({})) as { error?: string };
-        throw new Error(data.error ?? "Server error");
+        setError(data.error ?? "Failed to submit application. Please try again.");
+        return;
       }
       setSubmitted(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong. Please try again or email us directly.");
+    } catch {
+      setError("Network error. Please try again.");
     } finally {
       setLoading(false);
     }
   }
+
+  const isLocked = config !== null && config.isOpen === false;
 
   return (
     <>
@@ -223,8 +354,14 @@ function ApplyContent() {
       {/* ── Body ─────────────────────────────────────────────────────────── */}
       <div className="bg-[#FAFAF9] min-h-screen py-20 px-6">
         <div className="max-w-3xl mx-auto">
-
-          {submitted ? (
+          {config === null ? (
+            <div className="flex justify-center py-24">
+              <div className="w-6 h-6 rounded-full border-2 border-[#7A0C0C] border-t-transparent animate-spin" />
+            </div>
+          ) : isLocked ? (
+            /* ── Application Locked / Opening Soon Screen ── */
+            <ApplicationOpeningSoon />
+          ) : submitted ? (
             <motion.div
               className="flex flex-col items-center text-center py-24"
               initial={{ opacity: 0, scale: 0.95 }}
@@ -270,106 +407,100 @@ function ApplyContent() {
                 </p>
               </motion.div>
 
-              {config ? (
-                <motion.form
-                  onSubmit={handleSubmit}
-                  className="space-y-10"
-                  initial={{ opacity: 0, y: 24 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.6, delay: 0.1 }}
-                >
-                  {config.sections.map((section) => (
-                    <section key={section.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-                      <h3
-                        className="text-xs font-bold tracking-[0.18em] uppercase text-[#7A0C0C] mb-6"
-                        style={{ fontFamily: "'Inter', sans-serif" }}
-                      >
-                        {section.label}
-                      </h3>
-                      <div className={`grid gap-5 ${section.fields.some((f) => f.type === "textarea" || f.type === "file") ? "" : "sm:grid-cols-2"}`}>
-                        {section.fields.map((field) => {
-                          if (field.type === "select") {
-                            return (
-                              <DynamicSelect
-                                key={field.id}
-                                field={field}
-                                value={getValue(field.id)}
-                                onChange={(v) => setValue(field.id, v)}
-                              />
-                            );
-                          }
-                          if (field.type === "textarea") {
-                            return (
-                              <div key={field.id} className="sm:col-span-2">
-                                <DynamicTextarea
-                                  field={field}
-                                  value={getValue(field.id)}
-                                  onChange={(v) => setValue(field.id, v)}
-                                />
-                              </div>
-                            );
-                          }
-                          if (field.type === "file") {
-                            return (
-                              <div key={field.id} className="flex flex-col gap-1.5 sm:col-span-2">
-                                <label className="text-sm font-semibold text-gray-700" style={{ fontFamily: "'Inter', sans-serif" }}>
-                                  {field.label} <span className="text-gray-400 font-normal">(PDF, max 5 MB)</span>
-                                </label>
-                                <label className="flex items-center gap-4 border-2 border-dashed border-gray-200 rounded-xl px-6 py-5 cursor-pointer hover:border-[#7A0C0C]/40 transition-colors group">
-                                  <div className="flex-1">
-                                    <p className="text-sm text-gray-500 group-hover:text-gray-700 transition-colors" style={{ fontFamily: "'Inter', sans-serif" }}>
-                                      {resumeFile ? resumeFile.name : "Click to upload or drag and drop"}
-                                    </p>
-                                  </div>
-                                  <span className="px-4 py-2 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600 bg-gray-50">Browse</span>
-                                  <input
-                                    type="file"
-                                    accept=".pdf"
-                                    className="hidden"
-                                    onChange={(e) => setResumeFile(e.target.files?.[0] ?? null)}
-                                  />
-                                </label>
-                              </div>
-                            );
-                          }
+              <motion.form
+                onSubmit={handleSubmit}
+                className="space-y-10"
+                initial={{ opacity: 0, y: 24 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.1 }}
+              >
+                {config.sections.map((section) => (
+                  <section key={section.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+                    <h3
+                      className="text-xs font-bold tracking-[0.18em] uppercase text-[#7A0C0C] mb-6"
+                      style={{ fontFamily: "'Inter', sans-serif" }}
+                    >
+                      {section.label}
+                    </h3>
+                    <div className={`grid gap-5 ${section.fields.some((f) => f.type === "textarea" || f.type === "file") ? "" : "sm:grid-cols-2"}`}>
+                      {section.fields.map((field) => {
+                        if (field.type === "select") {
                           return (
-                            <DynamicInput
+                            <DynamicSelect
                               key={field.id}
                               field={field}
                               value={getValue(field.id)}
                               onChange={(v) => setValue(field.id, v)}
                             />
                           );
-                        })}
-                      </div>
-                    </section>
-                  ))}
+                        }
+                        if (field.type === "textarea") {
+                          return (
+                            <div key={field.id} className="sm:col-span-2">
+                              <DynamicTextarea
+                                field={field}
+                                value={getValue(field.id)}
+                                onChange={(v) => setValue(field.id, v)}
+                              />
+                            </div>
+                          );
+                        }
+                        if (field.type === "file") {
+                          return (
+                            <div key={field.id} className="flex flex-col gap-1.5 sm:col-span-2">
+                              <label className="text-sm font-semibold text-gray-700" style={{ fontFamily: "'Inter', sans-serif" }}>
+                                {field.label} <span className="text-gray-400 font-normal">(PDF, max 5 MB)</span>
+                              </label>
+                              <label className="flex items-center gap-4 border-2 border-dashed border-gray-200 rounded-xl px-6 py-5 cursor-pointer hover:border-[#7A0C0C]/40 transition-colors group">
+                                <div className="flex-1">
+                                  <p className="text-sm text-gray-500 group-hover:text-gray-700 transition-colors" style={{ fontFamily: "'Inter', sans-serif" }}>
+                                    {resumeFile ? resumeFile.name : "Click to upload or drag and drop"}
+                                  </p>
+                                </div>
+                                <span className="px-4 py-2 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600 bg-gray-50">Browse</span>
+                                <input
+                                  type="file"
+                                  accept=".pdf"
+                                  className="hidden"
+                                  onChange={(e) => setResumeFile(e.target.files?.[0] ?? null)}
+                                />
+                              </label>
+                            </div>
+                          );
+                        }
+                        return (
+                          <DynamicInput
+                            key={field.id}
+                            field={field}
+                            value={getValue(field.id)}
+                            onChange={(v) => setValue(field.id, v)}
+                          />
+                        );
+                      })}
+                    </div>
+                  </section>
+                ))}
 
-                  {error && (
-                    <p className="text-sm text-red-600 font-medium" style={{ fontFamily: "'Inter', sans-serif" }}>
-                      {error}
-                    </p>
-                  )}
+                {error && (
+                  <p className="text-sm text-red-600 font-medium" style={{ fontFamily: "'Inter', sans-serif" }}>
+                    {error}
+                  </p>
+                )}
 
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-2">
-                    <p className="text-xs text-gray-500 leading-relaxed max-w-sm" style={{ fontFamily: "'Inter', sans-serif" }}>
-                      By submitting this form you confirm that all information provided is accurate. We will contact you at the email address provided.
-                    </p>
-                    <button
-                      type="submit"
-                      disabled={loading}
-                      className="px-10 py-3.5 bg-[#7A0C0C] text-white text-sm font-bold tracking-widest uppercase rounded-full hover:bg-[#5C0A0A] transition-colors duration-200 whitespace-nowrap disabled:opacity-60 disabled:cursor-not-allowed"
-                      style={{ fontFamily: "'Inter', sans-serif" }}
-                    >
-                      {loading ? "Submitting…" : "Submit Application"}
-                    </button>
-                  </div>
-                </motion.form>
-              ) : (
-                <div className="flex justify-center py-24">
-                  <div className="w-6 h-6 rounded-full border-2 border-[#7A0C0C] border-t-transparent animate-spin" />
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-2">
+                  <p className="text-xs text-gray-500 leading-relaxed max-w-sm" style={{ fontFamily: "'Inter', sans-serif" }}>
+                    By submitting this form you confirm that all information provided is accurate. We will contact you at the email address provided.
+                  </p>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="px-10 py-3.5 bg-[#7A0C0C] text-white text-sm font-bold tracking-widest uppercase rounded-full hover:bg-[#5C0A0A] transition-colors duration-200 whitespace-nowrap disabled:opacity-60 disabled:cursor-not-allowed"
+                    style={{ fontFamily: "'Inter', sans-serif" }}
+                  >
+                    {loading ? "Submitting…" : "Submit Application"}
+                  </button>
                 </div>
-              )}
+              </motion.form>
             </>
           )}
         </div>

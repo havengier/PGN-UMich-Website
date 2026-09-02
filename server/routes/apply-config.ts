@@ -8,6 +8,7 @@ export const applyConfigRouter = Router();
 const CONFIG_KEY = "apply.config";
 
 export const DEFAULT_APPLY_CONFIG = {
+  isOpen: false,
   sections: [
     {
       id: "personal",

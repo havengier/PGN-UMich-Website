@@ -41,6 +41,19 @@ applyRouter.post("/apply", async (req: Request, res: Response) => {
     return;
   }
 
+  try {
+    const configRow = await pool.query("SELECT value FROM site_content WHERE key = 'apply.config'");
+    if (configRow.rows.length > 0) {
+      const parsedConfig = JSON.parse(configRow.rows[0].value);
+      if (parsedConfig.isOpen === false) {
+        res.status(403).json({ error: "Applications are currently closed. Application opening soon." });
+        return;
+      }
+    }
+  } catch (err) {
+    console.error("Failed to check apply config status:", err);
+  }
+
   // Sanitise extra fields — only string values, max 2000 chars each
   const safeExtras: Record<string, string> = {};
   for (const [k, v] of Object.entries(extraFields)) {
