@@ -209,12 +209,25 @@ export default function Members() {
   const [activeTab, setActiveTab] = useState<Tab>("BOARD");
   const [allMembers, setAllMembers] = useState<Member[]>([]);
   const [dbLoaded, setDbLoaded] = useState(false);
+  const [onlyShowBoard, setOnlyShowBoard] = useState(false);
 
   useEffect(() => {
     const id = setInterval(() => {
       setWordIndex((i) => (i + 1) % WORDS.length);
     }, 2200);
     return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/content?ns=members")
+      .then((r) => r.json())
+      .then((data: Record<string, string>) => {
+        if (data["members.only_show_board"] === "true") {
+          setOnlyShowBoard(true);
+          setActiveTab("BOARD");
+        }
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -244,11 +257,11 @@ export default function Members() {
   }, []);
 
   const source = dbLoaded ? allMembers : FALLBACK_ALL;
-  // All members are actives. For BOARD and CHAIRS, filter by category:
+  const currentTab = onlyShowBoard ? "BOARD" : activeTab;
   const members =
-    activeTab === "ACTIVES"
+    currentTab === "ACTIVES"
       ? source
-      : source.filter((m) => (m.categories ?? []).includes(activeTab));
+      : source.filter((m) => (m.categories ?? []).includes(currentTab));
 
   const groupedActives = groupMembersByPledgeClass(source);
 
@@ -280,30 +293,32 @@ export default function Members() {
 
       {/* Content below hero */}
       <div className="pt-12 px-6 sm:px-10">
-        {/* Tab bar */}
-        <motion.div
-          className="flex justify-center mb-12"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.5, delay: 0.2 }}
-        >
-          <div className="flex items-center gap-3">
-            {TABS.map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-8 py-2.5 text-sm font-bold tracking-widest uppercase border-2 transition-all duration-200 ${
-                  activeTab === tab
-                    ? "bg-[#7A0C0C] border-[#7A0C0C] text-white"
-                    : "bg-white border-gray-300 text-gray-600 hover:border-[#7A0C0C] hover:text-[#7A0C0C]"
-                }`}
-                style={{ fontFamily: "'Inter', sans-serif" }}
-              >
-                {tab}
-              </button>
-            ))}
-          </div>
-        </motion.div>
+        {/* Tab bar — hidden when onlyShowBoard is active */}
+        {!onlyShowBoard && (
+          <motion.div
+            className="flex justify-center mb-12"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+          >
+            <div className="flex items-center gap-3">
+              {TABS.map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`px-8 py-2.5 text-sm font-bold tracking-widest uppercase border-2 transition-all duration-200 ${
+                    activeTab === tab
+                      ? "bg-[#7A0C0C] border-[#7A0C0C] text-white"
+                      : "bg-white border-gray-300 text-gray-600 hover:border-[#7A0C0C] hover:text-[#7A0C0C]"
+                  }`}
+                  style={{ fontFamily: "'Inter', sans-serif" }}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        )}
 
         {/* Member list / Pledge class grouped list */}
         <AnimatePresence mode="wait">

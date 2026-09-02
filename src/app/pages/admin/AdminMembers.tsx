@@ -15,6 +15,7 @@ import {
   Linkedin,
   ExternalLink,
   Users,
+  SlidersHorizontal,
 } from "lucide-react";
 import { LoginGate } from "@/app/components/LoginGate";
 
@@ -194,6 +195,8 @@ function AdminMembersContent() {
   const [showBulkModal, setShowBulkModal] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [onlyShowBoard, setOnlyShowBoard] = useState(false);
+  const [isSavingSetting, setIsSavingSetting] = useState(false);
   const [apiError, setApiError] = useState("");
   const [opStatus, setOpStatus] = useState<"idle" | "ok" | "error">("idle");
   const [opMsg, setOpMsg] = useState("");
@@ -215,12 +218,48 @@ function AdminMembersContent() {
 
   useEffect(() => {
     fetchMembers();
+    fetch("/api/content?ns=members")
+      .then((r) => r.json())
+      .then((data: Record<string, string>) => {
+        setOnlyShowBoard(data["members.only_show_board"] === "true");
+      })
+      .catch(() => {});
   }, [fetchMembers]);
 
   const visible =
     activeTab === "ALL"
       ? members
       : members.filter((m) => m.categories?.includes(activeTab as Category));
+
+  async function toggleOnlyShowBoard() {
+    const nextVal = !onlyShowBoard;
+    setOnlyShowBoard(nextVal);
+    setIsSavingSetting(true);
+    try {
+      const res = await fetch("/api/content", {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ "members.only_show_board": String(nextVal) }),
+      });
+      if (res.ok) {
+        setOpStatus("ok");
+        setOpMsg(
+          nextVal
+            ? "Display mode updated: Category selector disabled, only Board members visible on website."
+            : "Display mode updated: All member categories (Board, Chairs, Actives) visible on website."
+        );
+      } else {
+        setOnlyShowBoard(!nextVal);
+        setOpStatus("error");
+      }
+    } catch {
+      setOnlyShowBoard(!nextVal);
+      setOpStatus("error");
+    } finally {
+      setIsSavingSetting(false);
+    }
+  }
 
   function startEdit(m: DBMember) {
     setEditingId(m.id);
@@ -425,7 +464,7 @@ function AdminMembersContent() {
               Members Directory
             </h1>
             <p className="text-white/40 text-sm mt-1">
-              Add individual members, bulk upload via CSV, or manage existing records.
+              Add individual members, bulk upload via CSV, or manage display settings.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -460,6 +499,57 @@ function AdminMembersContent() {
       </div>
 
       <div className="px-8 md:px-16 py-10">
+        {/* Toggle Switch: Only Show Board Members */}
+        <div className="bg-white rounded-2xl border border-gray-200/80 shadow-sm p-5 mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-start sm:items-center gap-3.5">
+            <div
+              className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
+                onlyShowBoard ? "bg-amber-100 text-[#7A0C0C]" : "bg-gray-100 text-gray-500"
+              }`}
+            >
+              <SlidersHorizontal size={20} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-gray-900">
+                  Only Show Board Members on Website
+                </h3>
+                {onlyShowBoard ? (
+                  <span className="text-[10px] font-bold uppercase tracking-wider bg-[#7A0C0C] text-white px-2 py-0.5 rounded-full">
+                    Active
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-semibold uppercase tracking-wider bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
+                    Disabled
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {onlyShowBoard
+                  ? "Category selector is currently hidden on the public website. Only Executive Board members are displayed."
+                  : "Normal mode: Public visitors can switch between Board, Chairs, and Actives tabs."}
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            role="switch"
+            aria-checked={onlyShowBoard}
+            onClick={toggleOnlyShowBoard}
+            disabled={isSavingSetting}
+            className={`relative inline-flex h-7 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[#7A0C0C] focus:ring-offset-2 ${
+              onlyShowBoard ? "bg-[#7A0C0C]" : "bg-gray-300"
+            }`}
+          >
+            <span
+              className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                onlyShowBoard ? "translate-x-5" : "translate-x-0"
+              }`}
+            />
+          </button>
+        </div>
+
         {/* Warning Confirmation Modal for Clear All */}
         {showClearConfirm && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
