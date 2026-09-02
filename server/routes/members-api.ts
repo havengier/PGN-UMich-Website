@@ -232,6 +232,17 @@ membersApiRouter.put("/:id", requireAdmin, async (req: Request, res: Response) =
   }
 });
 
+// DELETE /api/members  — clear all members (admin only)
+membersApiRouter.delete("/", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const { rowCount } = await pool.query("DELETE FROM members");
+    res.json({ ok: true, deletedCount: rowCount });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to clear members directory" });
+  }
+});
+
 // DELETE /api/members/:id  — admin only
 membersApiRouter.delete("/:id", requireAdmin, async (req: Request, res: Response) => {
   const id = parseInt(req.params.id, 10);

@@ -8,6 +8,7 @@ import {
   X,
   CheckCircle,
   AlertCircle,
+  AlertTriangle,
   Upload,
   Download,
   FileSpreadsheet,
@@ -191,6 +192,8 @@ function AdminMembersContent() {
   const [addForm, setAddForm] = useState<MemberForm>({ ...EMPTY_FORM });
   const [showAddForm, setShowAddForm] = useState(false);
   const [showBulkModal, setShowBulkModal] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
   const [apiError, setApiError] = useState("");
   const [opStatus, setOpStatus] = useState<"idle" | "ok" | "error">("idle");
   const [opMsg, setOpMsg] = useState("");
@@ -268,6 +271,32 @@ function AdminMembersContent() {
       fetchMembers();
     } else {
       setOpStatus("error");
+    }
+  }
+
+  async function clearAllMembers() {
+    setApiError("");
+    setIsClearing(true);
+    try {
+      const res = await fetch("/api/members", {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (res.ok) {
+        setShowClearConfirm(false);
+        setOpStatus("ok");
+        setOpMsg("All members have been removed from the directory.");
+        fetchMembers();
+      } else {
+        const d = (await res.json().catch(() => ({}))) as { error?: string };
+        setApiError(d.error ?? "Failed to clear members directory.");
+        setOpStatus("error");
+      }
+    } catch {
+      setApiError("Network error while clearing directory.");
+      setOpStatus("error");
+    } finally {
+      setIsClearing(false);
     }
   }
 
@@ -396,7 +425,7 @@ function AdminMembersContent() {
               Members Directory
             </h1>
             <p className="text-white/40 text-sm mt-1">
-              Add individual members or bulk upload via CSV spreadsheet.
+              Add individual members, bulk upload via CSV, or manage existing records.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -417,11 +446,75 @@ function AdminMembersContent() {
             >
               <FileSpreadsheet size={14} /> Bulk Upload CSV
             </button>
+            {members.length > 0 && (
+              <button
+                onClick={() => setShowClearConfirm(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-red-950/70 hover:bg-red-900 text-red-200 hover:text-white text-xs font-semibold rounded-lg transition-colors border border-red-800/50"
+                title="Clear all members from the directory"
+              >
+                <Trash2 size={14} /> Clear All
+              </button>
+            )}
           </div>
         </div>
       </div>
 
       <div className="px-8 md:px-16 py-10">
+        {/* Warning Confirmation Modal for Clear All */}
+        {showClearConfirm && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-red-100">
+              <div className="flex items-start gap-4 mb-5">
+                <div className="w-12 h-12 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center flex-shrink-0">
+                  <AlertTriangle size={24} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 leading-tight">
+                    Clear All Members?
+                  </h3>
+                  <p className="text-xs text-red-600 font-semibold tracking-wide uppercase mt-0.5">
+                    Permanent Deletion Warning
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-red-50/80 border border-red-200/80 rounded-xl p-4 mb-6">
+                <p className="text-sm text-red-900 leading-relaxed font-medium">
+                  Warning: This action will permanently remove all{" "}
+                  <span className="font-bold underline">{members.length} members</span> from the database.
+                </p>
+                <p className="text-xs text-red-700/90 mt-2">
+                  This action cannot be undone. You will need to re-upload or re-enter members manually or via CSV.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowClearConfirm(false)}
+                  disabled={isClearing}
+                  className="px-5 py-2.5 text-xs font-bold tracking-wider uppercase border border-gray-300 rounded-full text-gray-600 hover:border-gray-500 hover:text-gray-900 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={clearAllMembers}
+                  disabled={isClearing}
+                  className="flex items-center gap-2 px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold tracking-widest uppercase rounded-full shadow-md shadow-red-600/20 transition-colors disabled:opacity-50"
+                >
+                  {isClearing ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Trash2 size={14} />
+                  )}
+                  Yes, Clear All
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Bulk CSV Upload Panel */}
         {showBulkModal && (
           <div className="bg-white rounded-2xl border border-amber-900/20 shadow-md p-6 sm:p-8 mb-8">
