@@ -197,6 +197,10 @@ function AdminMembersContent() {
   const [isClearing, setIsClearing] = useState(false);
   const [onlyShowBoard, setOnlyShowBoard] = useState(false);
   const [isSavingSetting, setIsSavingSetting] = useState(false);
+  const [bannerImageUrl, setBannerImageUrl] = useState("");
+  const [hideBannerImage, setHideBannerImage] = useState(false);
+  const [isSavingBanner, setIsSavingBanner] = useState(false);
+  const [bannerSaved, setBannerSaved] = useState(false);
   const [apiError, setApiError] = useState("");
   const [opStatus, setOpStatus] = useState<"idle" | "ok" | "error">("idle");
   const [opMsg, setOpMsg] = useState("");
@@ -222,6 +226,8 @@ function AdminMembersContent() {
       .then((r) => r.json())
       .then((data: Record<string, string>) => {
         setOnlyShowBoard(data["members.only_show_board"] === "true");
+        setBannerImageUrl(data["members.banner.image_url"] || "");
+        setHideBannerImage(data["members.banner.hide_image"] === "true");
       })
       .catch(() => {});
   }, [fetchMembers]);
@@ -259,6 +265,36 @@ function AdminMembersContent() {
     } finally {
       setIsSavingSetting(false);
     }
+  }
+
+  async function saveBanner(urlToSave: string, hideToSave: boolean) {
+    setIsSavingBanner(true);
+    setBannerSaved(false);
+    try {
+      const res = await fetch("/api/content", {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          "members.banner.image_url": urlToSave,
+          "members.banner.hide_image": String(hideToSave),
+        }),
+      });
+      if (res.ok) {
+        setBannerSaved(true);
+        setTimeout(() => setBannerSaved(false), 3000);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setIsSavingBanner(false);
+    }
+  }
+
+  function handleToggleBannerHide() {
+    const nextHide = !hideBannerImage;
+    setHideBannerImage(nextHide);
+    saveBanner(bannerImageUrl, nextHide);
   }
 
   function startEdit(m: DBMember) {
@@ -548,6 +584,90 @@ function AdminMembersContent() {
               }`}
             />
           </button>
+        </div>
+
+        {/* Hero Banner Image Card */}
+        <div className="bg-white rounded-2xl border border-gray-200/80 shadow-sm p-6 mb-8">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-4 border-b border-gray-100 gap-4 mb-4">
+            <div>
+              <h3 className="text-sm font-bold text-gray-900">Hero Banner Background</h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {hideBannerImage
+                  ? "Banner image is currently hidden on the website. Default elegant gradient is active."
+                  : "Banner image is visible in the background of the Members page header."}
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-gray-500 font-medium">Show Banner:</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={!hideBannerImage}
+                onClick={handleToggleBannerHide}
+                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  !hideBannerImage ? "bg-[#7A0C0C]" : "bg-gray-300"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                    !hideBannerImage ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">
+                Banner Image URL
+              </label>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <input
+                  type="url"
+                  value={bannerImageUrl}
+                  onChange={(e) => setBannerImageUrl(e.target.value)}
+                  placeholder="https://example.com/chapter-banner.jpg"
+                  className="border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#7A0C0C]/30 focus:border-[#7A0C0C] transition-colors w-full"
+                />
+                <button
+                  type="button"
+                  onClick={() => saveBanner(bannerImageUrl, hideBannerImage)}
+                  disabled={isSavingBanner}
+                  className="flex-shrink-0 px-6 py-2.5 bg-[#7A0C0C] hover:bg-[#5C0A0A] text-white text-xs font-bold uppercase tracking-wider rounded-lg transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5"
+                >
+                  {bannerSaved ? (
+                    <>
+                      <CheckCircle size={14} /> Saved
+                    </>
+                  ) : isSavingBanner ? (
+                    "Saving…"
+                  ) : (
+                    "Save Banner"
+                  )}
+                </button>
+              </div>
+              <p className="text-[11px] text-gray-400 mt-1">
+                Paste a direct image link (https://…). Leave blank or toggle switch off to use the default gradient background.
+              </p>
+            </div>
+
+            {bannerImageUrl && !hideBannerImage && (
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-1.5">
+                  Banner Preview
+                </span>
+                <div className="relative rounded-xl overflow-hidden h-36 max-w-xl border border-gray-200 shadow-sm">
+                  <img src={bannerImageUrl} alt="Banner Preview" className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-black/40 flex items-end p-4">
+                    <span className="text-white text-lg font-normal drop-shadow" style={{ fontFamily: "'Playfair Display', serif" }}>
+                      Our Members
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Warning Confirmation Modal for Clear All */}

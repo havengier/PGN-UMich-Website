@@ -210,6 +210,8 @@ export default function Members() {
   const [allMembers, setAllMembers] = useState<Member[]>([]);
   const [dbLoaded, setDbLoaded] = useState(false);
   const [onlyShowBoard, setOnlyShowBoard] = useState(false);
+  const [bannerImageUrl, setBannerImageUrl] = useState("");
+  const [hideBannerImage, setHideBannerImage] = useState(false);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -226,6 +228,8 @@ export default function Members() {
           setOnlyShowBoard(true);
           setActiveTab("BOARD");
         }
+        setBannerImageUrl(data["members.banner.image_url"] || "");
+        setHideBannerImage(data["members.banner.hide_image"] === "true");
       })
       .catch(() => {});
   }, []);
@@ -269,14 +273,20 @@ export default function Members() {
     <div className="min-h-screen bg-white pb-24">
       {/* Hero Banner */}
       <div className="relative w-full h-[52vh] overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-stone-600 via-stone-700 to-stone-800" />
-        <div
-          className="absolute inset-0 opacity-30"
-          style={{
-            backgroundImage:
-              "radial-gradient(ellipse at 25% 60%, #78350f 0%, transparent 55%), radial-gradient(ellipse at 75% 35%, #44403c 0%, transparent 50%)",
-          }}
-        />
+        {bannerImageUrl && !hideBannerImage ? (
+          <img src={bannerImageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+        ) : (
+          <>
+            <div className="absolute inset-0 bg-gradient-to-br from-stone-600 via-stone-700 to-stone-800" />
+            <div
+              className="absolute inset-0 opacity-30"
+              style={{
+                backgroundImage:
+                  "radial-gradient(ellipse at 25% 60%, #78350f 0%, transparent 55%), radial-gradient(ellipse at 75% 35%, #44403c 0%, transparent 50%)",
+              }}
+            />
+          </>
+        )}
         <div className="absolute inset-0 bg-black/45" />
         <div className="relative z-10 h-full flex items-end px-16 pb-12 pt-20">
           <motion.h1

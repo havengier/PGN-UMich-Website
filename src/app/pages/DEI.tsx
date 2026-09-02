@@ -32,18 +32,27 @@ export default function DEI() {
     },
   ].filter((p) => !p.hide);
 
+  const hideBannerImage = get("dei.banner.hide_image", "false") === "true";
+  const bannerImageUrl = hideBannerImage ? "" : get("dei.banner.image_url", "");
+
   return (
     <>
       {/* ── Hero Banner ──────────────────────────────────────────────────── */}
       <div className="relative w-full h-[52vh] overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-stone-600 via-stone-700 to-stone-800" />
-        <div
-          className="absolute inset-0 opacity-40"
-          style={{
-            backgroundImage:
-              "radial-gradient(ellipse at 20% 60%, #78350f 0%, transparent 50%), radial-gradient(ellipse at 65% 30%, #292524 0%, transparent 55%)",
-          }}
-        />
+        {bannerImageUrl ? (
+          <img src={bannerImageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+        ) : (
+          <>
+            <div className="absolute inset-0 bg-gradient-to-br from-stone-600 via-stone-700 to-stone-800" />
+            <div
+              className="absolute inset-0 opacity-40"
+              style={{
+                backgroundImage:
+                  "radial-gradient(ellipse at 20% 60%, #78350f 0%, transparent 50%), radial-gradient(ellipse at 65% 30%, #292524 0%, transparent 55%)",
+              }}
+            />
+          </>
+        )}
         <div className="absolute inset-0 bg-black/40" />
         <div className="relative z-10 h-full flex items-end px-16 pb-12 pt-20">
           <motion.h1

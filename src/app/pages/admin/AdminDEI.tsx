@@ -6,6 +6,8 @@ import { LoginGate } from "@/app/components/LoginGate";
 const NS = "dei";
 
 const DEFAULTS = {
+  "dei.banner.hide_image": "false",
+  "dei.banner.image_url": "",
   "dei.intro_1":
     "In Phi Gamma Nu, as one of our four pillars, diversity, equity, and inclusion (DEI) is crucial because it enriches our community, fosters innovation, and promotes equality. When people from different backgrounds, cultures, and perspectives come together, it creates a tapestry of experiences and ideas that drive social progress. DEI enhances our community by celebrating the uniqueness of individuals. It recognizes that each person has a distinct set of qualities shaped by their race, ethnicity, gender, sexual orientation, religion, abilities, and more. Embracing this diversity allows us to appreciate and learn from different traditions, languages, customs, and perspectives, fostering a more inclusive and tolerant society.",
   "dei.intro_2":
@@ -73,10 +75,20 @@ function AdminDEIContent() {
         <h1 className="text-white font-normal" style={{ fontFamily: "'Playfair Display', serif", fontSize: "clamp(1.8rem, 4vw, 2.8rem)" }}>
           DEI &amp; Outreach Page
         </h1>
-        <p className="text-white/40 text-sm mt-2">Edit the DEI text blocks and photo gallery captions and images.</p>
+        <p className="text-white/40 text-sm mt-2">Edit the DEI banner, text blocks, and photo gallery captions and images.</p>
       </div>
 
       <div className="px-8 md:px-16 py-12 max-w-4xl">
+
+        <Section title="Hero Banner">
+          <ImageField
+            label="Banner background image URL"
+            value={fields["dei.banner.image_url"]}
+            onChange={set("dei.banner.image_url")}
+            hideValue={fields["dei.banner.hide_image"]}
+            onToggleHide={toggleHide("dei.banner.hide_image")}
+          />
+        </Section>
 
         <Section title="What's DEI to PGN? — Text">
           <Field label="First paragraph">
@@ -175,6 +187,57 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
       <label className="text-sm font-semibold text-gray-700">{label}</label>
       {hint && <p className="text-xs text-gray-400 -mt-0.5">{hint}</p>}
       {children}
+    </div>
+  );
+}
+
+function ImageField({
+  label,
+  value,
+  onChange,
+  hideValue = "false",
+  onToggleHide,
+}: {
+  label: string;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  hideValue?: string;
+  onToggleHide?: () => void;
+}) {
+  const isHidden = hideValue === "true";
+  return (
+    <div className="space-y-3">
+      {onToggleHide && (
+        <div className="flex items-center justify-between p-3.5 rounded-xl bg-stone-50 border border-stone-200/70">
+          <div>
+            <p className="text-xs font-semibold text-gray-800">Display Banner Image on Page</p>
+            <p className="text-[11px] text-gray-500">
+              {isHidden ? "Banner image is currently hidden. Fallback elegant gradient is shown." : "Banner image is visible on the public page."}
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={!isHidden}
+            onClick={onToggleHide}
+            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+              !isHidden ? "bg-[#7A0C0C]" : "bg-gray-300"
+            }`}
+          >
+            <span
+              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                !isHidden ? "translate-x-5" : "translate-x-0"
+              }`}
+            />
+          </button>
+        </div>
+      )}
+      <Field label={label} hint="Paste a direct image link (https://…). Leave blank to use the default gradient banner.">
+        <input type="url" value={value} onChange={onChange} placeholder="https://example.com/banner.jpg" className={inputCls} />
+        {value && !isHidden && (
+          <img src={value} alt="Preview" className="mt-3 w-48 h-28 object-cover rounded-xl border border-gray-200" />
+        )}
+      </Field>
     </div>
   );
 }
