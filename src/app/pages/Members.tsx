@@ -5,6 +5,9 @@ import { Linkedin } from "lucide-react";
 // ── Rotating subtitle words ───────────────────────────────────────────────────
 const WORDS = ["philanthropists", "professionals", "brothers", "leaders", "innovators"];
 
+// ── Greek Pledge Class Canonical Order ────────────────────────────────────────
+const PLEDGE_CLASSES = ["Tau", "Upsilon", "Phi", "Chi", "Psi", "Omega"] as const;
+
 // ── Member types ──────────────────────────────────────────────────────────────
 type Member = {
   name?: string;
@@ -22,53 +25,92 @@ type Member = {
 
 // ── Hardcoded fallback data ───────────────────────────────────────────────────
 const BOARD: Member[] = [
-  { first: "Elliott", last: "Nederhood", role: "President", major: "Business Administration", minor: "Minor in Philosophy", pledge_class: "Fall 2023", linkedin_url: "https://www.linkedin.com/", hue: "from-amber-900 via-amber-800 to-stone-700", categories: ["BOARD"] },
-  { first: "Jing", last: "Li", role: "VP Professional Development", major: "Business Administration", pledge_class: "Winter 2024", linkedin_url: "https://www.linkedin.com/", hue: "from-slate-700 via-slate-600 to-slate-500", categories: ["BOARD"] },
-  { first: "Alden", last: "King", role: "VP Internal", major: "Business Administration", pledge_class: "Fall 2023", linkedin_url: "https://www.linkedin.com/", hue: "from-stone-600 via-stone-500 to-stone-400", categories: ["BOARD"] },
-  { first: "Ruth", last: "Dai", role: "VP External", major: "Business Administration", minor: "Minor in Political Science", pledge_class: "Winter 2024", linkedin_url: "https://www.linkedin.com/", hue: "from-rose-900 via-rose-800 to-rose-700", categories: ["BOARD"] },
-  { first: "Claire", last: "Guo", role: "VP Membership", major: "Business Administration", minor: "Minor in Sustainability", pledge_class: "Fall 2024", linkedin_url: "https://www.linkedin.com/", hue: "from-zinc-700 via-zinc-600 to-zinc-500", categories: ["BOARD"] },
-  { first: "Marcus", last: "Chen", role: "VP Finance", major: "Economics", minor: "Minor in Statistics", pledge_class: "Winter 2024", linkedin_url: "https://www.linkedin.com/", hue: "from-amber-800 via-amber-700 to-amber-600", categories: ["BOARD"] },
-  { first: "Priya", last: "Sharma", role: "VP Marketing", major: "Business Administration", minor: "Minor in Psychology", pledge_class: "Fall 2024", linkedin_url: "https://www.linkedin.com/", hue: "from-stone-500 via-stone-400 to-stone-300", categories: ["BOARD"] },
-  { first: "Daniel", last: "Park", role: "VP Alumni Relations", major: "Economics", pledge_class: "Fall 2023", linkedin_url: "https://www.linkedin.com/", hue: "from-slate-600 via-slate-500 to-slate-400", categories: ["BOARD"] },
-  { first: "Sophia", last: "Williams", role: "VP Events", major: "Business Administration", pledge_class: "Winter 2024", linkedin_url: "https://www.linkedin.com/", hue: "from-rose-800 via-rose-700 to-rose-600", categories: ["BOARD"] },
-  { first: "James", last: "Liu", role: "Secretary", major: "Business Administration", minor: "Minor in Data Science", pledge_class: "Fall 2024", linkedin_url: "https://www.linkedin.com/", hue: "from-zinc-800 via-zinc-700 to-zinc-600", categories: ["BOARD"] },
+  { first: "Elliott", last: "Nederhood", role: "President", major: "Business Administration", minor: "Minor in Philosophy", pledge_class: "Tau", linkedin_url: "https://www.linkedin.com/", hue: "from-amber-900 via-amber-800 to-stone-700", categories: ["BOARD", "ACTIVES"] },
+  { first: "Jing", last: "Li", role: "VP Professional Development", major: "Business Administration", pledge_class: "Tau", linkedin_url: "https://www.linkedin.com/", hue: "from-slate-700 via-slate-600 to-slate-500", categories: ["BOARD", "ACTIVES"] },
+  { first: "Alden", last: "King", role: "VP Internal", major: "Business Administration", pledge_class: "Tau", linkedin_url: "https://www.linkedin.com/", hue: "from-stone-600 via-stone-500 to-stone-400", categories: ["BOARD", "ACTIVES"] },
+  { first: "Ruth", last: "Dai", role: "VP External", major: "Business Administration", minor: "Minor in Political Science", pledge_class: "Upsilon", linkedin_url: "https://www.linkedin.com/", hue: "from-rose-900 via-rose-800 to-rose-700", categories: ["BOARD", "ACTIVES"] },
+  { first: "Claire", last: "Guo", role: "VP Membership", major: "Business Administration", minor: "Minor in Sustainability", pledge_class: "Upsilon", linkedin_url: "https://www.linkedin.com/", hue: "from-zinc-700 via-zinc-600 to-zinc-500", categories: ["BOARD", "ACTIVES"] },
+  { first: "Marcus", last: "Chen", role: "VP Finance", major: "Economics", minor: "Minor in Statistics", pledge_class: "Phi", linkedin_url: "https://www.linkedin.com/", hue: "from-amber-800 via-amber-700 to-amber-600", categories: ["BOARD", "ACTIVES"] },
+  { first: "Priya", last: "Sharma", role: "VP Marketing", major: "Business Administration", minor: "Minor in Psychology", pledge_class: "Phi", linkedin_url: "https://www.linkedin.com/", hue: "from-stone-500 via-stone-400 to-stone-300", categories: ["BOARD", "ACTIVES"] },
+  { first: "Daniel", last: "Park", role: "VP Alumni Relations", major: "Economics", pledge_class: "Chi", linkedin_url: "https://www.linkedin.com/", hue: "from-slate-600 via-slate-500 to-slate-400", categories: ["BOARD", "ACTIVES"] },
+  { first: "Sophia", last: "Williams", role: "VP Events", major: "Business Administration", pledge_class: "Chi", linkedin_url: "https://www.linkedin.com/", hue: "from-rose-800 via-rose-700 to-rose-600", categories: ["BOARD", "ACTIVES"] },
+  { first: "James", last: "Liu", role: "Secretary", major: "Business Administration", minor: "Minor in Data Science", pledge_class: "Psi", linkedin_url: "https://www.linkedin.com/", hue: "from-zinc-800 via-zinc-700 to-zinc-600", categories: ["BOARD", "ACTIVES"] },
 ];
 
 const CHAIRS: Member[] = [
-  { first: "Amy", last: "Zhang", role: "Director of Recruitment", major: "Business Administration", pledge_class: "Fall 2024", linkedin_url: "https://www.linkedin.com/", hue: "from-amber-700 via-amber-600 to-amber-500", categories: ["CHAIRS"] },
-  { first: "Kevin", last: "Wu", role: "Director of Professional Dev", major: "Computer Science", minor: "Minor in Business", pledge_class: "Winter 2024", linkedin_url: "https://www.linkedin.com/", hue: "from-stone-600 via-stone-500 to-stone-400", categories: ["CHAIRS"] },
-  { first: "Nadia", last: "Patel", role: "Director of Philanthropy", major: "Business Administration", minor: "Minor in Sociology", pledge_class: "Fall 2024", linkedin_url: "https://www.linkedin.com/", hue: "from-rose-700 via-rose-600 to-rose-500", categories: ["CHAIRS"] },
-  { first: "Tyler", last: "Johnson", role: "Director of DEI", major: "Economics", pledge_class: "Winter 2024", linkedin_url: "https://www.linkedin.com/", hue: "from-slate-500 via-slate-400 to-slate-300", categories: ["CHAIRS"] },
-  { first: "Lily", last: "Wang", role: "Director of Alumni", major: "Business Administration", minor: "Minor in Finance", pledge_class: "Fall 2024", linkedin_url: "https://www.linkedin.com/", hue: "from-zinc-600 via-zinc-500 to-zinc-400", categories: ["CHAIRS"] },
-  { first: "Ryan", last: "Kim", role: "Director of Events", major: "Business Administration", pledge_class: "Fall 2024", linkedin_url: "https://www.linkedin.com/", hue: "from-amber-800 via-amber-700 to-stone-600", categories: ["CHAIRS"] },
-  { first: "Sarah", last: "Martinez", role: "Director of Marketing", major: "Marketing", minor: "Minor in Design", pledge_class: "Winter 2025", linkedin_url: "https://www.linkedin.com/", hue: "from-stone-700 via-stone-600 to-stone-500", categories: ["CHAIRS"] },
-  { first: "David", last: "Lee", role: "Director of Finance", major: "Economics", minor: "Minor in Mathematics", pledge_class: "Fall 2024", linkedin_url: "https://www.linkedin.com/", hue: "from-rose-800 via-rose-700 to-rose-600", categories: ["CHAIRS"] },
-  { first: "Emma", last: "Brown", role: "Director of Membership", major: "Business Administration", pledge_class: "Winter 2025", linkedin_url: "https://www.linkedin.com/", hue: "from-slate-600 via-slate-500 to-slate-400", categories: ["CHAIRS"] },
-  { first: "Chris", last: "Nguyen", role: "Director of External Affairs", major: "International Business", pledge_class: "Winter 2025", linkedin_url: "https://www.linkedin.com/", hue: "from-zinc-700 via-zinc-600 to-zinc-500", categories: ["CHAIRS"] },
+  { first: "Amy", last: "Zhang", role: "Director of Recruitment", major: "Business Administration", pledge_class: "Upsilon", linkedin_url: "https://www.linkedin.com/", hue: "from-amber-700 via-amber-600 to-amber-500", categories: ["CHAIRS", "ACTIVES"] },
+  { first: "Kevin", last: "Wu", role: "Director of Professional Dev", major: "Computer Science", minor: "Minor in Business", pledge_class: "Phi", linkedin_url: "https://www.linkedin.com/", hue: "from-stone-600 via-stone-500 to-stone-400", categories: ["CHAIRS", "ACTIVES"] },
+  { first: "Nadia", last: "Patel", role: "Director of Philanthropy", major: "Business Administration", minor: "Minor in Sociology", pledge_class: "Phi", linkedin_url: "https://www.linkedin.com/", hue: "from-rose-700 via-rose-600 to-rose-500", categories: ["CHAIRS", "ACTIVES"] },
+  { first: "Tyler", last: "Johnson", role: "Director of DEI", major: "Economics", pledge_class: "Chi", linkedin_url: "https://www.linkedin.com/", hue: "from-slate-500 via-slate-400 to-slate-300", categories: ["CHAIRS", "ACTIVES"] },
+  { first: "Lily", last: "Wang", role: "Director of Alumni", major: "Business Administration", minor: "Minor in Finance", pledge_class: "Chi", linkedin_url: "https://www.linkedin.com/", hue: "from-zinc-600 via-zinc-500 to-zinc-400", categories: ["CHAIRS", "ACTIVES"] },
+  { first: "Ryan", last: "Kim", role: "Director of Events", major: "Business Administration", pledge_class: "Psi", linkedin_url: "https://www.linkedin.com/", hue: "from-amber-800 via-amber-700 to-stone-600", categories: ["CHAIRS", "ACTIVES"] },
+  { first: "Sarah", last: "Martinez", role: "Director of Marketing", major: "Marketing", minor: "Minor in Design", pledge_class: "Psi", linkedin_url: "https://www.linkedin.com/", hue: "from-stone-700 via-stone-600 to-stone-500", categories: ["CHAIRS", "ACTIVES"] },
+  { first: "David", last: "Lee", role: "Director of Finance", major: "Economics", minor: "Minor in Mathematics", pledge_class: "Omega", linkedin_url: "https://www.linkedin.com/", hue: "from-rose-800 via-rose-700 to-rose-600", categories: ["CHAIRS", "ACTIVES"] },
+  { first: "Emma", last: "Brown", role: "Director of Membership", major: "Business Administration", pledge_class: "Omega", linkedin_url: "https://www.linkedin.com/", hue: "from-slate-600 via-slate-500 to-slate-400", categories: ["CHAIRS", "ACTIVES"] },
+  { first: "Chris", last: "Nguyen", role: "Director of External Affairs", major: "International Business", pledge_class: "Omega", linkedin_url: "https://www.linkedin.com/", hue: "from-zinc-700 via-zinc-600 to-zinc-500", categories: ["CHAIRS", "ACTIVES"] },
 ];
 
 const ACTIVES: Member[] = [
-  { first: "Alex", last: "Torres", role: "Active Member", major: "Business Administration", pledge_class: "Fall 2024", linkedin_url: "https://www.linkedin.com/", hue: "from-amber-700 via-amber-600 to-amber-500", categories: ["ACTIVES"] },
-  { first: "Jordan", last: "Smith", role: "Active Member", major: "Economics", minor: "Minor in CS", pledge_class: "Winter 2025", linkedin_url: "https://www.linkedin.com/", hue: "from-stone-500 via-stone-400 to-stone-300", categories: ["ACTIVES"] },
-  { first: "Morgan", last: "Davis", role: "Active Member", major: "Business Administration", pledge_class: "Winter 2025", linkedin_url: "https://www.linkedin.com/", hue: "from-rose-700 via-rose-600 to-rose-500", categories: ["ACTIVES"] },
-  { first: "Taylor", last: "Wilson", role: "Active Member", major: "Finance", pledge_class: "Fall 2024", linkedin_url: "https://www.linkedin.com/", hue: "from-slate-600 via-slate-500 to-slate-400", categories: ["ACTIVES"] },
-  { first: "Casey", last: "Anderson", role: "Active Member", major: "Business Administration", minor: "Minor in French", pledge_class: "Winter 2025", linkedin_url: "https://www.linkedin.com/", hue: "from-zinc-600 via-zinc-500 to-zinc-400", categories: ["ACTIVES"] },
-  { first: "Riley", last: "Thomas", role: "Active Member", major: "Economics", pledge_class: "Fall 2024", linkedin_url: "https://www.linkedin.com/", hue: "from-amber-800 via-amber-700 to-amber-600", categories: ["ACTIVES"] },
-  { first: "Drew", last: "Jackson", role: "Active Member", major: "Business Administration", pledge_class: "Winter 2025", linkedin_url: "https://www.linkedin.com/", hue: "from-stone-600 via-stone-500 to-stone-400", categories: ["ACTIVES"] },
-  { first: "Quinn", last: "White", role: "Active Member", major: "Marketing", pledge_class: "Winter 2025", linkedin_url: "https://www.linkedin.com/", hue: "from-rose-800 via-rose-700 to-rose-600", categories: ["ACTIVES"] },
-  { first: "Avery", last: "Harris", role: "Active Member", major: "Business Administration", minor: "Minor in Spanish", pledge_class: "Fall 2024", linkedin_url: "https://www.linkedin.com/", hue: "from-slate-700 via-slate-600 to-slate-500", categories: ["ACTIVES"] },
-  { first: "Reese", last: "Martin", role: "Active Member", major: "Economics", pledge_class: "Winter 2025", linkedin_url: "https://www.linkedin.com/", hue: "from-zinc-700 via-zinc-600 to-zinc-500", categories: ["ACTIVES"] },
-  { first: "Logan", last: "Garcia", role: "Active Member", major: "Business Administration", pledge_class: "Fall 2024", linkedin_url: "https://www.linkedin.com/", hue: "from-amber-900 via-amber-800 to-amber-700", categories: ["ACTIVES"] },
-  { first: "Parker", last: "Rodriguez", role: "Active Member", major: "Finance", minor: "Minor in Data Science", pledge_class: "Winter 2025", linkedin_url: "https://www.linkedin.com/", hue: "from-stone-700 via-stone-600 to-stone-500", categories: ["ACTIVES"] },
-  { first: "Sage", last: "Lewis", role: "Active Member", major: "Business Administration", pledge_class: "Fall 2024", linkedin_url: "https://www.linkedin.com/", hue: "from-rose-900 via-rose-800 to-rose-700", categories: ["ACTIVES"] },
-  { first: "Finley", last: "Lee", role: "Active Member", major: "Economics", pledge_class: "Winter 2025", linkedin_url: "https://www.linkedin.com/", hue: "from-slate-500 via-slate-400 to-slate-300", categories: ["ACTIVES"] },
-  { first: "Blake", last: "Walker", role: "Active Member", major: "Business Administration", minor: "Minor in Philosophy", pledge_class: "Fall 2024", linkedin_url: "https://www.linkedin.com/", hue: "from-zinc-500 via-zinc-400 to-zinc-300", categories: ["ACTIVES"] },
+  { first: "Alex", last: "Torres", role: "Active Member", major: "Business Administration", pledge_class: "Tau", linkedin_url: "https://www.linkedin.com/", hue: "from-amber-700 via-amber-600 to-amber-500", categories: ["ACTIVES"] },
+  { first: "Jordan", last: "Smith", role: "Active Member", major: "Economics", minor: "Minor in CS", pledge_class: "Tau", linkedin_url: "https://www.linkedin.com/", hue: "from-stone-500 via-stone-400 to-stone-300", categories: ["ACTIVES"] },
+  { first: "Morgan", last: "Davis", role: "Active Member", major: "Business Administration", pledge_class: "Upsilon", linkedin_url: "https://www.linkedin.com/", hue: "from-rose-700 via-rose-600 to-rose-500", categories: ["ACTIVES"] },
+  { first: "Taylor", last: "Wilson", role: "Active Member", major: "Finance", pledge_class: "Upsilon", linkedin_url: "https://www.linkedin.com/", hue: "from-slate-600 via-slate-500 to-slate-400", categories: ["ACTIVES"] },
+  { first: "Casey", last: "Anderson", role: "Active Member", major: "Business Administration", minor: "Minor in French", pledge_class: "Phi", linkedin_url: "https://www.linkedin.com/", hue: "from-zinc-600 via-zinc-500 to-zinc-400", categories: ["ACTIVES"] },
+  { first: "Riley", last: "Thomas", role: "Active Member", major: "Economics", pledge_class: "Phi", linkedin_url: "https://www.linkedin.com/", hue: "from-amber-800 via-amber-700 to-amber-600", categories: ["ACTIVES"] },
+  { first: "Drew", last: "Jackson", role: "Active Member", major: "Business Administration", pledge_class: "Chi", linkedin_url: "https://www.linkedin.com/", hue: "from-stone-600 via-stone-500 to-stone-400", categories: ["ACTIVES"] },
+  { first: "Quinn", last: "White", role: "Active Member", major: "Marketing", pledge_class: "Chi", linkedin_url: "https://www.linkedin.com/", hue: "from-rose-800 via-rose-700 to-rose-600", categories: ["ACTIVES"] },
+  { first: "Avery", last: "Harris", role: "Active Member", major: "Business Administration", minor: "Minor in Spanish", pledge_class: "Psi", linkedin_url: "https://www.linkedin.com/", hue: "from-slate-700 via-slate-600 to-slate-500", categories: ["ACTIVES"] },
+  { first: "Reese", last: "Martin", role: "Active Member", major: "Economics", pledge_class: "Psi", linkedin_url: "https://www.linkedin.com/", hue: "from-zinc-700 via-zinc-600 to-zinc-500", categories: ["ACTIVES"] },
+  { first: "Logan", last: "Garcia", role: "Active Member", major: "Business Administration", pledge_class: "Omega", linkedin_url: "https://www.linkedin.com/", hue: "from-amber-900 via-amber-800 to-amber-700", categories: ["ACTIVES"] },
+  { first: "Parker", last: "Rodriguez", role: "Active Member", major: "Finance", minor: "Minor in Data Science", pledge_class: "Omega", linkedin_url: "https://www.linkedin.com/", hue: "from-stone-700 via-stone-600 to-stone-500", categories: ["ACTIVES"] },
+  { first: "Sage", last: "Lewis", role: "Active Member", major: "Business Administration", pledge_class: "Omega", linkedin_url: "https://www.linkedin.com/", hue: "from-rose-900 via-rose-800 to-rose-700", categories: ["ACTIVES"] },
 ];
 
 const FALLBACK_ALL: Member[] = [...BOARD, ...CHAIRS, ...ACTIVES];
 
 const TABS = ["BOARD", "CHAIRS", "ACTIVES"] as const;
 type Tab = typeof TABS[number];
+
+function normalizePledgeClass(raw?: string): string {
+  if (!raw) return "Active Members";
+  const trimmed = raw.trim();
+  for (const pc of PLEDGE_CLASSES) {
+    if (
+      new RegExp(`\\b${pc}\\b`, "i").test(trimmed) ||
+      trimmed.toLowerCase() === pc.toLowerCase()
+    ) {
+      return pc;
+    }
+  }
+  return trimmed;
+}
+
+function groupMembersByPledgeClass(allActives: Member[]) {
+  const groups: { name: string; members: Member[] }[] = [];
+  const map = new Map<string, Member[]>();
+
+  for (const m of allActives) {
+    const key = normalizePledgeClass(m.pledge_class);
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(m);
+  }
+
+  // 1. Add Greek classes in exact specified order: Tau, Upsilon, Phi, Chi, Psi, Omega
+  for (const pc of PLEDGE_CLASSES) {
+    if (map.has(pc)) {
+      groups.push({ name: `${pc} Class`, members: map.get(pc)! });
+      map.delete(pc);
+    }
+  }
+
+  // 2. Add any remaining pledge class groups
+  for (const [key, mems] of map.entries()) {
+    const formattedName = key.toLowerCase().includes("class") ? key : `${key} Class`;
+    groups.push({ name: formattedName, members: mems });
+  }
+
+  return groups;
+}
 
 // ── Member Card ───────────────────────────────────────────────────────────────
 function MemberCard({ member, index }: { member: Member; index: number }) {
@@ -83,10 +125,10 @@ function MemberCard({ member, index }: { member: Member; index: number }) {
   const cardContent = (
     <motion.div
       className="relative bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col h-full overflow-hidden group transition-all duration-300 hover:shadow-xl hover:-translate-y-1.5 cursor-pointer"
-      initial={{ opacity: 0, y: 30 }}
+      initial={{ opacity: 0, y: 20 }}
       whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, amount: 0.15 }}
-      transition={{ duration: 0.5, ease: "easeOut", delay: (index % 5) * 0.08 }}
+      viewport={{ once: true, margin: "100px" }}
+      transition={{ duration: 0.4, ease: "easeOut", delay: (index % 5) * 0.05 }}
     >
       {/* Photo */}
       <div className="mb-5">
@@ -125,7 +167,7 @@ function MemberCard({ member, index }: { member: Member; index: number }) {
         {member.minor && <p>{member.minor}</p>}
         {member.pledge_class && (
           <p className="text-xs text-stone-400 font-medium mt-1.5">
-            {member.pledge_class}
+            {member.pledge_class.toLowerCase().includes("class") ? member.pledge_class : `${member.pledge_class} Class`}
           </p>
         )}
       </div>
@@ -192,7 +234,7 @@ export default function Members() {
               linkedin_url: m.linkedin_url || undefined,
               hue: m.hue ?? "from-amber-900 via-amber-800 to-stone-700",
               photo_url: m.photo_url ?? undefined,
-              categories: m.categories ?? [],
+              categories: m.categories ?? ["ACTIVES"],
             }))
           );
           setDbLoaded(true);
@@ -202,12 +244,17 @@ export default function Members() {
   }, []);
 
   const source = dbLoaded ? allMembers : FALLBACK_ALL;
-  const members = source.filter((m) => (m.categories ?? []).includes(activeTab));
+  // All members are actives. For BOARD and CHAIRS, filter by category:
+  const members =
+    activeTab === "ACTIVES"
+      ? source
+      : source.filter((m) => (m.categories ?? []).includes(activeTab));
+
+  const groupedActives = groupMembersByPledgeClass(source);
 
   return (
     <div className="min-h-screen bg-white pb-24">
-
-      {/* Hero Banner — matches About Us */}
+      {/* Hero Banner */}
       <div className="relative w-full h-[52vh] overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-stone-600 via-stone-700 to-stone-800" />
         <div
@@ -232,8 +279,7 @@ export default function Members() {
       </div>
 
       {/* Content below hero */}
-      <div className="pt-12 px-10">
-
+      <div className="pt-12 px-6 sm:px-10">
         {/* Tab bar */}
         <motion.div
           className="flex justify-center mb-12"
@@ -259,22 +305,55 @@ export default function Members() {
           </div>
         </motion.div>
 
-        {/* Member grid */}
+        {/* Member list / Pledge class grouped list */}
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
-            className="max-w-7xl mx-auto grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-5"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.25 }}
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ duration: 0.3 }}
           >
-            {members.map((m, i) => (
-              <MemberCard key={`${m.first}-${m.last}`} member={m} index={i} />
-            ))}
+            {activeTab === "ACTIVES" ? (
+              <div className="max-w-7xl mx-auto space-y-16">
+                {groupedActives.map(({ name: groupTitle, members: groupMembers }, groupIdx) => (
+                  <div key={groupTitle} className="space-y-6">
+                    <div className="flex items-center gap-4 pb-3 border-b border-stone-200">
+                      <h2
+                        className="text-2xl md:text-3xl font-normal text-stone-900 tracking-tight"
+                        style={{ fontFamily: "'Playfair Display', serif" }}
+                      >
+                        {groupTitle}
+                      </h2>
+                      <span className="text-xs font-semibold tracking-wider uppercase text-stone-500 bg-stone-100 px-3 py-1 rounded-full">
+                        {groupMembers.length} {groupMembers.length === 1 ? "Brother" : "Brothers"}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-5">
+                      {groupMembers.map((m, i) => (
+                        <MemberCard
+                          key={`${m.name || m.first || ""}-${m.last || ""}-${groupIdx}-${i}`}
+                          member={m}
+                          index={i}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="max-w-7xl mx-auto grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-5">
+                {members.map((m, i) => (
+                  <MemberCard
+                    key={`${m.name || m.first || ""}-${m.last || ""}-${i}`}
+                    member={m}
+                    index={i}
+                  />
+                ))}
+              </div>
+            )}
           </motion.div>
         </AnimatePresence>
-
       </div>
     </div>
   );

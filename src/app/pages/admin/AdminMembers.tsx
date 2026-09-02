@@ -18,7 +18,11 @@ import {
 import { LoginGate } from "@/app/components/LoginGate";
 
 type Category = "BOARD" | "CHAIRS" | "ACTIVES";
-const TABS: Category[] = ["BOARD", "CHAIRS", "ACTIVES"];
+const FILTER_TABS = ["ALL", "BOARD", "CHAIRS"] as const;
+const LEADERSHIP_ROLES: { id: Category; label: string }[] = [
+  { id: "BOARD", label: "Executive Board (BOARD)" },
+  { id: "CHAIRS", label: "Committee Chair / Director (CHAIRS)" },
+];
 
 type DBMember = {
   id: number;
@@ -55,7 +59,7 @@ const EMPTY_FORM: MemberForm = {
   pledge_class: "",
   linkedin_url: "",
   photo_url: "",
-  categories: [],
+  categories: ["ACTIVES"],
 };
 
 type ParsedCSVRow = {
@@ -80,7 +84,6 @@ function parseCSV(text: string): ParsedCSVRow[] {
 
   if (lines.length < 2) return [];
 
-  // Parse a CSV line taking into account quoted fields
   const parseLine = (line: string): string[] => {
     const values: string[] = [];
     let current = "";
@@ -107,7 +110,6 @@ function parseCSV(text: string): ParsedCSVRow[] {
 
   const rawHeaders = parseLine(lines[0]).map((h) => h.toLowerCase().replace(/[^a-z0-9]/g, ""));
 
-  // Find column indices
   const nameIdx = rawHeaders.findIndex((h) => h === "name" || h === "fullname" || h === "member");
   const pledgeIdx = rawHeaders.findIndex((h) => h === "pledgeclass" || h === "class" || h === "pc");
   const posIdx = rawHeaders.findIndex((h) => h === "position" || h === "role" || h === "title");
@@ -121,7 +123,7 @@ function parseCSV(text: string): ParsedCSVRow[] {
 
   for (let i = 1; i < lines.length; i++) {
     const cols = parseLine(lines[i]);
-    if (cols.every((c) => !c)) continue; // skip blank line
+    if (cols.every((c) => !c)) continue;
 
     const name = nameIdx !== -1 ? cols[nameIdx] || "" : cols[0] || "";
     const pledge_class = pledgeIdx !== -1 ? cols[pledgeIdx] || "" : "";
@@ -133,10 +135,14 @@ function parseCSV(text: string): ParsedCSVRow[] {
       linkedin_url = `https://${linkedin_url}`;
     }
 
-    let categories: Category[] = [];
+    let categories: Category[] = ["ACTIVES"];
     if (catIdx !== -1 && cols[catIdx]) {
       const rawCats = cols[catIdx].toUpperCase().split(/[,;|]/).map((c) => c.trim());
-      categories = rawCats.filter((c): c is Category => TABS.includes(c as Category));
+      rawCats.forEach((c) => {
+        if ((c === "BOARD" || c === "CHAIRS" || c === "ACTIVES") && !categories.includes(c as Category)) {
+          categories.push(c as Category);
+        }
+      });
     }
     const photo_url = photoIdx !== -1 ? cols[photoIdx] || "" : "";
 
@@ -148,7 +154,7 @@ function parseCSV(text: string): ParsedCSVRow[] {
       major: major.trim(),
       minor: minor.trim(),
       linkedin_url: linkedin_url.trim(),
-      categories: categories.length > 0 ? categories : undefined,
+      categories,
       photo_url: photo_url.trim() || undefined,
       valid,
       error: !valid ? "Name is required" : undefined,
@@ -178,7 +184,7 @@ function downloadTemplate() {
 
 function AdminMembersContent() {
   const [members, setMembers] = useState<DBMember[]>([]);
-  const [activeTab, setActiveTab] = useState<Category | "ALL">("ALL");
+  const [activeTab, setActiveTab] = useState<typeof FILTER_TABS[number]>("ALL");
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<MemberForm>({ ...EMPTY_FORM });
@@ -209,7 +215,9 @@ function AdminMembersContent() {
   }, [fetchMembers]);
 
   const visible =
-    activeTab === "ALL" ? members : members.filter((m) => m.categories?.includes(activeTab));
+    activeTab === "ALL"
+      ? members
+      : members.filter((m) => m.categories?.includes(activeTab as Category));
 
   function startEdit(m: DBMember) {
     setEditingId(m.id);
@@ -222,18 +230,20 @@ function AdminMembersContent() {
       pledge_class: m.pledge_class ?? "",
       linkedin_url: m.linkedin_url ?? "",
       photo_url: m.photo_url ?? "",
-      categories: m.categories ?? [],
+      categories: m.categories ?? ["ACTIVES"],
     });
   }
 
   async function saveEdit(id: number) {
     setApiError("");
+    const finalCategories = Array.from(new Set([...editForm.categories, "ACTIVES"]));
     const res = await fetch(`/api/members/${id}`, {
       method: "PUT",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...editForm,
+        categories: finalCategories,
         sort_order: members.find((m) => m.id === id)?.sort_order ?? 0,
       }),
     });
@@ -267,11 +277,16 @@ function AdminMembersContent() {
       setApiError("Member name is required.");
       return;
     }
+    const finalCategories = Array.from(new Set([...addForm.categories, "ACTIVES"]));
     const res = await fetch("/api/members", {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...addForm, sort_order: members.length }),
+      body: JSON.stringify({
+        ...addForm,
+        categories: finalCategories,
+        sort_order: members.length,
+      }),
     });
     if (res.ok) {
       setAddForm({ ...EMPTY_FORM });
@@ -323,7 +338,7 @@ function AdminMembersContent() {
             major: r.major,
             minor: r.minor,
             linkedin_url: r.linkedin_url,
-            categories: r.categories,
+            categories: Array.from(new Set([...(r.categories || []), "ACTIVES"])),
             photo_url: r.photo_url,
           })),
           mode: bulkMode,
@@ -361,6 +376,7 @@ function AdminMembersContent() {
 
   return (
     <div className="min-h-screen bg-[#FAFAF9]" style={{ fontFamily: "'Inter', sans-serif" }}>
+      {/* Header */}
       <div className="bg-[#1a0303] px-8 md:px-16 py-10 pt-24">
         <Link
           to="/admin"
@@ -579,7 +595,7 @@ function AdminMembersContent() {
         {/* Tab bar + Add button */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
           <div className="flex gap-2">
-            {(["ALL", ...TABS] as const).map((tab) => (
+            {FILTER_TABS.map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -589,7 +605,7 @@ function AdminMembersContent() {
                     : "bg-white border-gray-300 text-gray-600 hover:border-[#7A0C0C] hover:text-[#7A0C0C]"
                 }`}
               >
-                {tab}
+                {tab === "ALL" ? "All Actives" : tab}
               </button>
             ))}
           </div>
@@ -648,7 +664,7 @@ function AdminMembersContent() {
           </div>
         ) : visible.length === 0 ? (
           <div className="text-center py-16 text-gray-400 text-sm">
-            No members in this category. Add one above or upload a CSV file.
+            No members found in this category. Add one above or upload a CSV file.
           </div>
         ) : (
           <div className="space-y-3">
@@ -818,7 +834,7 @@ function MemberFormFields({
           label="Pledge Class"
           value={form.pledge_class}
           onChange={set("pledge_class")}
-          placeholder="e.g. Fall 2024"
+          placeholder="e.g. Tau, Upsilon, Phi, Chi, Psi, Omega"
         />
         <LabeledInput
           label="LinkedIn URL"
@@ -843,17 +859,20 @@ function MemberFormFields({
         />
       )}
       <div>
-        <p className="text-sm font-semibold text-gray-700 mb-2">Categories</p>
-        <div className="flex gap-3">
-          {TABS.map((cat) => (
-            <label key={cat} className="flex items-center gap-2 cursor-pointer select-none">
+        <p className="text-sm font-semibold text-gray-700 mb-1">Leadership Roles (Optional)</p>
+        <p className="text-xs text-gray-500 mb-2">
+          All members are automatically actives. Check if this member is also on Board or Chairs:
+        </p>
+        <div className="flex flex-wrap gap-4">
+          {LEADERSHIP_ROLES.map(({ id, label }) => (
+            <label key={id} className="flex items-center gap-2 cursor-pointer select-none">
               <input
                 type="checkbox"
-                checked={form.categories.includes(cat)}
-                onChange={() => toggleCat(cat)}
-                className="accent-[#7A0C0C] w-4 h-4"
+                checked={form.categories.includes(id)}
+                onChange={() => toggleCat(id)}
+                className="accent-[#7A0C0C] w-4 h-4 rounded"
               />
-              <span className="text-sm text-gray-700">{cat}</span>
+              <span className="text-sm text-gray-700 font-medium">{label}</span>
             </label>
           ))}
         </div>
@@ -896,4 +915,3 @@ export default function AdminMembers() {
     </LoginGate>
   );
 }
-

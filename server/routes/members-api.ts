@@ -47,6 +47,7 @@ membersApiRouter.post("/", requireAdmin, async (req: Request, res: Response) => 
     return;
   }
   try {
+    const finalCategories = Array.from(new Set([...(categories || []), "ACTIVES"]));
     const { rows } = await pool.query(
       `INSERT INTO members (name, first_name, last_name, role, major, minor, pledge_class, linkedin_url, photo_url, hue, categories, sort_order)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
@@ -61,7 +62,7 @@ membersApiRouter.post("/", requireAdmin, async (req: Request, res: Response) => 
         linkedin_url || null,
         photo_url || null,
         hue ?? "from-amber-900 via-amber-800 to-stone-700",
-        categories ?? [],
+        finalCategories,
         sort_order ?? 0,
       ],
     );
@@ -136,25 +137,24 @@ membersApiRouter.post("/bulk", requireAdmin, async (req: Request, res: Response)
       if (!Array.isArray(categories)) {
         categories = [];
       }
-      if (categories.length === 0) {
-        const lowerRole = role.toLowerCase();
-        if (
-          lowerRole.includes("president") ||
-          lowerRole.includes("vp ") ||
-          lowerRole.includes("vice president") ||
-          lowerRole.includes("secretary") ||
-          lowerRole.includes("treasurer")
-        ) {
-          categories = ["BOARD"];
-        } else if (
-          lowerRole.includes("director") ||
-          lowerRole.includes("chair") ||
-          lowerRole.includes("lead")
-        ) {
-          categories = ["CHAIRS"];
-        } else {
-          categories = ["ACTIVES"];
-        }
+      const lowerRole = role.toLowerCase();
+      if (
+        lowerRole.includes("president") ||
+        lowerRole.includes("vp ") ||
+        lowerRole.includes("vice president") ||
+        lowerRole.includes("secretary") ||
+        lowerRole.includes("treasurer")
+      ) {
+        if (!categories.includes("BOARD")) categories.push("BOARD");
+      } else if (
+        lowerRole.includes("director") ||
+        lowerRole.includes("chair") ||
+        lowerRole.includes("lead")
+      ) {
+        if (!categories.includes("CHAIRS")) categories.push("CHAIRS");
+      }
+      if (!categories.includes("ACTIVES")) {
+        categories.push("ACTIVES");
       }
 
       const parts = fullName.split(/\s+/);
@@ -216,12 +216,13 @@ membersApiRouter.put("/:id", requireAdmin, async (req: Request, res: Response) =
     return;
   }
   try {
+    const finalCategories = Array.from(new Set([...(categories || []), "ACTIVES"]));
     const { rows } = await pool.query(
       `UPDATE members
        SET name=$1, first_name=$2, last_name=$3, role=$4, major=$5, minor=$6, pledge_class=$7, linkedin_url=$8,
            photo_url=$9, hue=$10, categories=$11, sort_order=$12
        WHERE id=$13 RETURNING *`,
-      [fullName, finalFirstName, finalLastName, role, major, minor, pledge_class ?? "", linkedin_url || null, photo_url || null, hue, categories, sort_order, id],
+      [fullName, finalFirstName, finalLastName, role, major, minor, pledge_class ?? "", linkedin_url || null, photo_url || null, hue, finalCategories, sort_order, id],
     );
     if (!rows.length) { res.status(404).json({ error: "Member not found" }); return; }
     res.json(rows[0]);
