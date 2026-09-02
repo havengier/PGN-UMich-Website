@@ -318,16 +318,13 @@ export default function Members() {
               <div className="max-w-7xl mx-auto space-y-16">
                 {groupedActives.map(({ name: groupTitle, members: groupMembers }, groupIdx) => (
                   <div key={groupTitle} className="space-y-6">
-                    <div className="flex items-center gap-4 pb-3 border-b border-stone-200">
+                    <div className="pb-3 border-b border-stone-200">
                       <h2
                         className="text-2xl md:text-3xl font-normal text-stone-900 tracking-tight"
                         style={{ fontFamily: "'Playfair Display', serif" }}
                       >
                         {groupTitle}
                       </h2>
-                      <span className="text-xs font-semibold tracking-wider uppercase text-stone-500 bg-stone-100 px-3 py-1 rounded-full">
-                        {groupMembers.length} {groupMembers.length === 1 ? "Brother" : "Brothers"}
-                      </span>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-5">
                       {groupMembers.map((m, i) => (
