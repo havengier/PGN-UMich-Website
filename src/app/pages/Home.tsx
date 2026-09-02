@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { motion } from "motion/react";
 import pgnVideo from "@/imports/PGN_Michigan__1_.mp4";
 import { useContent } from "@/app/hooks/useContent";
@@ -59,7 +60,20 @@ function PresidentWelcome() {
   const { get } = useContent("home");
 
   const hideImage = get("home.president.hide_image", "false") === "true";
-  const imageUrl = get("home.president.image_url", "");
+  const rawImageUrl = get("home.president.image_url", "");
+  // If no image is configured or if pointing to the legacy throttled/uncompressed external host (i.ibb.co),
+  // automatically serve the fast, optimized local chapter WebP photo.
+  const isLegacyExternal = rawImageUrl.includes("ibb.co");
+  const initialImageUrl = !rawImageUrl || isLegacyExternal ? "/president.webp" : rawImageUrl;
+
+  const [currentSrc, setCurrentSrc] = useState(initialImageUrl);
+  const [imgLoaded, setImgLoaded] = useState(false);
+
+  useEffect(() => {
+    const isLegacy = rawImageUrl.includes("ibb.co");
+    setCurrentSrc(!rawImageUrl || isLegacy ? "/president.webp" : rawImageUrl);
+  }, [rawImageUrl]);
+
   const imageWidth = Number(get("home.president.image_width", "288")) || 288;
   const yellowText = get("home.president.yellow_text", "Welcome to PGN at the University of Michigan!");
   const heading = get("home.president.heading", "President's Welcome");
@@ -87,15 +101,39 @@ function PresidentWelcome() {
       <div className={`max-w-7xl mx-auto flex flex-col md:flex-row ${hideImage ? "items-center justify-center" : "gap-12 md:gap-16 lg:gap-20 items-start"}`}>
         {!hideImage && (
           <motion.div
-            className="w-full md:flex-shrink-0 rounded-2xl overflow-hidden shadow-xl aspect-[3/4] bg-gradient-to-br from-amber-950 via-stone-800 to-stone-900"
+            className="w-full md:flex-shrink-0 rounded-2xl overflow-hidden shadow-xl aspect-[3/4] bg-gradient-to-br from-amber-950 via-stone-800 to-stone-900 relative"
             style={{ width: "100%", maxWidth: `${imageWidth}px` }}
             initial={{ opacity: 0, x: -60 }}
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true, amount: 0.3 }}
             transition={{ duration: 0.7, ease: "easeOut" }}
           >
-            {imageUrl ? (
-              <img src={imageUrl} alt="President" className="w-full h-full object-cover" />
+            {currentSrc ? (
+              <>
+                <img
+                  src={currentSrc}
+                  alt="President"
+                  loading="eager"
+                  decoding="async"
+                  {...{ fetchpriority: "high" }}
+                  width={742}
+                  height={1118}
+                  onLoad={() => setImgLoaded(true)}
+                  onError={() => {
+                    if (currentSrc !== "/president.webp") {
+                      setCurrentSrc("/president.webp");
+                    }
+                  }}
+                  className={`w-full h-full object-cover transition-opacity duration-300 ${
+                    imgLoaded ? "opacity-100" : "opacity-0"
+                  }`}
+                />
+                {!imgLoaded && (
+                  <div className="absolute inset-0 animate-pulse bg-stone-800 flex items-end justify-center pb-8">
+                    <span className="text-amber-200/30 text-xs tracking-widest uppercase">President</span>
+                  </div>
+                )}
+              </>
             ) : (
               <div className="w-full h-full flex items-end justify-center pb-8">
                 <span className="text-amber-200/40 text-xs tracking-widest uppercase">President</span>

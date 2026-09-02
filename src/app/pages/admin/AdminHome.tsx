@@ -230,14 +230,56 @@ function AdminHomeContent() {
             </button>
           </div>
 
-          <Field label="President Photo URL" hint="Paste a direct image link (https://…). Leave blank to use the default placeholder.">
+          <Field
+            label="President Photo URL"
+            hint="Paste a direct image link (https://…) or use the fast, local optimized photo (/president.webp). Leave blank to default to /president.webp."
+          >
             <input
               type="url"
               value={fields["home.president.image_url"]}
               onChange={set("home.president.image_url")}
-              placeholder="https://example.com/president.jpg"
+              placeholder="/president.webp"
               className={inputCls}
             />
+            {fields["home.president.image_url"]?.includes("ibb.co") && (
+              <div className="mt-2.5 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-start gap-2">
+                <span className="text-base leading-none">⚠️</span>
+                <div className="flex-1">
+                  <p className="font-semibold">Slow External Host Detected (ImgBB)</p>
+                  <p className="text-amber-800 mt-0.5">
+                    Images hosted on ImgBB take over 30-120+ seconds to load due to severe external bandwidth throttling. We converted and packaged this photo into an optimized local WebP asset (<code className="font-mono bg-amber-100/80 px-1 py-0.5 rounded">/president.webp</code>, 52 KB) that loads instantly in 10ms.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setFields((f) => ({ ...f, "home.president.image_url": "/president.webp" }))}
+                    className="mt-2 px-3 py-1 bg-amber-800 hover:bg-amber-900 text-white rounded font-medium text-xs transition-colors shadow-sm"
+                  >
+                    Switch to Fast Local Photo (/president.webp)
+                  </button>
+                </div>
+              </div>
+            )}
+            <div className="flex items-center gap-2 mt-2">
+              <button
+                type="button"
+                onClick={() => setFields((f) => ({ ...f, "home.president.image_url": "/president.webp" }))}
+                className="text-xs text-[#7A0C0C] hover:underline font-medium"
+              >
+                Set to default fast local photo (/president.webp)
+              </button>
+              {fields["home.president.image_url"] && (
+                <>
+                  <span className="text-gray-300">|</span>
+                  <button
+                    type="button"
+                    onClick={() => setFields((f) => ({ ...f, "home.president.image_url": "" }))}
+                    className="text-xs text-gray-500 hover:text-gray-700"
+                  >
+                    Clear field
+                  </button>
+                </>
+              )}
+            </div>
           </Field>
 
           {/* Image Size Control */}
@@ -297,9 +339,9 @@ function AdminHomeContent() {
                   width: `${Math.min(Number(fields["home.president.image_width"] || 288) * 0.55, 240)}px`,
                 }}
               >
-                {fields["home.president.image_url"] ? (
+                {fields["home.president.image_url"] || "/president.webp" ? (
                   <img
-                    src={fields["home.president.image_url"]}
+                    src={fields["home.president.image_url"] || "/president.webp"}
                     alt="President Preview"
                     className="w-full h-full object-cover"
                   />
