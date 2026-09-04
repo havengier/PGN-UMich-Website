@@ -6,6 +6,10 @@ import { LoginGate } from "@/app/components/LoginGate";
 const NS = "recruitment";
 
 const DEFAULTS = {
+  "recruitment.banner.hide_image": "false",
+  "recruitment.banner.image_url": "",
+  "recruitment.side_image.hide_image": "false",
+  "recruitment.side_image.image_url": "",
   "recruitment.body":
     "Fall 2026 recruitment is coming soon. Sign up to stay in the loop on events and applications.",
   "recruitment.cta_text": "Join Interest Form",
@@ -30,6 +34,9 @@ function AdminRecruitmentContent() {
   const set = (key: keyof Fields) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setFields((f) => ({ ...f, [key]: e.target.value }));
 
+  const toggleHide = (key: keyof Fields) => () =>
+    setFields((f) => ({ ...f, [key]: f[key] === "true" ? "false" : "true" }));
+
   async function handleSave() {
     setSaving(true);
     setStatus("idle");
@@ -44,7 +51,7 @@ function AdminRecruitmentContent() {
       if (res.ok) {
         setStatus("ok");
       } else {
-        const body = await res.json().catch(() => ({})) as { error?: string };
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
         setErrMsg(body.error ?? `HTTP ${res.status}`);
         setStatus("error");
       }
@@ -64,12 +71,33 @@ function AdminRecruitmentContent() {
         <h1 className="text-white font-normal" style={{ fontFamily: "'Playfair Display', serif", fontSize: "clamp(1.8rem, 4vw, 2.8rem)" }}>
           Recruitment Page
         </h1>
-        <p className="text-white/40 text-sm mt-2">Edit the recruitment body text and the interest form link.</p>
+        <p className="text-white/40 text-sm mt-2">Edit the hero banner, side photo, recruitment body text, and interest form link.</p>
       </div>
 
       <div className="px-8 md:px-16 py-12 max-w-4xl">
+        <Section title="Hero Banner">
+          <ImageField
+            label="Banner background image URL"
+            value={fields["recruitment.banner.image_url"]}
+            onChange={set("recruitment.banner.image_url")}
+            hideValue={fields["recruitment.banner.hide_image"]}
+            onToggleHide={toggleHide("recruitment.banner.hide_image")}
+            hint="Paste a direct image link (https://…). Leave blank to use the default gradient banner."
+          />
+        </Section>
 
-        <Section title="Copy">
+        <Section title="Side Photo">
+          <ImageField
+            label="Side photo URL"
+            value={fields["recruitment.side_image.image_url"]}
+            onChange={set("recruitment.side_image.image_url")}
+            hideValue={fields["recruitment.side_image.hide_image"]}
+            onToggleHide={toggleHide("recruitment.side_image.hide_image")}
+            hint="Displays to the right of the logo, text, and button. Leave blank for placeholder or toggle off to hide."
+          />
+        </Section>
+
+        <Section title="Recruitment Copy">
           <Field label="Body text">
             <textarea value={fields["recruitment.body"]} onChange={set("recruitment.body")} rows={4} className={textareaCls} />
           </Field>
@@ -136,6 +164,59 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   );
 }
 
+function ImageField({
+  label,
+  value,
+  onChange,
+  hideValue = "false",
+  onToggleHide,
+  hint = "Paste a direct image link (https://…). Leave blank to use default.",
+}: {
+  label: string;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  hideValue?: string;
+  onToggleHide?: () => void;
+  hint?: string;
+}) {
+  const isHidden = hideValue === "true";
+  return (
+    <div className="space-y-3">
+      {onToggleHide && (
+        <div className="flex items-center justify-between p-3.5 rounded-xl bg-stone-50 border border-stone-200/70">
+          <div>
+            <p className="text-xs font-semibold text-gray-800">Display on Page</p>
+            <p className="text-[11px] text-gray-500">
+              {isHidden ? "Hidden completely on the public page." : "Visible on the public page."}
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={!isHidden}
+            onClick={onToggleHide}
+            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+              !isHidden ? "bg-[#7A0C0C]" : "bg-gray-300"
+            }`}
+          >
+            <span
+              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                !isHidden ? "translate-x-5" : "translate-x-0"
+              }`}
+            />
+          </button>
+        </div>
+      )}
+      <Field label={label} hint={hint}>
+        <input type="url" value={value} onChange={onChange} placeholder="https://example.com/photo.jpg" className={inputCls} />
+        {value && !isHidden && (
+          <img src={value} alt="Preview" className="mt-3 w-48 h-32 object-cover rounded-xl border border-gray-200" />
+        )}
+      </Field>
+    </div>
+  );
+}
+
 function SaveBar({ saving, status, errMsg, onSave }: { saving: boolean; status: "idle" | "ok" | "error"; errMsg: string; onSave: () => void }) {
   return (
     <div className="flex items-center gap-4 pt-2">
@@ -165,3 +246,4 @@ const inputCls =
   "border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#7A0C0C]/30 focus:border-[#7A0C0C] transition-colors w-full";
 const textareaCls =
   "border border-gray-200 rounded-lg px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#7A0C0C]/30 focus:border-[#7A0C0C] transition-colors w-full resize-none";
+

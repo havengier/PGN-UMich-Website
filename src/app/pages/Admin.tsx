@@ -41,7 +41,7 @@ const PAGES = [
     label: "Recruitment",
     path: "/admin/recruitment",
     icon: UserPlus,
-    description: "Fall 2026 recruitment splash and interest form CTA.",
+    description: "Hero banner, side photo, recruitment copy, and interest form CTA.",
   },
   {
     label: "Apply",
