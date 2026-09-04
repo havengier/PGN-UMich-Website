@@ -12,6 +12,7 @@ import {
   Info,
 } from "lucide-react";
 import { LoginGate } from "@/app/components/LoginGate";
+import { useAuth } from "@/app/context/AuthContext";
 
 // ── Config types ──────────────────────────────────────────────────────────────
 type FieldType = "text" | "email" | "tel" | "textarea" | "select" | "file";
@@ -236,8 +237,9 @@ const DEFAULT_FALLBACK_CONFIG: ApplyConfig = {
   ],
 };
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
-export default function Apply() {
+// ── Apply Content ─────────────────────────────────────────────────────────────
+function ApplyContent() {
+  const { user, logout } = useAuth();
   const [config, setConfig] = useState<ApplyConfig | null>(null);
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [resumeFile, setResumeFile] = useState<File | null>(null);
@@ -259,12 +261,28 @@ export default function Apply() {
             defaults[field.id] = "";
           });
         });
-        setFormData(defaults);
+        if (user?.email) {
+          defaults["email"] = user.email;
+        }
+        if (user?.name) {
+          const parts = user.name.trim().split(/\s+/);
+          if (parts[0] && !defaults["firstName"]) defaults["firstName"] = parts[0];
+          if (parts.length > 1 && !defaults["lastName"]) defaults["lastName"] = parts.slice(1).join(" ");
+        }
+        setFormData((prev) => ({ ...defaults, ...prev, ...(user?.email ? { email: user.email } : {}) }));
       })
       .catch(() => {
         setConfig(DEFAULT_FALLBACK_CONFIG);
+        const defaults: Record<string, string> = {};
+        if (user?.email) defaults["email"] = user.email;
+        if (user?.name) {
+          const parts = user.name.trim().split(/\s+/);
+          if (parts[0]) defaults["firstName"] = parts[0];
+          if (parts.length > 1) defaults["lastName"] = parts.slice(1).join(" ");
+        }
+        setFormData((prev) => ({ ...defaults, ...prev }));
       });
-  }, []);
+  }, [user]);
 
   function getValue(id: string): string {
     return formData[id] ?? "";
@@ -280,6 +298,9 @@ export default function Apply() {
     setError(null);
 
     const payload: Record<string, string> = { ...formData };
+    if (user?.email && !payload.email) {
+      payload.email = user.email;
+    }
 
     try {
       const res = await fetch("/api/apply", {
@@ -378,7 +399,7 @@ export default function Apply() {
           ) : (
             <>
               <motion.div
-                className="mb-12"
+                className="mb-8"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.55 }}
@@ -395,6 +416,60 @@ export default function Apply() {
                   Fields marked with <span className="text-[#7A0C0C] font-semibold">*</span> are required.
                 </p>
               </motion.div>
+
+              {/* ── Authenticated Applicant Banner ────────────────────────── */}
+              {user && (
+                <motion.div
+                  className="bg-white border border-stone-200/90 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-10 shadow-xs"
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4 }}
+                >
+                  <div className="flex items-center gap-3.5">
+                    {user.picture ? (
+                      <img
+                        src={user.picture}
+                        alt={user.name ?? "User"}
+                        className="w-10 h-10 rounded-full border border-stone-300 shadow-xs object-cover"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-[#7A0C0C] text-white flex items-center justify-center font-semibold text-sm shadow-xs">
+                        {user.name?.[0]?.toUpperCase() ?? "U"}
+                      </div>
+                    )}
+                    <div>
+                      <p
+                        className="text-[11px] text-stone-500 font-bold tracking-wider uppercase"
+                        style={{ fontFamily: "'Inter', sans-serif" }}
+                      >
+                        Verified UMich Applicant
+                      </p>
+                      <div className="flex items-center flex-wrap gap-2 mt-0.5">
+                        <span
+                          className="text-stone-900 font-semibold text-sm"
+                          style={{ fontFamily: "'Inter', sans-serif" }}
+                        >
+                          {user.name || "Applicant"}
+                        </span>
+                        <span
+                          className="text-xs bg-[#7A0C0C]/10 text-[#7A0C0C] font-semibold px-2.5 py-0.5 rounded-full border border-[#7A0C0C]/20"
+                          style={{ fontFamily: "'Inter', sans-serif" }}
+                        >
+                          {user.email}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={logout}
+                    className="text-xs text-stone-500 hover:text-[#7A0C0C] font-medium underline underline-offset-4 transition-colors cursor-pointer"
+                    style={{ fontFamily: "'Inter', sans-serif" }}
+                  >
+                    Switch account
+                  </button>
+                </motion.div>
+              )}
 
               <motion.form
                 onSubmit={handleSubmit}
@@ -497,3 +572,17 @@ export default function Apply() {
     </>
   );
 }
+
+// ── Main Page Gate ────────────────────────────────────────────────────────────
+export default function Apply() {
+  return (
+    <LoginGate
+      badge="Recruitment Application"
+      title="Sign in to Apply"
+      subtitle="Please sign in with your @umich.edu Google account to access the Phi Gamma Nu recruitment application."
+    >
+      <ApplyContent />
+    </LoginGate>
+  );
+}
+

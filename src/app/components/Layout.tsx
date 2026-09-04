@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, Outlet, useLocation } from "react-router";
-import { Instagram, Linkedin, Facebook, Menu, X, LogOut } from "lucide-react";
+import { Instagram, Linkedin, Facebook, Menu, X, LogOut, LogIn } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useAuth } from "@/app/context/AuthContext";
 import pgnLogo from "@/imports/pgn_logo_1__1_.png";
@@ -21,6 +21,11 @@ function Nav({ scrolled }: { scrolled: boolean }) {
   const [open, setOpen] = useState(false);
   const { user, logout } = useAuth();
   const visibleLinks = NAV_LINKS.filter((l) => !l.adminOnly || user?.isAdmin);
+
+  function handleSignIn() {
+    const redirectTo = window.location.pathname;
+    window.location.href = `/api/auth/google?redirect=${encodeURIComponent(redirectTo)}`;
+  }
 
   useEffect(() => {
     setOpen(false);
@@ -66,20 +71,39 @@ function Nav({ scrolled }: { scrolled: boolean }) {
             );
           })}
 
-          {/* Signed-in user pill + logout */}
-          {user && (
+          {/* User Auth Action (Profile/Sign out if logged in, Sign In button if not) */}
+          {user ? (
             <div className="flex items-center gap-2 ml-2 pl-4 border-l border-gray-200">
-              {user.picture
-                ? <img src={user.picture} alt={user.name} className="w-7 h-7 rounded-full" referrerPolicy="no-referrer" />
-                : <div className="w-7 h-7 rounded-full bg-[#7A0C0C] flex items-center justify-center text-white text-xs font-bold">{user.name[0]}</div>
-              }
+              {user.picture ? (
+                <img
+                  src={user.picture}
+                  alt={user.name}
+                  className="w-7 h-7 rounded-full object-cover border border-stone-200"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div className="w-7 h-7 rounded-full bg-[#7A0C0C] flex items-center justify-center text-white text-xs font-bold">
+                  {user.name[0]}
+                </div>
+              )}
               <button
                 onClick={logout}
-                className="text-gray-400 hover:text-[#7A0C0C] transition-colors"
+                className="text-gray-400 hover:text-[#7A0C0C] transition-colors cursor-pointer"
                 title="Sign out"
                 aria-label="Sign out"
               >
                 <LogOut size={15} />
+              </button>
+            </div>
+          ) : (
+            <div className="ml-2 pl-4 border-l border-gray-200">
+              <button
+                onClick={handleSignIn}
+                className="flex items-center gap-1.5 text-xs font-medium px-3.5 py-1.5 rounded-full bg-[#7A0C0C] text-white hover:bg-[#5C0A0A] transition-colors cursor-pointer shadow-xs active:scale-95"
+                style={{ fontFamily: "'Inter', sans-serif" }}
+              >
+                <LogIn size={13} />
+                <span>Sign In</span>
               </button>
             </div>
           )}
@@ -134,19 +158,52 @@ function Nav({ scrolled }: { scrolled: boolean }) {
               })}
             </nav>
 
-            {/* Signed-in user in mobile drawer */}
-            {user && (
+            {/* Signed-in user or Sign-in button in mobile drawer */}
+            {user ? (
               <div className="px-8 pb-4 flex items-center gap-3">
-                {user.picture
-                  ? <img src={user.picture} alt={user.name} className="w-8 h-8 rounded-full" referrerPolicy="no-referrer" />
-                  : <div className="w-8 h-8 rounded-full bg-[#7A0C0C] flex items-center justify-center text-white text-xs font-bold">{user.name[0]}</div>
-                }
+                {user.picture ? (
+                  <img
+                    src={user.picture}
+                    alt={user.name}
+                    className="w-8 h-8 rounded-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-[#7A0C0C] flex items-center justify-center text-white text-xs font-bold">
+                    {user.name[0]}
+                  </div>
+                )}
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate" style={{ fontFamily: "'Inter', sans-serif" }}>{user.name}</p>
-                  <p className="text-xs text-gray-400 truncate" style={{ fontFamily: "'Inter', sans-serif" }}>{user.email}</p>
+                  <p
+                    className="text-sm font-medium text-gray-900 truncate"
+                    style={{ fontFamily: "'Inter', sans-serif" }}
+                  >
+                    {user.name}
+                  </p>
+                  <p
+                    className="text-xs text-gray-400 truncate"
+                    style={{ fontFamily: "'Inter', sans-serif" }}
+                  >
+                    {user.email}
+                  </p>
                 </div>
-                <button onClick={logout} className="text-gray-400 hover:text-[#7A0C0C] transition-colors" aria-label="Sign out">
+                <button
+                  onClick={logout}
+                  className="text-gray-400 hover:text-[#7A0C0C] transition-colors cursor-pointer"
+                  aria-label="Sign out"
+                >
                   <LogOut size={18} />
+                </button>
+              </div>
+            ) : (
+              <div className="px-8 pb-4">
+                <button
+                  onClick={handleSignIn}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-[#7A0C0C] text-white text-sm font-medium hover:bg-[#5C0A0A] transition-colors cursor-pointer shadow-xs"
+                  style={{ fontFamily: "'Inter', sans-serif" }}
+                >
+                  <LogIn size={16} />
+                  <span>Sign In with Google</span>
                 </button>
               </div>
             )}

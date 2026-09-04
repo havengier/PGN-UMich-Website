@@ -1,5 +1,6 @@
-import { Router, Request, Response } from "express";
+import { Router, Response } from "express";
 import { pool } from "../db.js";
+import { requireAuth, type AuthRequest } from "../middleware/auth.js";
 
 export const applyRouter = Router();
 
@@ -11,8 +12,9 @@ function cap(s: string | undefined, max: number): string | null {
   return t ? t.slice(0, max) : null;
 }
 
-applyRouter.post("/apply", async (req: Request, res: Response) => {
+applyRouter.post("/apply", requireAuth, async (req: AuthRequest, res: Response) => {
   const body = req.body as Record<string, string>;
+  const authenticatedEmail = req.user?.email;
   const {
     firstName, lastName, email, phone,
     year, major, minor, gpa,
@@ -20,13 +22,14 @@ applyRouter.post("/apply", async (req: Request, res: Response) => {
     ...extraFields
   } = body;
 
-  const missing = [firstName, lastName, email, year, major, whyPGN, strengths].some((v) => !v?.trim());
+  const finalEmail = (authenticatedEmail || email || "").trim();
+  const missing = [firstName, lastName, finalEmail, year, major, whyPGN, strengths].some((v) => !v?.trim());
   if (missing) {
     res.status(400).json({ error: "Missing required fields." });
     return;
   }
 
-  if (!EMAIL_RE.test(email.trim())) {
+  if (!EMAIL_RE.test(finalEmail)) {
     res.status(400).json({ error: "Invalid email address." });
     return;
   }
@@ -69,7 +72,7 @@ applyRouter.post("/apply", async (req: Request, res: Response) => {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
       [
         cap(firstName, 100), cap(lastName, 100),
-        cap(email, 255), cap(phone, 20),
+        cap(finalEmail, 255), cap(phone, 20),
         year, cap(major, 100),
         cap(minor, 100), cap(gpa, 10),
         cap(whyPGN, 5000), cap(strengths, 5000),

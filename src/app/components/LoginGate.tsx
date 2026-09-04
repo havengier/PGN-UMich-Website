@@ -21,7 +21,15 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
   auth_failed: "Sign-in failed. Please try again.",
 };
 
-function LoginScreen() {
+function LoginScreen({
+  title = "Sign in to continue",
+  subtitle = "Only @umich.edu Google accounts are accepted.",
+  badge,
+}: {
+  title?: string;
+  subtitle?: string;
+  badge?: string;
+}) {
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -38,7 +46,7 @@ function LoginScreen() {
   return (
     <div className="min-h-[calc(100vh-64px)] flex items-center justify-center px-6 bg-[#0e0202]">
       <motion.div
-        className="w-full max-w-sm text-center"
+        className="w-full max-w-md text-center py-12"
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
@@ -46,42 +54,59 @@ function LoginScreen() {
         <img
           src={pgnLogo}
           alt="Phi Gamma Nu"
-          className="h-10 w-auto mx-auto mb-10 brightness-0 invert"
+          className="h-11 w-auto mx-auto mb-8 brightness-0 invert"
         />
 
+        {badge && (
+          <p
+            className="text-[#F5A623] text-xs font-bold tracking-[0.25em] uppercase mb-3"
+            style={{ fontFamily: "'Inter', sans-serif" }}
+          >
+            {badge}
+          </p>
+        )}
+
         <h2
-          className="text-white text-2xl font-normal mb-2"
+          className="text-white text-3xl font-normal mb-3 leading-tight"
           style={{ fontFamily: "'Playfair Display', serif" }}
         >
-          Sign in to continue
+          {title}
         </h2>
         <p
-          className="text-white/50 text-sm mb-8 leading-relaxed"
+          className="text-white/65 text-sm mb-8 max-w-sm mx-auto leading-relaxed"
           style={{ fontFamily: "'Inter', sans-serif" }}
         >
-          Only <span className="text-[#F5A623]">@umich.edu</span> Google accounts are accepted.
+          {subtitle.includes("@umich.edu") ? (
+            <>
+              {subtitle.split("@umich.edu")[0]}
+              <span className="text-[#F5A623] font-semibold">@umich.edu</span>
+              {subtitle.split("@umich.edu")[1]}
+            </>
+          ) : (
+            subtitle
+          )}
         </p>
 
         <div className="flex justify-center">
           <button
             onClick={handleSignIn}
-            className="flex items-center gap-3 bg-white text-gray-700 text-sm font-medium px-6 py-3 rounded-full hover:bg-gray-100 transition-colors shadow-sm"
+            className="flex items-center gap-3 bg-white hover:bg-stone-100 text-gray-800 text-sm font-medium px-7 py-3.5 rounded-full transition-all shadow-md hover:shadow-lg active:scale-98 cursor-pointer"
             style={{ fontFamily: "'Inter', sans-serif" }}
           >
             <GoogleIcon />
-            Sign in with Google
+            <span>Sign in with Google</span>
           </button>
         </div>
 
         {error && (
-          <motion.p
-            className="mt-5 text-sm text-red-400"
+          <motion.div
+            className="mt-6 p-3 rounded-xl bg-red-950/60 border border-red-800/60 text-red-300 text-xs font-medium max-w-sm mx-auto"
             style={{ fontFamily: "'Inter', sans-serif" }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
           >
             {error}
-          </motion.p>
+          </motion.div>
         )}
       </motion.div>
     </div>
@@ -111,9 +136,15 @@ function AccessDenied() {
 export function LoginGate({
   children,
   requireAdmin = false,
+  title,
+  subtitle,
+  badge,
 }: {
   children: React.ReactNode;
   requireAdmin?: boolean;
+  title?: string;
+  subtitle?: string;
+  badge?: string;
 }) {
   const { user, loading } = useAuth();
 
@@ -125,7 +156,10 @@ export function LoginGate({
     );
   }
 
-  if (!user) return <LoginScreen />;
+  if (!user) {
+    return <LoginScreen title={title} subtitle={subtitle} badge={badge} />;
+  }
   if (requireAdmin && !user.isAdmin) return <AccessDenied />;
   return <>{children}</>;
 }
+
