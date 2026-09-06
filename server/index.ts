@@ -10,6 +10,7 @@ import { authRouter } from "./routes/auth.js";
 import { contentRouter } from "./routes/content.js";
 import { membersApiRouter } from "./routes/members-api.js";
 import { applyConfigRouter } from "./routes/apply-config.js";
+import { recruitmentRouter } from "./routes/recruitment.js";
 import { runMigrations } from "./db.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -41,12 +42,12 @@ app.use(helmet({
 app.use(cors({ origin: !isProd }));
 
 app.use(cookieParser());
-app.use(express.json({ limit: "50kb" }));
+app.use(express.json({ limit: "15mb" }));
 
-// Max 5 application submissions per IP per 15 minutes
+// Max 10 application submissions per IP per 15 minutes
 const applyLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: 10,
   message: { error: "Too many submissions. Please try again later." },
   standardHeaders: true,
   legacyHeaders: false,
@@ -58,6 +59,11 @@ app.use("/api", applyRouter);
 app.use("/api/content", contentRouter);
 app.use("/api/members", membersApiRouter);
 app.use("/api/apply-config", applyConfigRouter);
+app.use("/api/recruitment", recruitmentRouter);
+
+// Serve uploaded files
+const uploadsPath = path.resolve(__dirname, "../public/uploads");
+app.use("/uploads", express.static(uploadsPath));
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 

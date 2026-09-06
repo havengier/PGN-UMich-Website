@@ -6,6 +6,7 @@ export interface AuthUser {
   name?: string;
   picture?: string | null;
   isAdmin?: boolean;
+  isBrother?: boolean;
 }
 
 export interface AuthRequest extends Request {
@@ -19,7 +20,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     return;
   }
 
-  const secret = process.env.JWT_SECRET;
+  const secret = process.env.JWT_SECRET || (process.env.NODE_ENV !== "production" ? "dev-secret-key-12345678901234567890" : undefined);
   if (!secret) {
     res.status(500).json({ error: "Server misconfigured: JWT_SECRET missing" });
     return;

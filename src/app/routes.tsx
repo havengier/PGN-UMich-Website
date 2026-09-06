@@ -15,6 +15,7 @@ import AdminMembers from "./pages/admin/AdminMembers";
 import AdminDEI from "./pages/admin/AdminDEI";
 import AdminRecruitment from "./pages/admin/AdminRecruitment";
 import AdminApply from "./pages/admin/AdminApply";
+import BrotherPortal from "./pages/BrotherPortal";
 import NotFound from "./pages/NotFound";
 
 export const router = createBrowserRouter([
@@ -29,6 +30,7 @@ export const router = createBrowserRouter([
       { path: "dei", Component: DEI },
       { path: "recruitment", Component: Recruitment },
       { path: "apply", Component: Apply },
+      { path: "brother", Component: BrotherPortal },
       { path: "admin", Component: Admin },
       { path: "admin/home", Component: AdminHome },
       { path: "admin/about", Component: AdminAbout },

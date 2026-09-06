@@ -2,6 +2,7 @@ import { Router } from "express";
 import { OAuth2Client } from "google-auth-library";
 import jwt from "jsonwebtoken";
 import type { Request, Response } from "express";
+import { isUserBrother } from "./recruitment.js";
 
 export const authRouter = Router();
 
@@ -14,6 +15,24 @@ const ADMIN_EMAILS = new Set(
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean),
 );
+
+const BROTHER_EMAILS = new Set(
+  (process.env.BROTHER_EMAILS ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean),
+);
+
+async function checkIsBrother(email: string, isAdmin: boolean): Promise<boolean> {
+  if (isAdmin) return true;
+  if (BROTHER_EMAILS.has(email)) return true;
+  try {
+    return await isUserBrother(email);
+  } catch (err) {
+    console.error("Error checking isUserBrother:", err);
+    return false;
+  }
+}
 
 const COOKIE_OPTS = {
   httpOnly: true,
@@ -84,11 +103,15 @@ authRouter.get("/callback", async (req: Request, res: Response) => {
       return;
     }
 
+    const isAdmin = ADMIN_EMAILS.has(email);
+    const isBrother = await checkIsBrother(email, isAdmin);
+
     const user = {
       email,
       name: payload?.name ?? email,
       picture: payload?.picture ?? null,
-      isAdmin: ADMIN_EMAILS.has(email),
+      isAdmin,
+      isBrother,
     };
 
     const signed = jwt.sign(user, secret, { expiresIn: "7d" });
@@ -100,11 +123,19 @@ authRouter.get("/callback", async (req: Request, res: Response) => {
   }
 });
 
-authRouter.get("/me", (req: Request, res: Response) => {
+authRouter.get("/me", async (req: Request, res: Response) => {
   const token = (req as any).cookies?.auth_token;
   if (!token) { res.status(401).json({ user: null }); return; }
   try {
-    const user = jwt.verify(token, process.env.JWT_SECRET!) as object;
+    const secret = process.env.JWT_SECRET || (process.env.NODE_ENV !== "production" ? "dev-secret-key-12345678901234567890" : "");
+    const user = jwt.verify(token, secret) as any;
+    if (user && user.email) {
+      const email = user.email.toLowerCase();
+      const isAdmin = Boolean(user.isAdmin || ADMIN_EMAILS.has(email));
+      const isBrother = await checkIsBrother(email, isAdmin);
+      user.isAdmin = isAdmin;
+      user.isBrother = isBrother;
+    }
     res.json({ user });
   } catch {
     res.status(401).json({ user: null });
@@ -120,3 +151,35 @@ authRouter.post("/logout", (_req: Request, res: Response) => {
 authRouter.get("/debug-redirect-uri", (_req: Request, res: Response) => {
   res.json({ redirectUri: `${process.env.APP_URL}/api/auth/callback` });
 });
+
+// Development mode login helper (only active when not in production or when Google OAuth is not configured)
+if (process.env.NODE_ENV !== "production" || !process.env.GOOGLE_CLIENT_SECRET) {
+  authRouter.all("/dev-login", async (req: Request, res: Response) => {
+    const email = (req.body?.email || req.query.email) as string | undefined;
+    const name = (req.body?.name || req.query.name) as string | undefined;
+    const isAdmin = req.body?.isAdmin !== undefined
+      ? Boolean(req.body.isAdmin)
+      : req.query.admin === "1" || req.query.admin === "true" || (!email && req.query.brother !== "1" && req.query.brother !== "true");
+    const userEmail = (email || (isAdmin ? "recruitment.chair@umich.edu" : (req.query.brother === "1" || req.query.brother === "true" ? "brother@umich.edu" : "applicant@umich.edu"))).toLowerCase();
+    const explicitBrother = req.body?.isBrother !== undefined
+      ? Boolean(req.body.isBrother)
+      : (req.query.brother === "1" || req.query.brother === "true");
+    const isBrother = isAdmin || explicitBrother || await checkIsBrother(userEmail, isAdmin);
+    const redirectTo = (typeof req.query.redirect === "string" && req.query.redirect.startsWith("/")) ? req.query.redirect : "/";
+    const secret = process.env.JWT_SECRET || "dev-secret-key-12345678901234567890";
+    const user = {
+      email: userEmail,
+      name: name || (isAdmin ? "Recruitment Chair" : (isBrother ? "Brother Wolverine" : "Applicant Wolverine")),
+      picture: null,
+      isAdmin: Boolean(isAdmin),
+      isBrother: Boolean(isBrother),
+    };
+    const signed = jwt.sign(user, secret, { expiresIn: "7d" });
+    res.cookie("auth_token", signed, COOKIE_OPTS);
+    if (req.method === "GET") {
+      res.redirect(redirectTo);
+    } else {
+      res.json({ ok: true, user });
+    }
+  });
+}

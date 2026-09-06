@@ -136,12 +136,14 @@ function AccessDenied() {
 export function LoginGate({
   children,
   requireAdmin = false,
+  requireBrother = false,
   title,
   subtitle,
   badge,
 }: {
   children: React.ReactNode;
   requireAdmin?: boolean;
+  requireBrother?: boolean;
   title?: string;
   subtitle?: string;
   badge?: string;
@@ -160,6 +162,7 @@ export function LoginGate({
     return <LoginScreen title={title} subtitle={subtitle} badge={badge} />;
   }
   if (requireAdmin && !user.isAdmin) return <AccessDenied />;
+  if (requireBrother && !user.isAdmin && !user.isBrother) return <AccessDenied />;
   return <>{children}</>;
 }
 

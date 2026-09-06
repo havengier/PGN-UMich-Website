@@ -5,6 +5,7 @@ export type AuthUser = {
   name: string;
   picture: string | null;
   isAdmin: boolean;
+  isBrother?: boolean;
 };
 
 type AuthContextType = {

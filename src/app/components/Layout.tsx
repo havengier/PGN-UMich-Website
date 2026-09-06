@@ -13,6 +13,7 @@ const NAV_LINKS = [
   { label: "DEI", path: "/dei" },
   { label: "Recruitment F26", path: "/recruitment" },
   { label: "Apply", path: "/apply" },
+  { label: "Brother", path: "/brother", brotherBadge: true, brotherOnly: true },
   { label: "Admin", path: "/admin", yellow: true, adminOnly: true },
 ];
 
@@ -20,7 +21,11 @@ function Nav({ scrolled }: { scrolled: boolean }) {
   const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
   const { user, logout } = useAuth();
-  const visibleLinks = NAV_LINKS.filter((l) => !l.adminOnly || user?.isAdmin);
+  const visibleLinks = NAV_LINKS.filter((l) => {
+    if (l.adminOnly) return Boolean(user?.isAdmin);
+    if (l.brotherOnly) return Boolean(user?.isAdmin || user?.isBrother);
+    return true;
+  });
 
   function handleSignIn() {
     const redirectTo = window.location.pathname;
@@ -54,7 +59,7 @@ function Nav({ scrolled }: { scrolled: boolean }) {
           className="hidden lg:flex items-center gap-7 text-sm text-gray-800"
           style={{ fontFamily: "'Inter', sans-serif" }}
         >
-          {visibleLinks.map(({ label, path, yellow }) => {
+          {visibleLinks.map(({ label, path, yellow, brotherBadge }) => {
             const active = pathname === path || (path !== "/" && pathname.startsWith(path));
             return (
               <Link
@@ -63,6 +68,8 @@ function Nav({ scrolled }: { scrolled: boolean }) {
                 className={`transition-colors whitespace-nowrap ${
                   yellow
                     ? "bg-[#1a0303] text-[#F5A623] font-semibold text-xs px-3 py-1.5 rounded-full hover:bg-[#2d0505] tracking-wide"
+                    : brotherBadge
+                    ? "bg-[#7A0C0C] text-white font-semibold text-xs px-3 py-1.5 rounded-full hover:bg-[#5C0A0A] tracking-wide shadow-xs"
                     : `hover:text-[#C03810] ${active ? "underline underline-offset-2 font-medium" : "font-normal"}`
                 }`}
               >
@@ -130,7 +137,7 @@ function Nav({ scrolled }: { scrolled: boolean }) {
             transition={{ duration: 0.22, ease: "easeOut" }}
           >
             <nav className="flex flex-col px-8 py-8 gap-0" style={{ fontFamily: "'Inter', sans-serif" }}>
-              {visibleLinks.map(({ label, path, yellow }, i) => {
+              {visibleLinks.map(({ label, path, yellow, brotherBadge }, i) => {
                 const active = pathname === path || (path !== "/" && pathname.startsWith(path));
                 return (
                   <motion.div
@@ -142,13 +149,17 @@ function Nav({ scrolled }: { scrolled: boolean }) {
                     <Link
                       to={path}
                       className={`block py-4 border-b border-gray-100 transition-colors ${
-                        yellow
+                        yellow || brotherBadge
                           ? "text-gray-800 font-normal hover:text-gray-800"
                           : `text-xl hover:text-[#7A0C0C] ${active ? "text-[#7A0C0C] font-semibold" : "text-gray-800 font-normal"}`
                       }`}
                     >
                       {yellow ? (
                         <span className="inline-block bg-[#1a0303] text-[#F5A623] text-sm font-semibold px-3 py-1 rounded-full tracking-wide">
+                          {label}
+                        </span>
+                      ) : brotherBadge ? (
+                        <span className="inline-block bg-[#7A0C0C] text-white text-sm font-semibold px-3 py-1 rounded-full tracking-wide">
                           {label}
                         </span>
                       ) : label}

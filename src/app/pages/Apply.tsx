@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import {
   CheckCircle,
   ChevronDown,
@@ -9,15 +9,25 @@ import {
   Users,
   Sparkles,
   ArrowRight,
-  Info,
+  Clock,
+  AlertCircle,
+  FileText,
+  Upload,
+  Calendar,
+  Check,
+  XCircle,
+  ExternalLink,
+  ChevronUp,
+  LogOut,
 } from "lucide-react";
+import confetti from "canvas-confetti";
 import { LoginGate } from "@/app/components/LoginGate";
 import { useAuth } from "@/app/context/AuthContext";
 
-// ── Config types ──────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 type FieldType = "text" | "email" | "tel" | "textarea" | "select" | "file";
 
-type ConfigField = {
+interface ConfigField {
   id: string;
   type: FieldType;
   label: string;
@@ -25,20 +35,46 @@ type ConfigField = {
   hint?: string;
   options?: string[];
   required: boolean;
-};
+  core?: boolean;
+}
 
-type ConfigSection = {
+interface ConfigSection {
   id: string;
   label: string;
   fields: ConfigField[];
-};
+}
 
-type ApplyConfig = {
-  isOpen?: boolean;
-  sections: ConfigSection[];
-};
+interface CycleForm {
+  id: number;
+  cycle_id: number;
+  questions: ConfigSection[];
+  opens_at: string | null;
+  closes_at: string | null;
+  is_locked: boolean;
+  status_messages?: Record<string, Record<string, { title: string; body: string }>>;
+}
 
-// ── Dynamic form components ───────────────────────────────────────────────────
+interface RecruitmentCycle {
+  id: number;
+  name: string;
+  status: "draft" | "open" | "closed" | "archived";
+}
+
+interface ApplicationSubmission {
+  id: number;
+  cycle_id: number;
+  applicant_user_id: string;
+  applicant_email: string;
+  applicant_name: string;
+  answers: Record<string, any>;
+  application_status: "pending_review" | "advanced_to_round_1" | "not_selected_application";
+  round_1_status: "pending" | "advanced" | "not_selected";
+  round_2_status: "pending" | "offered_bid" | "not_selected";
+  submitted_at: string;
+}
+
+// ── Dynamic Form Inputs ───────────────────────────────────────────────────────
+
 function DynamicSelect({
   field,
   value,
@@ -51,8 +87,14 @@ function DynamicSelect({
   return (
     <div className="flex flex-col gap-1.5">
       <label className="text-sm font-semibold text-gray-700" style={{ fontFamily: "'Inter', sans-serif" }}>
-        {field.label}{field.required && <span className="text-[#7A0C0C] ml-0.5">*</span>}
+        {field.label}
+        {field.required && <span className="text-[#7A0C0C] ml-0.5">*</span>}
       </label>
+      {field.hint && (
+        <p className="text-xs text-gray-500 -mt-0.5" style={{ fontFamily: "'Inter', sans-serif" }}>
+          {field.hint}
+        </p>
+      )}
       <div className="relative">
         <select
           value={value}
@@ -61,9 +103,11 @@ function DynamicSelect({
           className="w-full appearance-none border border-gray-200 rounded-lg px-4 py-3 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#7A0C0C]/30 focus:border-[#7A0C0C] transition-colors pr-10"
           style={{ fontFamily: "'Inter', sans-serif" }}
         >
-          <option value="">Select…</option>
+          <option value="">Select an option…</option>
           {(field.options ?? []).map((o) => (
-            <option key={o} value={o}>{o}</option>
+            <option key={o} value={o}>
+              {o}
+            </option>
           ))}
         </select>
         <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
@@ -84,10 +128,13 @@ function DynamicTextarea({
   return (
     <div className="flex flex-col gap-1.5">
       <label htmlFor={field.id} className="text-sm font-semibold text-gray-700" style={{ fontFamily: "'Inter', sans-serif" }}>
-        {field.label}{field.required && <span className="text-[#7A0C0C] ml-0.5">*</span>}
+        {field.label}
+        {field.required && <span className="text-[#7A0C0C] ml-0.5">*</span>}
       </label>
       {field.hint && (
-        <p className="text-xs text-gray-500 -mt-0.5" style={{ fontFamily: "'Inter', sans-serif" }}>{field.hint}</p>
+        <p className="text-xs text-gray-500 -mt-0.5" style={{ fontFamily: "'Inter', sans-serif" }}>
+          {field.hint}
+        </p>
       )}
       <textarea
         id={field.id}
@@ -115,10 +162,13 @@ function DynamicInput({
   return (
     <div className="flex flex-col gap-1.5">
       <label htmlFor={field.id} className="text-sm font-semibold text-gray-700" style={{ fontFamily: "'Inter', sans-serif" }}>
-        {field.label}{field.required && <span className="text-[#7A0C0C] ml-0.5">*</span>}
+        {field.label}
+        {field.required && <span className="text-[#7A0C0C] ml-0.5">*</span>}
       </label>
       {field.hint && (
-        <p className="text-xs text-gray-500 -mt-0.5" style={{ fontFamily: "'Inter', sans-serif" }}>{field.hint}</p>
+        <p className="text-xs text-gray-500 -mt-0.5" style={{ fontFamily: "'Inter', sans-serif" }}>
+          {field.hint}
+        </p>
       )}
       <input
         id={field.id}
@@ -134,8 +184,118 @@ function DynamicInput({
   );
 }
 
-// ── Application Opening Soon Screen ──────────────────────────────────────────
-function ApplicationOpeningSoon() {
+function DynamicFileInput({
+  field,
+  value,
+  onChange,
+}: {
+  field: ConfigField;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 10 * 1024 * 1024) {
+      setUploadError("File exceeds 10MB limit.");
+      return;
+    }
+
+    setUploading(true);
+    setUploadError(null);
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const fileData = reader.result as string;
+        const res = await fetch("/api/recruitment/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ filename: file.name, fileData }),
+        });
+        const data = await res.json();
+        if (res.ok && data.fileUrl) {
+          onChange(data.fileUrl);
+        } else {
+          setUploadError(data.error || "Failed to upload file.");
+        }
+      } catch {
+        setUploadError("Upload network error. Please try again.");
+      } finally {
+        setUploading(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-sm font-semibold text-gray-700" style={{ fontFamily: "'Inter', sans-serif" }}>
+        {field.label}
+        {field.required && <span className="text-[#7A0C0C] ml-0.5">*</span>}
+      </label>
+      {field.hint && (
+        <p className="text-xs text-gray-500 -mt-0.5" style={{ fontFamily: "'Inter', sans-serif" }}>
+          {field.hint}
+        </p>
+      )}
+
+      {value ? (
+        <div className="flex items-center justify-between p-3.5 bg-amber-50/70 border border-amber-200/80 rounded-xl">
+          <div className="flex items-center gap-2.5">
+            <FileText size={18} className="text-[#7A0C0C]" />
+            <span className="text-xs font-semibold text-gray-800 truncate max-w-[260px] sm:max-w-md">
+              {value.split("/").pop()}
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <a
+              href={value}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-bold text-[#7A0C0C] hover:underline inline-flex items-center gap-1"
+            >
+              View <ExternalLink size={12} />
+            </a>
+            <button
+              type="button"
+              onClick={() => onChange("")}
+              className="text-xs text-gray-400 hover:text-red-600 transition-colors"
+            >
+              Change
+            </button>
+          </div>
+        </div>
+      ) : (
+        <label className="border-2 border-dashed border-gray-300 hover:border-[#7A0C0C]/50 rounded-xl p-5 flex flex-col items-center justify-center cursor-pointer bg-white transition-all group">
+          <Upload size={22} className="text-gray-400 group-hover:text-[#7A0C0C] transition-colors mb-2" />
+          <span className="text-xs font-semibold text-gray-700 group-hover:text-[#7A0C0C] transition-colors">
+            {uploading ? "Uploading document…" : "Click to select PDF or DOCX file (Max 10MB)"}
+          </span>
+          <span className="text-[10px] text-gray-400 mt-0.5">Resume, CV, or Portfolio Document</span>
+          <input
+            type="file"
+            accept=".pdf,.docx,.doc"
+            required={field.required && !value}
+            disabled={uploading}
+            onChange={handleFileChange}
+            className="hidden"
+          />
+        </label>
+      )}
+
+      {uploadError && <p className="text-xs text-red-600 mt-1">{uploadError}</p>}
+    </div>
+  );
+}
+
+// ── No Active Cycle Screen ─────────────────────────────────────────────────────
+
+function NoActiveCycleScreen() {
   return (
     <motion.div
       className="bg-white rounded-3xl shadow-sm border border-stone-200/80 p-8 sm:p-14 text-center max-w-2xl mx-auto"
@@ -151,14 +311,14 @@ function ApplicationOpeningSoon() {
         className="text-[#7A0C0C] text-xs font-bold tracking-[0.25em] uppercase mb-3"
         style={{ fontFamily: "'Inter', sans-serif" }}
       >
-        Recruitment Application
+        Recruitment Portal
       </p>
 
       <h2
         className="text-3xl sm:text-4xl font-normal text-stone-900 mb-4 tracking-tight"
         style={{ fontFamily: "'Playfair Display', serif" }}
       >
-        Application Opening Soon
+        Applications Opening Soon
       </h2>
 
       <div className="h-0.5 w-16 bg-[#F5A623] mx-auto mb-6" />
@@ -167,11 +327,10 @@ function ApplicationOpeningSoon() {
         className="text-stone-600 text-sm sm:text-base leading-relaxed mb-8 max-w-lg mx-auto"
         style={{ fontFamily: "'Inter', sans-serif" }}
       >
-        Applications for our upcoming recruitment cycle are currently closed and will be opening soon.
-        Follow our Instagram or check back here for official announcements, rush dates, and timeline updates.
+        Applications for our upcoming recruitment cycle are currently closed. Follow our Instagram or
+        check back here for official announcements, rush dates, and timeline updates.
       </p>
 
-      {/* Quick Action Buttons */}
       <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
         <a
           href="https://www.instagram.com/pgnuofm/"
@@ -194,378 +353,698 @@ function ApplicationOpeningSoon() {
   );
 }
 
-const DEFAULT_FALLBACK_CONFIG: ApplyConfig = {
-  isOpen: false,
-  sections: [
-    {
-      id: "personal",
-      label: "Personal Information",
-      fields: [
-        { id: "firstName", type: "text", label: "First Name", placeholder: "Jane", required: true },
-        { id: "lastName", type: "text", label: "Last Name", placeholder: "Doe", required: true },
-        { id: "email", type: "email", label: "University Email", placeholder: "jdoe@umich.edu", required: true },
-        { id: "phone", type: "tel", label: "Phone Number", placeholder: "(555) 000-0000", required: false },
-      ],
-    },
-    {
-      id: "academic",
-      label: "Academic Background",
-      fields: [
-        { id: "year", type: "select", label: "Year", options: ["Freshman", "Sophomore", "Junior", "Senior", "Graduate Student"], required: true },
-        { id: "major", type: "text", label: "Major", placeholder: "e.g. Business Administration", required: true },
-        { id: "minor", type: "text", label: "Minor (if applicable)", placeholder: "e.g. Psychology", required: false },
-        { id: "gpa", type: "text", label: "Cumulative GPA", placeholder: "e.g. 3.7", required: false },
-      ],
-    },
-    {
-      id: "shortAnswers",
-      label: "Short Answers",
-      fields: [
-        { id: "whyPGN", type: "textarea", label: "Why do you want to join Phi Gamma Nu?", hint: "Tell us what drew you to PGN and what you hope to gain from membership. (150–300 words)", placeholder: "I am drawn to PGN because...", required: true },
-        { id: "strengths", type: "textarea", label: "What unique strengths would you bring to PGN?", hint: "Highlight specific skills, experiences, or perspectives. (150–300 words)", placeholder: "One strength I would bring is...", required: true },
-        { id: "involvement", type: "textarea", label: "Describe your previous involvement in campus or professional organizations.", hint: "Include clubs, internships, research, volunteer work, or leadership roles.", placeholder: "I have been involved in...", required: false },
-      ],
-    },
-    {
-      id: "resumeAdditional",
-      label: "Resume & Additional Information",
-      fields: [
-        { id: "resume", type: "file", label: "Upload Resume", required: false },
-        { id: "questions", type: "textarea", label: "Any questions or additional comments?", placeholder: "Feel free to share anything else you would like us to know.", required: false },
-      ],
-    },
-  ],
-};
+// ── Application Locked or Outside Window Screen ───────────────────────────────
 
-// ── Apply Content ─────────────────────────────────────────────────────────────
-function ApplyContent() {
-  const { user, logout } = useAuth();
-  const [config, setConfig] = useState<ApplyConfig | null>(null);
-  const [formData, setFormData] = useState<Record<string, string>>({});
-  const [resumeFile, setResumeFile] = useState<File | null>(null);
-  const [submitted, setSubmitted] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+function LockedOrScheduledScreen({
+  cycleName,
+  opensAt,
+  closesAt,
+  isLocked,
+}: {
+  cycleName: string;
+  opensAt: string | null;
+  closesAt: string | null;
+  isLocked: boolean;
+}) {
+  const now = new Date();
+  const isScheduled = opensAt && now < new Date(opensAt);
+  const isPassedDeadline = closesAt && now > new Date(closesAt);
+
+  return (
+    <motion.div
+      className="bg-white rounded-3xl shadow-sm border border-stone-200/80 p-8 sm:p-14 text-center max-w-2xl mx-auto"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.6 }}
+    >
+      <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-200/60 text-[#7A0C0C] flex items-center justify-center mx-auto mb-6 shadow-sm">
+        {isScheduled ? <Calendar size={28} strokeWidth={1.75} /> : <Lock size={28} strokeWidth={1.75} />}
+      </div>
+
+      <p
+        className="text-[#7A0C0C] text-xs font-bold tracking-[0.25em] uppercase mb-3"
+        style={{ fontFamily: "'Inter', sans-serif" }}
+      >
+        {cycleName}
+      </p>
+
+      <h2
+        className="text-3xl sm:text-4xl font-normal text-stone-900 mb-4 tracking-tight"
+        style={{ fontFamily: "'Playfair Display', serif" }}
+      >
+        {isLocked
+          ? "Applications Currently Locked"
+          : isScheduled
+          ? "Applications Open Soon"
+          : isPassedDeadline
+          ? "Application Deadline Has Passed"
+          : "Applications Closed"}
+      </h2>
+
+      <div className="h-0.5 w-16 bg-[#F5A623] mx-auto mb-6" />
+
+      <p
+        className="text-stone-600 text-sm sm:text-base leading-relaxed mb-6 max-w-lg mx-auto"
+        style={{ fontFamily: "'Inter', sans-serif" }}
+      >
+        {isLocked
+          ? "Applications for this recruitment cycle are currently paused or locked by the recruitment chairs. Please check back shortly for updates."
+          : isScheduled
+          ? `Applications for ${cycleName} are scheduled to open on ${new Date(
+              opensAt!,
+            ).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}.`
+          : isPassedDeadline
+          ? `The submission deadline for ${cycleName} closed on ${new Date(
+              closesAt!,
+            ).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}.`
+          : "Submissions for this recruitment cycle are currently closed."}
+      </p>
+
+      <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+        <Link
+          to="/recruitment"
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 bg-[#7A0C0C] hover:bg-[#5C0A0A] text-white text-xs font-bold tracking-widest uppercase rounded-full shadow-sm transition-colors"
+          style={{ fontFamily: "'Inter', sans-serif" }}
+        >
+          View Rush Details
+        </Link>
+        <Link
+          to="/members"
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-bold tracking-widest uppercase rounded-full transition-colors border border-stone-200"
+          style={{ fontFamily: "'Inter', sans-serif" }}
+        >
+          <Users size={14} /> Meet Our Members
+        </Link>
+      </div>
+    </motion.div>
+  );
+}
+
+// ── Applicant Status Screen ───────────────────────────────────────────────────
+
+function ApplicantStatusScreen({
+  cycleName,
+  stage,
+  statusKey,
+  statusMessage,
+  submission,
+  onSignOut,
+}: {
+  cycleName: string;
+  stage: "application" | "round1" | "round2";
+  statusKey: string;
+  statusMessage: { title: string; body: string };
+  submission: ApplicationSubmission;
+  onSignOut: () => void;
+}) {
+  const [showSummary, setShowSummary] = useState(false);
+
+  const isBidOffered = stage === "round2" && statusKey === "offered_bid";
+  const isAdvanced =
+    (stage === "application" && statusKey === "advanced_to_round_1") ||
+    (stage === "round1" && statusKey === "advanced") ||
+    isBidOffered;
+  const isNotSelected =
+    statusKey === "not_selected_application" || statusKey === "not_selected";
+  const isPending = !isAdvanced && !isNotSelected;
 
   useEffect(() => {
-    fetch("/api/apply-config")
-      .then((r) => {
-        if (!r.ok) throw new Error("Failed to load");
-        return r.json();
-      })
-      .then((data: ApplyConfig) => {
-        setConfig(data);
-        const defaults: Record<string, string> = {};
-        data.sections?.forEach((section) => {
-          section.fields.forEach((field) => {
-            defaults[field.id] = "";
-          });
+    if (isBidOffered) {
+      try {
+        confetti({
+          particleCount: 120,
+          spread: 80,
+          origin: { y: 0.6 },
+          colors: ["#7A0C0C", "#F5A623", "#00274C", "#FFCB05", "#FFFFFF"],
         });
-        if (user?.email) {
-          defaults["email"] = user.email;
+      } catch {}
+    }
+  }, [isBidOffered]);
+
+  // Checkpoints definition
+  const steps = [
+    {
+      label: "1. Written Application",
+      active: stage === "application",
+      done: stage === "round1" || stage === "round2",
+      passed: submission.application_status === "advanced_to_round_1",
+      failed: submission.application_status === "not_selected_application",
+    },
+    {
+      label: "2. Round 1 Interviews",
+      active: stage === "round1",
+      done: stage === "round2",
+      passed: submission.round_1_status === "advanced",
+      failed: submission.round_1_status === "not_selected",
+    },
+    {
+      label: "3. Final Deliberation & Bid",
+      active: stage === "round2",
+      done: isBidOffered,
+      passed: isBidOffered,
+      failed: stage === "round2" && statusKey === "not_selected",
+    },
+  ];
+
+  return (
+    <motion.div
+      className="bg-white rounded-3xl shadow-sm border border-stone-200/80 p-8 sm:p-12 max-w-3xl mx-auto"
+      initial={{ opacity: 0, y: 24 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.6 }}
+    >
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-8 border-b border-stone-100">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+            <p
+              className="text-[#7A0C0C] text-xs font-bold tracking-[0.25em] uppercase"
+              style={{ fontFamily: "'Inter', sans-serif" }}
+            >
+              {cycleName} • Recruitment Pipeline
+            </p>
+          </div>
+          <h2
+            className="text-2xl sm:text-3xl font-normal text-stone-900"
+            style={{ fontFamily: "'Playfair Display', serif" }}
+          >
+            Applicant Status
+          </h2>
+        </div>
+
+        <div className="flex items-center gap-2.5 text-xs text-stone-500">
+          <span>Signed in as <strong className="text-stone-800">{submission.applicant_email}</strong></span>
+          <button
+            onClick={onSignOut}
+            className="inline-flex items-center gap-1 text-stone-400 hover:text-[#7A0C0C] transition-colors p-1"
+            title="Sign out"
+          >
+            <LogOut size={14} />
+          </button>
+        </div>
+      </div>
+
+      {/* Progress Pipeline Stepper */}
+      <div className="py-8 border-b border-stone-100">
+        <div className="grid grid-cols-3 gap-2">
+          {steps.map((step, i) => {
+            const isCompleted = step.done || step.passed;
+            const isCurrent = step.active;
+            const isRejected = step.failed;
+
+            return (
+              <div key={i} className="flex flex-col items-center text-center">
+                <div
+                  className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold mb-2 transition-all ${
+                    isRejected
+                      ? "bg-stone-100 text-stone-400 border border-stone-300"
+                      : isCompleted
+                      ? "bg-emerald-600 text-white shadow-sm"
+                      : isCurrent
+                      ? "bg-[#7A0C0C] text-white ring-4 ring-[#7A0C0C]/15"
+                      : "bg-stone-100 text-stone-400"
+                  }`}
+                >
+                  {isRejected ? (
+                    <XCircle size={16} />
+                  ) : isCompleted ? (
+                    <Check size={16} strokeWidth={2.5} />
+                  ) : (
+                    i + 1
+                  )}
+                </div>
+                <span
+                  className={`text-[11px] sm:text-xs font-semibold leading-tight ${
+                    isCurrent ? "text-[#7A0C0C]" : isCompleted ? "text-emerald-700" : "text-stone-400"
+                  }`}
+                >
+                  {step.label}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Hero Outcome / Status Card */}
+      <div className="py-10 text-center">
+        <div
+          className={`w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-sm ${
+            isBidOffered
+              ? "bg-gradient-to-br from-amber-400 to-amber-600 text-white ring-8 ring-amber-100"
+              : isAdvanced
+              ? "bg-emerald-100 text-emerald-700 ring-8 ring-emerald-50"
+              : isPending
+              ? "bg-amber-100 text-[#7A0C0C] ring-8 ring-amber-50"
+              : "bg-stone-100 text-stone-600 ring-8 ring-stone-50"
+          }`}
+        >
+          {isBidOffered ? (
+            <Sparkles size={36} />
+          ) : isAdvanced ? (
+            <CheckCircle size={36} strokeWidth={1.75} />
+          ) : isPending ? (
+            <Clock size={36} strokeWidth={1.75} />
+          ) : (
+            <AlertCircle size={36} strokeWidth={1.75} />
+          )}
+        </div>
+
+        <span
+          className={`inline-block px-3.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider mb-4 ${
+            isBidOffered
+              ? "bg-amber-100 text-amber-900 border border-amber-300"
+              : isAdvanced
+              ? "bg-emerald-100 text-emerald-800"
+              : isPending
+              ? "bg-amber-50 text-[#7A0C0C] border border-amber-200"
+              : "bg-stone-100 text-stone-700"
+          }`}
+        >
+          {isBidOffered
+            ? "Official Bid Extended 🎉"
+            : isAdvanced
+            ? "Stage Advanced"
+            : isPending
+            ? "Deliberation In Progress"
+            : "Cycle Decision"}
+        </span>
+
+        <h3
+          className="text-2xl sm:text-4xl font-normal text-stone-900 mb-4 tracking-tight leading-tight max-w-xl mx-auto"
+          style={{ fontFamily: "'Playfair Display', serif" }}
+        >
+          {statusMessage.title}
+        </h3>
+
+        <div className="h-0.5 w-14 bg-[#F5A623] mx-auto mb-6" />
+
+        <p
+          className="text-stone-600 text-sm sm:text-base leading-relaxed max-w-xl mx-auto"
+          style={{ fontFamily: "'Inter', sans-serif" }}
+        >
+          {statusMessage.body}
+        </p>
+
+        {isBidOffered && (
+          <div className="mt-8 p-4 bg-amber-50/80 border border-amber-200/80 rounded-2xl max-w-md mx-auto text-xs text-amber-900 leading-relaxed">
+            ✨ Welcome to the family! Make sure to monitor your <strong>{submission.applicant_email}</strong> inbox for details regarding orientation and the formal induction schedule.
+          </div>
+        )}
+      </div>
+
+      {/* Submitted Application Accordion (Readonly & Immutable) */}
+      <div className="pt-6 border-t border-stone-100">
+        <button
+          type="button"
+          onClick={() => setShowSummary((prev) => !prev)}
+          className="w-full flex items-center justify-between py-3 px-4 rounded-xl bg-stone-50 hover:bg-stone-100/80 transition-colors text-stone-700 text-xs font-semibold"
+        >
+          <div className="flex items-center gap-2">
+            <FileText size={16} className="text-[#7A0C0C]" />
+            <span>View Your Submitted Application</span>
+            <span className="text-[10px] text-stone-400 font-normal">
+              (Submitted {new Date(submission.submitted_at).toLocaleDateString()} • Immutable)
+            </span>
+          </div>
+          {showSummary ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+        </button>
+
+        <AnimatePresence>
+          {showSummary && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="overflow-hidden"
+            >
+              <div className="p-6 bg-white border border-stone-100 rounded-2xl mt-3 space-y-4 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pb-4 border-b border-stone-100">
+                  <div>
+                    <span className="text-stone-400 block mb-0.5">Candidate</span>
+                    <span className="font-semibold text-stone-900">{submission.applicant_name}</span>
+                  </div>
+                  <div>
+                    <span className="text-stone-400 block mb-0.5">Email</span>
+                    <span className="font-semibold text-stone-900">{submission.applicant_email}</span>
+                  </div>
+                </div>
+
+                {Object.entries(submission.answers).map(([key, val]) => {
+                  if (!val || typeof val !== "string") return null;
+                  const isUrl = val.startsWith("http://") || val.startsWith("https://") || val.startsWith("/uploads/");
+                  return (
+                    <div key={key} className="pb-3 border-b border-stone-50 last:border-0">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-[#7A0C0C] block mb-1">
+                        {key}
+                      </span>
+                      {isUrl ? (
+                        <a
+                          href={val}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[#7A0C0C] font-medium underline inline-flex items-center gap-1"
+                        >
+                          View Document <ExternalLink size={12} />
+                        </a>
+                      ) : (
+                        <p className="text-stone-700 leading-relaxed whitespace-pre-wrap">{val}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </motion.div>
+  );
+}
+
+// ── Main Apply Content ────────────────────────────────────────────────────────
+
+function ApplyContent() {
+  const { user, logout } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [cycle, setCycle] = useState<RecruitmentCycle | null>(null);
+  const [form, setForm] = useState<CycleForm | null>(null);
+  const [computedStatus, setComputedStatus] = useState<"scheduled" | "open" | "closed">("closed");
+  const [submission, setSubmission] = useState<ApplicationSubmission | null>(null);
+  const [stage, setStage] = useState<"application" | "round1" | "round2">("application");
+  const [statusKey, setStatusKey] = useState<string>("pending_review");
+  const [statusMessage, setStatusMessage] = useState<{ title: string; body: string }>({
+    title: "Application Under Review",
+    body: "Your application is currently being reviewed.",
+  });
+
+  const [formData, setFormData] = useState<Record<string, any>>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Load active cycle and check submission state
+  useEffect(() => {
+    async function init() {
+      setLoading(true);
+      try {
+        // 1. Fetch active cycle info
+        const cycleRes = await fetch("/api/recruitment/active-cycle");
+        const cycleData = await cycleRes.json();
+
+        if (cycleData.active && cycleData.cycle) {
+          setCycle(cycleData.cycle);
+          setForm(cycleData.form);
+          setComputedStatus(cycleData.computedStatus);
+
+          // 2. Check if user already submitted
+          if (user?.email) {
+            const subRes = await fetch(`/api/recruitment/my-submission?cycleId=${cycleData.cycle.id}`);
+            const subData = await subRes.json();
+            if (subData.submitted && subData.submission) {
+              setSubmission(subData.submission);
+              setStage(subData.stage);
+              setStatusKey(subData.statusKey);
+              if (subData.message) setStatusMessage(subData.message);
+            }
+          }
+
+          // Initialize form defaults from questions
+          const defaults: Record<string, string> = {};
+          (cycleData.form?.questions || []).forEach((sec: ConfigSection) => {
+            (sec.fields || []).forEach((f: ConfigField) => {
+              defaults[f.id] = "";
+            });
+          });
+          if (user?.email) defaults["email"] = user.email;
+          if (user?.name) {
+            const parts = user.name.trim().split(/\s+/);
+            if (parts[0]) defaults["firstName"] = parts[0];
+            if (parts.length > 1) defaults["lastName"] = parts.slice(1).join(" ");
+          }
+          setFormData((prev) => ({ ...defaults, ...prev }));
         }
-        if (user?.name) {
-          const parts = user.name.trim().split(/\s+/);
-          if (parts[0] && !defaults["firstName"]) defaults["firstName"] = parts[0];
-          if (parts.length > 1 && !defaults["lastName"]) defaults["lastName"] = parts.slice(1).join(" ");
-        }
-        setFormData((prev) => ({ ...defaults, ...prev, ...(user?.email ? { email: user.email } : {}) }));
-      })
-      .catch(() => {
-        setConfig(DEFAULT_FALLBACK_CONFIG);
-        const defaults: Record<string, string> = {};
-        if (user?.email) defaults["email"] = user.email;
-        if (user?.name) {
-          const parts = user.name.trim().split(/\s+/);
-          if (parts[0]) defaults["firstName"] = parts[0];
-          if (parts.length > 1) defaults["lastName"] = parts.slice(1).join(" ");
-        }
-        setFormData((prev) => ({ ...defaults, ...prev }));
-      });
+      } catch (err) {
+        console.error("Failed to initialize recruitment portal:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    init();
   }, [user]);
 
   function getValue(id: string): string {
     return formData[id] ?? "";
   }
 
-  function setValue(id: string, value: string) {
+  function setValue(id: string, value: any) {
     setFormData((prev) => ({ ...prev, [id]: value }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
-    setError(null);
+    if (!cycle) return;
 
-    const payload: Record<string, string> = { ...formData };
-    if (user?.email && !payload.email) {
-      payload.email = user.email;
-    }
+    setSubmitting(true);
+    setSubmitError(null);
+
+    const payload = {
+      cycleId: cycle.id,
+      answers: {
+        ...formData,
+        email: user?.email || formData.email,
+      },
+    };
 
     try {
-      const res = await fetch("/api/apply", {
+      const res = await fetch("/api/recruitment/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      const data = await res.json();
+
       if (!res.ok) {
-        setError(data.error ?? "Failed to submit application. Please try again.");
+        setSubmitError(data.error || "Failed to submit application. Please try again.");
         return;
       }
-      setSubmitted(true);
+
+      // Re-fetch submission state immediately to show status screen
+      const subRes = await fetch(`/api/recruitment/my-submission?cycleId=${cycle.id}`);
+      const subData = await subRes.json();
+      if (subData.submitted && subData.submission) {
+        setSubmission(subData.submission);
+        setStage(subData.stage);
+        setStatusKey(subData.statusKey);
+        if (subData.message) setStatusMessage(subData.message);
+      }
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch {
-      setError("Network error. Please try again.");
+      setSubmitError("Network error submitting application. Please try again.");
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   }
 
-  const isLocked = config !== null && config.isOpen === false;
+  const isFormFillable =
+    cycle !== null &&
+    cycle.status === "open" &&
+    form !== null &&
+    !form.is_locked &&
+    computedStatus === "open";
 
   return (
     <>
-      {/* ── Hero Banner ──────────────────────────────────────────────────── */}
-      <div className="relative w-full h-[52vh] overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-stone-600 via-stone-700 to-stone-800" />
+      {/* Hero Banner */}
+      <div className="relative w-full h-[50vh] min-h-[380px] overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-stone-700 via-stone-800 to-stone-950" />
         <div
-          className="absolute inset-0 opacity-40"
+          className="absolute inset-0 opacity-45"
           style={{
             backgroundImage:
-              "radial-gradient(ellipse at 20% 60%, #78350f 0%, transparent 50%), radial-gradient(ellipse at 70% 25%, #292524 0%, transparent 55%)",
+              "radial-gradient(ellipse at 20% 60%, #78350f 0%, transparent 55%), radial-gradient(ellipse at 75% 25%, #1a0303 0%, transparent 60%)",
           }}
         />
-        <div className="absolute inset-0 bg-black/40" />
-        <div className="relative z-10 h-full flex items-end px-16 pb-12 pt-20">
+        <div className="absolute inset-0 bg-black/45" />
+        <div className="relative z-10 h-full flex items-end px-8 md:px-16 pb-12 pt-24">
           <div>
             <motion.p
-              className="text-[#F5A623] text-xs font-bold tracking-[0.25em] uppercase mb-4"
+              className="text-[#F5A623] text-xs font-bold tracking-[0.25em] uppercase mb-3"
               style={{ fontFamily: "'Inter', sans-serif" }}
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.55, ease: "easeOut" }}
+              transition={{ duration: 0.5 }}
             >
-              Fall 2026 Rush
+              {cycle ? cycle.name : "Phi Gamma Nu"} • University of Michigan
             </motion.p>
             <motion.h1
               className="text-white font-normal leading-tight"
-              style={{ fontFamily: "'Playfair Display', serif", fontSize: "clamp(2.8rem, 6.5vw, 5rem)" }}
-              initial={{ opacity: 0, y: 30 }}
+              style={{ fontFamily: "'Playfair Display', serif", fontSize: "clamp(2.5rem, 6vw, 4.5rem)" }}
+              initial={{ opacity: 0, y: 25 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, ease: "easeOut", delay: 0.08 }}
+              transition={{ duration: 0.65, delay: 0.08 }}
             >
-              Apply to PGN
+              Recruitment Portal
             </motion.h1>
+            <motion.p
+              className="text-white/60 text-sm mt-2 max-w-lg"
+              style={{ fontFamily: "'Inter', sans-serif" }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.5, delay: 0.2 }}
+            >
+              Join a distinguished community of driven, ambitious business and multidisciplinary leaders.
+            </motion.p>
           </div>
         </div>
       </div>
 
-      {/* ── Body ─────────────────────────────────────────────────────────── */}
-      <div className="bg-[#FAFAF9] min-h-screen py-20 px-6">
-        <div className="max-w-3xl mx-auto">
-          {config === null ? (
-            <div className="flex justify-center py-24">
-              <div className="w-6 h-6 rounded-full border-2 border-[#7A0C0C] border-t-transparent animate-spin" />
+      {/* Main Content Area */}
+      <div className="bg-[#FAFAF9] min-h-screen py-16 px-6">
+        <div className="max-w-4xl mx-auto">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-24 gap-3">
+              <div className="w-7 h-7 rounded-full border-2 border-[#7A0C0C] border-t-transparent animate-spin" />
+              <p className="text-xs text-stone-400 font-medium">Checking application status…</p>
             </div>
-          ) : isLocked ? (
-            /* ── Application Locked / Opening Soon Screen ── */
-            <ApplicationOpeningSoon />
-          ) : submitted ? (
-            <motion.div
-              className="flex flex-col items-center text-center py-24"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.5 }}
-            >
-              <CheckCircle size={64} className="text-[#7A0C0C] mb-6" strokeWidth={1.5} />
-              <h2
-                className="text-4xl font-normal text-gray-900 mb-4"
-                style={{ fontFamily: "'Playfair Display', serif" }}
-              >
-                Application Submitted
-              </h2>
-              <p className="text-gray-600 text-base max-w-md leading-relaxed" style={{ fontFamily: "'Inter', sans-serif" }}>
-                Thank you, {getValue("firstName") || "applicant"}! We have received your application and will be in touch via email. We look forward to meeting you.
-              </p>
-              <div className="mt-8 h-px w-24 bg-[#F5A623]" />
-              <p className="mt-8 text-sm text-gray-500" style={{ fontFamily: "'Inter', sans-serif" }}>
-                Questions? Reach us at{" "}
-                <a href="mailto:pgnmichigan@gmail.com" className="text-[#7A0C0C] underline underline-offset-2">
-                  pgnmichigan@gmail.com
-                </a>
-              </p>
-            </motion.div>
+          ) : !cycle ? (
+            /* 1. No Active Cycle */
+            <NoActiveCycleScreen />
+          ) : submission ? (
+            /* 2. Applicant Has Already Submitted -> Status Screen */
+            <ApplicantStatusScreen
+              cycleName={cycle.name}
+              stage={stage}
+              statusKey={statusKey}
+              statusMessage={statusMessage}
+              submission={submission}
+              onSignOut={logout}
+            />
+          ) : !isFormFillable ? (
+            /* 3. Cycle is Locked or Outside Schedule Window */
+            <LockedOrScheduledScreen
+              cycleName={cycle.name}
+              opensAt={form?.opens_at ?? null}
+              closesAt={form?.closes_at ?? null}
+              isLocked={form?.is_locked ?? false}
+            />
           ) : (
-            <>
-              <motion.div
-                className="mb-8"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.55 }}
-              >
-                <h2
-                  className="text-3xl font-normal text-gray-900 mb-4"
-                  style={{ fontFamily: "'Playfair Display', serif" }}
-                >
-                  Join Our Brotherhood
-                </h2>
-                <p className="text-gray-600 leading-relaxed text-[0.95rem]" style={{ fontFamily: "'Inter', sans-serif" }}>
-                  We are looking for driven individuals who are committed to professionalism, integrity, and making
-                  a lasting impact. Complete the form below to begin your application for Fall 2026 recruitment.
-                  Fields marked with <span className="text-[#7A0C0C] font-semibold">*</span> are required.
-                </p>
-              </motion.div>
-
-              {/* ── Authenticated Applicant Banner ────────────────────────── */}
-              {user && (
-                <motion.div
-                  className="bg-white border border-stone-200/90 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-10 shadow-xs"
-                  initial={{ opacity: 0, y: 15 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.4 }}
-                >
-                  <div className="flex items-center gap-3.5">
-                    {user.picture ? (
-                      <img
-                        src={user.picture}
-                        alt={user.name ?? "User"}
-                        className="w-10 h-10 rounded-full border border-stone-300 shadow-xs object-cover"
-                      />
-                    ) : (
-                      <div className="w-10 h-10 rounded-full bg-[#7A0C0C] text-white flex items-center justify-center font-semibold text-sm shadow-xs">
-                        {user.name?.[0]?.toUpperCase() ?? "U"}
-                      </div>
-                    )}
-                    <div>
-                      <p
-                        className="text-[11px] text-stone-500 font-bold tracking-wider uppercase"
-                        style={{ fontFamily: "'Inter', sans-serif" }}
-                      >
-                        Verified UMich Applicant
-                      </p>
-                      <div className="flex items-center flex-wrap gap-2 mt-0.5">
-                        <span
-                          className="text-stone-900 font-semibold text-sm"
-                          style={{ fontFamily: "'Inter', sans-serif" }}
-                        >
-                          {user.name || "Applicant"}
-                        </span>
-                        <span
-                          className="text-xs bg-[#7A0C0C]/10 text-[#7A0C0C] font-semibold px-2.5 py-0.5 rounded-full border border-[#7A0C0C]/20"
-                          style={{ fontFamily: "'Inter', sans-serif" }}
-                        >
-                          {user.email}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={logout}
-                    className="text-xs text-stone-500 hover:text-[#7A0C0C] font-medium underline underline-offset-4 transition-colors cursor-pointer"
-                    style={{ fontFamily: "'Inter', sans-serif" }}
-                  >
-                    Switch account
-                  </button>
-                </motion.div>
-              )}
-
-              <motion.form
-                onSubmit={handleSubmit}
-                className="space-y-10"
-                initial={{ opacity: 0, y: 24 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.1 }}
-              >
-                {config.sections.map((section) => (
-                  <section key={section.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-                    <h3
-                      className="text-xs font-bold tracking-[0.18em] uppercase text-[#7A0C0C] mb-6"
-                      style={{ fontFamily: "'Inter', sans-serif" }}
+            /* 4. Active Dynamic Application Form */
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.55 }}
+            >
+              <div className="bg-white rounded-3xl shadow-sm border border-stone-200/80 p-8 sm:p-12 mb-10">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-8 border-b border-stone-100">
+                  <div>
+                    <span className="text-[#F5A623] text-xs font-bold tracking-[0.2em] uppercase block mb-1">
+                      Official Application
+                    </span>
+                    <h2
+                      className="text-3xl font-normal text-stone-900"
+                      style={{ fontFamily: "'Playfair Display', serif" }}
                     >
-                      {section.label}
-                    </h3>
-                    <div className={`grid gap-5 ${section.fields.some((f) => f.type === "textarea" || f.type === "file") ? "" : "sm:grid-cols-2"}`}>
-                      {section.fields.map((field) => {
-                        if (field.type === "select") {
+                      {cycle.name} Application
+                    </h2>
+                  </div>
+                  {form?.closes_at && (
+                    <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-50 border border-amber-200/70 text-xs text-amber-900 font-medium">
+                      <Clock size={13} className="text-[#7A0C0C]" />
+                      <span>
+                        Deadline: {new Date(form.closes_at).toLocaleDateString()} at{" "}
+                        {new Date(form.closes_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <p className="text-stone-600 text-sm py-6 leading-relaxed">
+                  Please complete all required sections thoroughly. Once submitted, your application is
+                  locked and cannot be edited. You can track your interview status on this portal throughout
+                  the recruitment cycle.
+                </p>
+
+                <form onSubmit={handleSubmit} className="space-y-10">
+                  {(form?.questions || []).map((section, sIdx) => (
+                    <div key={section.id || sIdx} className="space-y-5">
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs font-bold tracking-[0.2em] uppercase text-[#7A0C0C] bg-[#7A0C0C]/5 px-3 py-1 rounded-md">
+                          Section {sIdx + 1}
+                        </span>
+                        <h3 className="text-lg font-semibold text-stone-900" style={{ fontFamily: "'Inter', sans-serif" }}>
+                          {section.label}
+                        </h3>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-5">
+                        {(section.fields || []).map((field) => {
+                          if (field.type === "select") {
+                            return (
+                              <DynamicSelect
+                                key={field.id}
+                                field={field}
+                                value={getValue(field.id)}
+                                onChange={(val) => setValue(field.id, val)}
+                              />
+                            );
+                          }
+                          if (field.type === "textarea") {
+                            return (
+                              <DynamicTextarea
+                                key={field.id}
+                                field={field}
+                                value={getValue(field.id)}
+                                onChange={(val) => setValue(field.id, val)}
+                              />
+                            );
+                          }
+                          if (field.type === "file") {
+                            return (
+                              <DynamicFileInput
+                                key={field.id}
+                                field={field}
+                                value={getValue(field.id)}
+                                onChange={(val) => setValue(field.id, val)}
+                              />
+                            );
+                          }
                           return (
-                            <DynamicSelect
+                            <DynamicInput
                               key={field.id}
                               field={field}
                               value={getValue(field.id)}
-                              onChange={(v) => setValue(field.id, v)}
+                              onChange={(val) => setValue(field.id, val)}
                             />
                           );
-                        }
-                        if (field.type === "textarea") {
-                          return (
-                            <div key={field.id} className="sm:col-span-2">
-                              <DynamicTextarea
-                                field={field}
-                                value={getValue(field.id)}
-                                onChange={(v) => setValue(field.id, v)}
-                              />
-                            </div>
-                          );
-                        }
-                        if (field.type === "file") {
-                          return (
-                            <div key={field.id} className="flex flex-col gap-1.5 sm:col-span-2">
-                              <label className="text-sm font-semibold text-gray-700" style={{ fontFamily: "'Inter', sans-serif" }}>
-                                {field.label} <span className="text-gray-400 font-normal">(PDF, max 5 MB)</span>
-                              </label>
-                              <label className="flex items-center gap-4 border-2 border-dashed border-gray-200 rounded-xl px-6 py-5 cursor-pointer hover:border-[#7A0C0C]/40 transition-colors group">
-                                <div className="flex-1">
-                                  <p className="text-sm text-gray-500 group-hover:text-gray-700 transition-colors" style={{ fontFamily: "'Inter', sans-serif" }}>
-                                    {resumeFile ? resumeFile.name : "Click to upload or drag and drop"}
-                                  </p>
-                                </div>
-                                <span className="px-4 py-2 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600 bg-gray-50">Browse</span>
-                                <input
-                                  type="file"
-                                  accept=".pdf"
-                                  className="hidden"
-                                  onChange={(e) => setResumeFile(e.target.files?.[0] ?? null)}
-                                />
-                              </label>
-                            </div>
-                          );
-                        }
-                        return (
-                          <DynamicInput
-                            key={field.id}
-                            field={field}
-                            value={getValue(field.id)}
-                            onChange={(v) => setValue(field.id, v)}
-                          />
-                        );
-                      })}
+                        })}
+                      </div>
                     </div>
-                  </section>
-                ))}
+                  ))}
 
-                {error && (
-                  <p className="text-sm text-red-600 font-medium" style={{ fontFamily: "'Inter', sans-serif" }}>
-                    {error}
-                  </p>
-                )}
+                  {submitError && (
+                    <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-medium flex items-center gap-2">
+                      <AlertCircle size={16} className="flex-shrink-0" />
+                      <span>{submitError}</span>
+                    </div>
+                  )}
 
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-2">
-                  <p className="text-xs text-gray-500 leading-relaxed max-w-sm" style={{ fontFamily: "'Inter', sans-serif" }}>
-                    By submitting this form you confirm that all information provided is accurate. We will contact you at the email address provided.
-                  </p>
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="px-10 py-3.5 bg-[#7A0C0C] text-white text-sm font-bold tracking-widest uppercase rounded-full hover:bg-[#5C0A0A] transition-colors duration-200 whitespace-nowrap disabled:opacity-60 disabled:cursor-not-allowed"
-                    style={{ fontFamily: "'Inter', sans-serif" }}
-                  >
-                    {loading ? "Submitting…" : "Submit Application"}
-                  </button>
-                </div>
-              </motion.form>
-            </>
+                  <div className="pt-6 border-t border-stone-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <p className="text-xs text-stone-400">
+                      By submitting, you certify that all information provided is accurate and original.
+                    </p>
+                    <button
+                      type="submit"
+                      disabled={submitting}
+                      className="w-full sm:w-auto px-10 py-3.5 bg-[#7A0C0C] hover:bg-[#5C0A0A] text-white text-xs font-bold tracking-widest uppercase rounded-full shadow-sm hover:shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{ fontFamily: "'Inter', sans-serif" }}
+                    >
+                      {submitting ? "Submitting Application…" : "Submit Application"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </motion.div>
           )}
         </div>
       </div>
@@ -579,10 +1058,9 @@ export default function Apply() {
     <LoginGate
       badge="Recruitment Application"
       title="Sign in to Apply"
-      subtitle="Please sign in with your @umich.edu Google account to access the Phi Gamma Nu recruitment application."
+      subtitle="Please sign in with your @umich.edu Google account to access the Phi Gamma Nu recruitment portal."
     >
       <ApplyContent />
     </LoginGate>
   );
 }
-
