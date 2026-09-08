@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { 
   Users, CheckCircle2, Clock, FileText, ExternalLink, 
   Search, Award, MessageSquare, AlertCircle, ChevronRight,
-  Sparkles, Filter, RefreshCw
+  Sparkles, Filter, RefreshCw, Download
 } from "lucide-react";
 import { LoginGate } from "@/app/components/LoginGate";
 import { useAuth } from "@/app/context/AuthContext";
@@ -19,6 +19,8 @@ type AssignedSubmission = {
   grad_term?: string;
   pronouns?: string;
   resume_url?: string;
+  photo_url?: string;
+  is_bba?: boolean;
   status: string;
   responses?: Record<string, any>;
   assigned_at?: string;
@@ -471,39 +473,59 @@ function BrotherPortalInner() {
 
                 {/* Candidate Details Card */}
                 <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-6 space-y-6">
-                  
-                  {/* Candidate Profile Header */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-stone-100">
-                    <div>
-                      <h2 className="text-2xl font-serif text-stone-900 font-normal">
-                        {selectedSub.full_name}
-                      </h2>
-                      <div className="flex flex-wrap items-center gap-2 text-xs text-stone-500 mt-1">
-                        <span>{selectedSub.email}</span>
-                        {selectedSub.phone && <span>• {selectedSub.phone}</span>}
-                        {selectedSub.pronouns && <span>• ({selectedSub.pronouns})</span>}
-                      </div>
-                    </div>
-
-                    {selectedSub.resume_url && (
-                      <a
-                        href={selectedSub.resume_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-stone-100 text-stone-800 text-xs font-semibold hover:bg-stone-200 transition border border-stone-200 shrink-0"
-                      >
-                        <FileText size={14} className="text-[#7A0C0C]" />
-                        <span>View Resume PDF</span>
-                        <ExternalLink size={12} className="text-stone-400" />
-                      </a>
-                    )}
-                  </div>
-
-                  {/* Key Academic & Identity Metrics */}
                   {(() => {
+                    const parsedResponses: Record<string, any> = (() => {
+                      if (!selectedSub.responses) return {};
+                      if (typeof selectedSub.responses === "string") {
+                        try {
+                          const parsed = JSON.parse(selectedSub.responses);
+                          return typeof parsed === "object" && parsed !== null ? parsed : {};
+                        } catch {
+                          return {};
+                        }
+                      }
+                      return typeof selectedSub.responses === "object" ? selectedSub.responses : {};
+                    })();
+
+                    const isPhotoUrl = (str: string, promptText = "", keyText = "") => {
+                      if (!str || typeof str !== "string") return false;
+                      const s = str.trim();
+                      if (s.startsWith("data:image/")) return true;
+                      if (/\.(jpe?g|png|webp|gif|avif|bmp|svg)(\?.*)?$/i.test(s)) return true;
+                      if (s.startsWith("/uploads/photo_")) return true;
+                      if (s.startsWith("/uploads/") && /photo|headshot|picture|portrait/i.test(promptText + " " + keyText)) return true;
+                      return false;
+                    };
+
+                    const isDocumentUrl = (str: string) => {
+                      if (!str || typeof str !== "string") return false;
+                      const s = str.trim();
+                      if (/\.(pdf|docx?|doc|txt|xlsx?|pptx?|csv)(\?.*)?$/i.test(s)) return true;
+                      if (s.startsWith("/uploads/resume_")) return true;
+                      if (s.startsWith("/uploads/")) return true;
+                      return false;
+                    };
+
+                    const candidatePhoto = selectedSub.photo_url || (() => {
+                      for (const [k, v] of Object.entries(parsedResponses)) {
+                        const prompt = selectedSub.question_labels?.[k] || k;
+                        if (typeof v === "string" && isPhotoUrl(v, prompt, k)) return v;
+                      }
+                      return null;
+                    })();
+
+                    const candidateResume = selectedSub.resume_url || (() => {
+                      for (const [k, v] of Object.entries(parsedResponses)) {
+                        const prompt = (selectedSub.question_labels?.[k] || k).toLowerCase();
+                        if (typeof v === "string" && (v.startsWith("/uploads/resume_") || (isDocumentUrl(v) && /resume|cv/i.test(prompt)))) {
+                          return v;
+                        }
+                      }
+                      return null;
+                    })();
+
                     const effectiveMajor = selectedSub.major || (() => {
-                      if (!selectedSub.responses) return "";
-                      for (const [k, v] of Object.entries(selectedSub.responses)) {
+                      for (const [k, v] of Object.entries(parsedResponses)) {
                         const label = (selectedSub.question_labels?.[k] || k).toLowerCase();
                         if (/major|field.*study|concentration/i.test(label) && typeof v === "string") return v;
                       }
@@ -511,8 +533,7 @@ function BrotherPortalInner() {
                     })();
 
                     const effectiveMinor = selectedSub.minor || (() => {
-                      if (!selectedSub.responses) return "";
-                      for (const [k, v] of Object.entries(selectedSub.responses)) {
+                      for (const [k, v] of Object.entries(parsedResponses)) {
                         const label = (selectedSub.question_labels?.[k] || k).toLowerCase();
                         if (/minor/i.test(label) && typeof v === "string") return v;
                       }
@@ -520,8 +541,7 @@ function BrotherPortalInner() {
                     })();
 
                     const effectiveGpa = selectedSub.gpa || (() => {
-                      if (!selectedSub.responses) return "";
-                      for (const [k, v] of Object.entries(selectedSub.responses)) {
+                      for (const [k, v] of Object.entries(parsedResponses)) {
                         const label = (selectedSub.question_labels?.[k] || k).toLowerCase();
                         if (/gpa|grade\s*point/i.test(label) && typeof v === "string") return v;
                       }
@@ -529,8 +549,7 @@ function BrotherPortalInner() {
                     })();
 
                     const effectiveGrad = selectedSub.grad_term || (() => {
-                      if (!selectedSub.responses) return "";
-                      for (const [k, v] of Object.entries(selectedSub.responses)) {
+                      for (const [k, v] of Object.entries(parsedResponses)) {
                         const label = (selectedSub.question_labels?.[k] || k).toLowerCase();
                         if (/grad.*term|graduation|grad.*year|class\s*standing/i.test(label) && typeof v === "string") return v;
                       }
@@ -538,93 +557,241 @@ function BrotherPortalInner() {
                     })();
 
                     const hasAnyAcademicMetric = Boolean(effectiveMajor || effectiveMinor || effectiveGpa || effectiveGrad);
-                    if (!hasAnyAcademicMetric) return null;
+
+                    const getDocFilename = (url: string, fallback: string) => {
+                      try {
+                        const parts = url.split("/");
+                        const last = parts[parts.length - 1] || "";
+                        if (!last) return fallback;
+                        const cleaned = last.replace(/^(resume|photo)_\d+_[a-z0-9]+/, "$1");
+                        return cleaned || fallback;
+                      } catch {
+                        return fallback;
+                      }
+                    };
 
                     return (
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-stone-50 p-4 rounded-xl border border-stone-100">
-                        <div>
-                          <div className="text-[11px] text-stone-400 uppercase font-bold tracking-wider">Major</div>
-                          <div className="text-sm font-semibold text-stone-800 mt-0.5">{effectiveMajor || "N/A"}</div>
+                      <>
+                        {/* Candidate Profile Header */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-stone-100">
+                          <div className="flex items-center gap-3.5 sm:gap-4">
+                            {candidatePhoto ? (
+                              <a
+                                href={candidatePhoto}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="group relative shrink-0"
+                                title="Click to view full-size photo"
+                              >
+                                <img
+                                  src={candidatePhoto}
+                                  alt={selectedSub.full_name}
+                                  className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl object-cover border-2 border-stone-200 shadow-xs group-hover:opacity-90 transition"
+                                />
+                                <div className="absolute inset-0 rounded-2xl bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center transition text-white">
+                                  <ExternalLink size={14} />
+                                </div>
+                              </a>
+                            ) : (
+                              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-stone-100 border border-stone-200 flex items-center justify-center text-stone-400 font-bold text-xl shrink-0 font-serif">
+                                {selectedSub.full_name?.charAt(0) || "P"}
+                              </div>
+                            )}
+
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h2 className="text-2xl font-serif text-stone-900 font-normal">
+                                  {selectedSub.full_name}
+                                </h2>
+                                {selectedSub.is_bba !== undefined && (
+                                  <span
+                                    className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${
+                                      selectedSub.is_bba
+                                        ? "bg-amber-50 text-amber-900 border-amber-200"
+                                        : "bg-stone-100 text-stone-700 border-stone-200"
+                                    }`}
+                                  >
+                                    {selectedSub.is_bba ? "Ross / BBA" : "Non-BBA"}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2 text-xs text-stone-500 mt-1">
+                                <span>{selectedSub.email}</span>
+                                {selectedSub.phone && <span>• {selectedSub.phone}</span>}
+                                {selectedSub.pronouns && <span>• ({selectedSub.pronouns})</span>}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2 shrink-0">
+                            {candidateResume && (
+                              <a
+                                href={candidateResume}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-stone-100 text-stone-800 text-xs font-semibold hover:bg-stone-200 transition border border-stone-200 shadow-2xs"
+                              >
+                                <FileText size={14} className="text-[#7A0C0C]" />
+                                <span>View Resume PDF</span>
+                                <ExternalLink size={12} className="text-stone-400" />
+                              </a>
+                            )}
+                            {candidatePhoto && (
+                              <a
+                                href={candidatePhoto}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-stone-100 text-stone-700 text-xs font-semibold hover:bg-stone-200 transition border border-stone-200 shadow-2xs"
+                              >
+                                <span>Photo</span>
+                                <ExternalLink size={12} className="text-stone-400" />
+                              </a>
+                            )}
+                          </div>
                         </div>
+
+                        {/* Key Academic & Identity Metrics */}
+                        {hasAnyAcademicMetric && (
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-stone-50 p-4 rounded-xl border border-stone-100">
+                            <div>
+                              <div className="text-[11px] text-stone-400 uppercase font-bold tracking-wider">Major</div>
+                              <div className="text-sm font-semibold text-stone-800 mt-0.5">{effectiveMajor || "N/A"}</div>
+                            </div>
+                            <div>
+                              <div className="text-[11px] text-stone-400 uppercase font-bold tracking-wider">Minor</div>
+                              <div className="text-sm font-semibold text-stone-800 mt-0.5">{effectiveMinor || "None"}</div>
+                            </div>
+                            <div>
+                              <div className="text-[11px] text-stone-400 uppercase font-bold tracking-wider">GPA</div>
+                              <div className="text-sm font-semibold text-stone-800 mt-0.5">{effectiveGpa || "N/A"}</div>
+                            </div>
+                            <div>
+                              <div className="text-[11px] text-stone-400 uppercase font-bold tracking-wider">Graduation</div>
+                              <div className="text-sm font-semibold text-stone-800 mt-0.5">{effectiveGrad || "N/A"}</div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Application Question Responses */}
                         <div>
-                          <div className="text-[11px] text-stone-400 uppercase font-bold tracking-wider">Minor</div>
-                          <div className="text-sm font-semibold text-stone-800 mt-0.5">{effectiveMinor || "None"}</div>
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-stone-600 mb-3 flex items-center gap-1.5">
+                            <FileText size={13} />
+                            Application Responses
+                          </h4>
+
+                          {parsedResponses && Object.keys(parsedResponses).length > 0 ? (
+                            <div className="space-y-4">
+                              {Object.entries(parsedResponses).map(([key, value]: [string, any]) => {
+                                const prompt = selectedSub.question_labels?.[key] || key
+                                  .replace(/_/g, " ")
+                                  .replace(/([A-Z])/g, " $1")
+                                  .replace(/^./, (str) => str.toUpperCase());
+
+                                const displayValue = typeof value === "object"
+                                  ? (Array.isArray(value) ? value.join(", ") : JSON.stringify(value, null, 2))
+                                  : String(value ?? "");
+
+                                const isImage = typeof displayValue === "string" && isPhotoUrl(displayValue, prompt, key);
+                                const isDoc = !isImage && typeof displayValue === "string" && isDocumentUrl(displayValue);
+                                const isGenericLink = !isImage && !isDoc && typeof displayValue === "string" && (displayValue.startsWith("http://") || displayValue.startsWith("https://"));
+
+                                return (
+                                  <div key={key} className="bg-stone-50/70 p-4 rounded-xl border border-stone-200/70 space-y-2">
+                                    <span className="text-xs font-semibold text-stone-800 block whitespace-pre-wrap">
+                                      {prompt}
+                                    </span>
+                                    {isImage ? (
+                                      <div className="space-y-2 pt-1">
+                                        <a href={displayValue} target="_blank" rel="noopener noreferrer" className="block w-fit group">
+                                          <img
+                                            src={displayValue}
+                                            alt={prompt}
+                                            className="max-h-64 rounded-xl border border-stone-200 object-cover shadow-xs group-hover:opacity-95 transition"
+                                          />
+                                        </a>
+                                        <div className="flex items-center gap-3">
+                                          <a
+                                            href={displayValue}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-[#7A0C0C] hover:text-[#5A0808] font-semibold underline inline-flex items-center gap-1.5 text-xs"
+                                          >
+                                            <ExternalLink size={13} /> View Full Photo
+                                          </a>
+                                          <a
+                                            href={displayValue}
+                                            download
+                                            className="text-stone-600 hover:text-stone-900 inline-flex items-center gap-1.5 text-xs font-medium"
+                                          >
+                                            <Download size={13} /> Download
+                                          </a>
+                                        </div>
+                                      </div>
+                                    ) : isDoc ? (
+                                      <div className="pt-1">
+                                        <div className="flex items-center justify-between p-3 bg-white rounded-xl border border-stone-200 max-w-md shadow-2xs">
+                                          <div className="flex items-center gap-3 min-w-0 pr-3">
+                                            <div className="w-9 h-9 rounded-lg bg-red-50 text-[#7A0C0C] flex items-center justify-center shrink-0 border border-red-100">
+                                              <FileText size={18} />
+                                            </div>
+                                            <div className="min-w-0">
+                                              <p className="text-xs font-semibold text-stone-800 truncate">
+                                                {getDocFilename(displayValue, prompt)}
+                                              </p>
+                                              <p className="text-[10px] text-stone-400 uppercase tracking-wider">
+                                                Uploaded Document
+                                              </p>
+                                            </div>
+                                          </div>
+                                          <div className="flex items-center gap-2 shrink-0">
+                                            <a
+                                              href={displayValue}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="px-3 py-1.5 rounded-lg bg-stone-100 hover:bg-stone-200 text-xs font-semibold text-stone-800 flex items-center gap-1.5 transition"
+                                            >
+                                              <span>Open</span>
+                                              <ExternalLink size={12} className="text-stone-500" />
+                                            </a>
+                                            <a
+                                              href={displayValue}
+                                              download
+                                              className="p-1.5 rounded-lg text-stone-500 hover:text-stone-800 hover:bg-stone-100 transition"
+                                              title="Download file"
+                                            >
+                                              <Download size={14} />
+                                            </a>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ) : isGenericLink ? (
+                                      <a
+                                        href={displayValue}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-[#7A0C0C] hover:underline inline-flex items-center gap-1.5 text-xs font-semibold"
+                                      >
+                                        <span>{displayValue}</span>
+                                        <ExternalLink size={12} />
+                                      </a>
+                                    ) : (
+                                      <p className="text-sm text-stone-800 whitespace-pre-wrap leading-relaxed font-sans">
+                                        {displayValue || <span className="text-stone-400 italic">No answer provided</span>}
+                                      </p>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-stone-400 italic bg-stone-50 p-4 rounded-xl">
+                              No additional custom application question responses recorded.
+                            </p>
+                          )}
                         </div>
-                        <div>
-                          <div className="text-[11px] text-stone-400 uppercase font-bold tracking-wider">GPA</div>
-                          <div className="text-sm font-semibold text-stone-800 mt-0.5">{effectiveGpa || "N/A"}</div>
-                        </div>
-                        <div>
-                          <div className="text-[11px] text-stone-400 uppercase font-bold tracking-wider">Graduation</div>
-                          <div className="text-sm font-semibold text-stone-800 mt-0.5">{effectiveGrad || "N/A"}</div>
-                        </div>
-                      </div>
+                      </>
                     );
                   })()}
-
-                  {/* Application Question Responses */}
-                  <div>
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-stone-600 mb-3 flex items-center gap-1.5">
-                      <FileText size={13} />
-                      Application Responses
-                    </h4>
-                    
-                    {selectedSub.responses && Object.keys(selectedSub.responses).length > 0 ? (
-                      <div className="space-y-4">
-                        {Object.entries(selectedSub.responses).map(([key, value]: [string, any]) => {
-                          // Format clean label from question_labels or formatted key
-                          const prompt = selectedSub.question_labels?.[key] || key
-                            .replace(/_/g, " ")
-                            .replace(/([A-Z])/g, " $1")
-                            .replace(/^./, (str) => str.toUpperCase());
-
-                          const displayValue = typeof value === "object" ? JSON.stringify(value, null, 2) : String(value);
-                          const isImageUrl =
-                            typeof displayValue === "string" &&
-                            (displayValue.startsWith("/uploads/") ||
-                              displayValue.startsWith("http://") ||
-                              displayValue.startsWith("https://")) &&
-                            /\.(jpe?g|png|webp|gif|avif)$/i.test(displayValue);
-
-                          return (
-                            <div key={key} className="bg-stone-50/60 p-4 rounded-xl border border-stone-200/60 space-y-1.5">
-                              <span className="text-xs font-semibold text-stone-800 block whitespace-pre-wrap">
-                                {prompt}
-                              </span>
-                              {isImageUrl ? (
-                                <div className="space-y-2 pt-1">
-                                  <a href={displayValue} target="_blank" rel="noopener noreferrer" className="block w-fit group">
-                                    <img
-                                      src={displayValue}
-                                      alt={prompt}
-                                      className="max-h-56 rounded-xl border border-stone-200 object-cover shadow-xs group-hover:opacity-90 transition-opacity"
-                                    />
-                                  </a>
-                                  <a
-                                    href={displayValue}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-[#7A0C0C] font-semibold underline inline-flex items-center gap-1 text-xs"
-                                  >
-                                    View Full Photo <ExternalLink size={12} />
-                                  </a>
-                                </div>
-                              ) : (
-                                <p className="text-sm text-stone-800 whitespace-pre-wrap leading-relaxed font-sans">
-                                  {displayValue || <span className="text-stone-400 italic">No answer provided</span>}
-                                </p>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-stone-400 italic bg-stone-50 p-4 rounded-xl">
-                        No additional custom application question responses recorded.
-                      </p>
-                    )}
-                  </div>
-
                 </div>
               </div>
             ) : (

@@ -607,9 +607,10 @@ async function createSubmission(data: {
   applicantEmail: string;
   applicantName: string;
   answers: Record<string, any>;
+  questionLabels?: Record<string, string>;
 }): Promise<ApplicationSubmission> {
   const normEmail = data.applicantUserId.trim().toLowerCase();
-  const isBba = isApplicantBba({ answers: data.answers });
+  const isBba = isApplicantBba({ answers: data.answers }, data.questionLabels);
   if (useDb) {
     const res = await pool.query(
       `INSERT INTO application_submissions
@@ -745,11 +746,12 @@ export function resolveApplicantFields(
   let phone = answers.phone || answers.phone_number || "";
   let pronouns = answers.pronouns || "";
   let resume_url = answers.resume || answers.resume_url || "";
+  let photo_url = answers.photo || answers.photo_url || answers.headshot || "";
 
   // Scan answers with key & label fuzzy matching
   for (const [key, val] of Object.entries(answers)) {
-    if (!val || typeof val !== "string") continue;
-    const strVal = val.trim();
+    if (!val) continue;
+    const strVal = typeof val === "string" ? val.trim() : "";
     if (!strVal) continue;
     const label = (questionLabels[key] || "").toLowerCase();
     const keyLower = key.toLowerCase();
@@ -772,14 +774,26 @@ export function resolveApplicantFields(
     if (!pronouns && (/pronoun/i.test(label) || /pronoun/i.test(keyLower))) {
       pronouns = strVal;
     }
-    if (!resume_url && (/resume/i.test(label) || /resume/i.test(keyLower))) {
+    if (!resume_url && (/resume|cv|curriculum/i.test(label) || /resume|cv/i.test(keyLower))) {
       if (strVal.startsWith("http") || strVal.startsWith("/uploads/")) {
         resume_url = strVal;
       }
     }
+    if (!photo_url && (/photo|headshot|picture|portrait/i.test(label) || /photo|headshot|picture/i.test(keyLower))) {
+      if (strVal.startsWith("http") || strVal.startsWith("/uploads/") || strVal.startsWith("data:image/")) {
+        photo_url = strVal;
+      }
+    }
+    // Fallback detection from uploaded paths
+    if (!resume_url && (strVal.startsWith("/uploads/resume_") || (strVal.startsWith("/uploads/") && /\.(pdf|docx?)$/i.test(strVal)))) {
+      resume_url = strVal;
+    }
+    if (!photo_url && (strVal.startsWith("/uploads/photo_") || (strVal.startsWith("/uploads/") && /\.(jpe?g|png|webp|gif|avif)$/i.test(strVal)))) {
+      photo_url = strVal;
+    }
   }
 
-  return { major, minor, gpa, grad_term, phone, pronouns, resume_url };
+  return { major, minor, gpa, grad_term, phone, pronouns, resume_url, photo_url };
 }
 
 async function getAssignedSubmissionsForBrother(
@@ -816,11 +830,26 @@ async function getAssignedSubmissionsForBrother(
     query += ` ORDER BY s.id DESC`;
 
     const mapSubmission = (s: any) => {
-      const answers = s.answers || {};
+      let answers = s.answers || {};
+      if (typeof answers === "string") {
+        try {
+          answers = JSON.parse(answers);
+        } catch {
+          answers = {};
+        }
+      }
       const assigned_brothers = s.assigned_brothers || [];
-      const formQuestions = s.form_questions || [];
+      let formQuestions = s.form_questions || [];
+      if (typeof formQuestions === "string") {
+        try {
+          formQuestions = JSON.parse(formQuestions);
+        } catch {
+          formQuestions = [];
+        }
+      }
       const question_labels = extractQuestionLabels(formQuestions);
       const resolved = resolveApplicantFields(answers, question_labels);
+      const is_bba = isApplicantBba({ ...s, answers }, question_labels);
 
       let current_round: "application" | "round1" | "round2" = "application";
       let current_round_name = "Application Round";
@@ -849,6 +878,8 @@ async function getAssignedSubmissionsForBrother(
         grad_term: resolved.grad_term,
         pronouns: resolved.pronouns,
         resume_url: resolved.resume_url,
+        photo_url: resolved.photo_url,
+        is_bba,
         responses: answers,
         question_labels,
         current_round,
@@ -912,8 +943,16 @@ async function getAssignedSubmissionsForBrother(
         myScoreObj = app ? { score: app.score, note: app.note, rated_at: app.rated_at } : null;
       }
 
-      const answers = s.answers || {};
+      let answers = s.answers || {};
+      if (typeof answers === "string") {
+        try {
+          answers = JSON.parse(answers);
+        } catch {
+          answers = {};
+        }
+      }
       const resolved = resolveApplicantFields(answers, question_labels);
+      const is_bba = isApplicantBba({ ...s, answers }, question_labels);
 
       return {
         ...s,
@@ -926,6 +965,8 @@ async function getAssignedSubmissionsForBrother(
         grad_term: resolved.grad_term,
         pronouns: resolved.pronouns,
         resume_url: resolved.resume_url,
+        photo_url: resolved.photo_url,
+        is_bba,
         responses: answers,
         question_labels,
         current_round,
@@ -968,35 +1009,94 @@ export interface CandidateRow {
 
 export function isApplicantBba(
   sub: {
+    id?: number;
     is_bba?: boolean | null;
     answers?: Record<string, any> | null;
   },
   questionLabels?: Record<string, string>,
 ): boolean {
-  if (typeof sub.is_bba === "boolean") {
-    return sub.is_bba;
+  let answers = sub.answers;
+  if (typeof answers === "string") {
+    try {
+      answers = JSON.parse(answers);
+    } catch {
+      answers = {};
+    }
   }
-  const answers = sub.answers || {};
-  // 1. Direct check for isRoss question or any ross/bba questionnaire keys
+  if (!answers || typeof answers !== "object") {
+    answers = {};
+  }
+
+  // 1. Direct check for any Ross / BBA questions or answers
   for (const [k, v] of Object.entries(answers)) {
-    const keyLower = k.toLowerCase();
-    const labelLower = (questionLabels?.[k] || "").toLowerCase();
-    if (
+    if (v === undefined || v === null) continue;
+    const keyLower = String(k).toLowerCase();
+    const labelLower = String(questionLabels?.[k] || "").toLowerCase();
+
+    // Does the question prompt or key ask about Ross, BBA, or Business School?
+    const isRossQuestion =
       keyLower.includes("ross") ||
       keyLower.includes("is_bba") ||
       keyLower === "isross" ||
-      labelLower.includes("ross student") ||
-      labelLower.includes("ross business") ||
-      labelLower.includes("bba student")
-    ) {
-      if (typeof v === "boolean") return v;
+      labelLower.includes("ross") ||
+      labelLower.includes("bba") ||
+      labelLower.includes("business school");
+
+    if (isRossQuestion) {
+      if (typeof v === "boolean") {
+        if (v === true) return true;
+      }
       if (typeof v === "string") {
         const valLower = v.trim().toLowerCase();
-        if (valLower === "yes" || valLower === "true" || valLower === "1") return true;
-        if (valLower === "no" || valLower === "false" || valLower === "0") return false;
+        if (
+          valLower === "yes" ||
+          valLower === "y" ||
+          valLower === "true" ||
+          valLower === "1" ||
+          valLower.startsWith("yes") ||
+          valLower.includes("enrolled") ||
+          valLower.includes("ross") ||
+          valLower.includes("bba")
+        ) {
+          return true;
+        }
+      }
+      if (Array.isArray(v)) {
+        for (const item of v) {
+          const itemLower = String(item).trim().toLowerCase();
+          if (
+            itemLower === "yes" ||
+            itemLower.startsWith("yes") ||
+            itemLower.includes("ross") ||
+            itemLower.includes("bba")
+          ) {
+            return true;
+          }
+        }
+      }
+    }
+
+    // What if the question is "School", "College", "School/College", or "Academic Unit"?
+    const isSchoolQuestion =
+      labelLower.includes("school") ||
+      labelLower.includes("college") ||
+      labelLower.includes("program") ||
+      keyLower.includes("school") ||
+      keyLower.includes("college");
+
+    if (isSchoolQuestion && typeof v === "string") {
+      const valLower = v.trim().toLowerCase();
+      if (
+        valLower.includes("ross") ||
+        valLower.includes("bba") ||
+        valLower.includes("business administration") ||
+        valLower.includes("stephen m. ross")
+      ) {
+        return true;
       }
     }
   }
+
   // 2. Check major
   const resolved = resolveApplicantFields(answers, questionLabels || {});
   if (typeof resolved.major === "string") {
@@ -1009,6 +1109,28 @@ export function isApplicantBba(
       return true;
     }
   }
+
+  // 3. Fallback: Check if any answer value itself is explicitly Ross / BBA
+  for (const [_, v] of Object.entries(answers)) {
+    if (typeof v === "string" && v.length < 80) {
+      const vl = v.trim().toLowerCase();
+      if (
+        vl === "ross" ||
+        vl === "ross school of business" ||
+        vl === "stephen m. ross school of business" ||
+        vl === "bba" ||
+        vl === "business administration"
+      ) {
+        return true;
+      }
+    }
+  }
+
+  // 4. If admin explicitly manually set is_bba to true, respect it
+  if (sub.is_bba === true) {
+    return true;
+  }
+
   return false;
 }
 
@@ -1299,6 +1421,15 @@ async function getRoundCandidates(
     );
 
     const candidates: CandidateRow[] = submissions.map((s) => {
+      let answers = s.answers || {};
+      if (typeof answers === "string") {
+        try {
+          answers = JSON.parse(answers);
+        } catch {
+          answers = {};
+        }
+      }
+
       const rowScores = scoresBySub.get(s.id) ?? {};
       const scoreValues = Object.values(rowScores).map((sc) => sc.score);
       const referenceSum = scoreValues.reduce((acc, val) => acc + val, 0);
@@ -1321,13 +1452,19 @@ async function getRoundCandidates(
       }
 
       const candNorm = normResult.candidateScores.get(s.id);
+      const isBba = isApplicantBba({ ...s, answers }, questionLabels);
+
+      // Auto-heal database record if previously saved as non-bba
+      if (useDb && s.id && s.is_bba !== isBba) {
+        pool.query("UPDATE application_submissions SET is_bba = $1 WHERE id = $2", [isBba, s.id]).catch(() => {});
+      }
 
       return {
         submissionId: s.id,
         applicantName: s.applicant_name,
         applicantEmail: s.applicant_email,
         submittedAt: s.submitted_at,
-        answers: s.answers,
+        answers,
         status,
         isOverridden,
         assignedBrothers: assignMap.get(s.id) ?? [],
@@ -1337,7 +1474,7 @@ async function getRoundCandidates(
         normalizedScore: candNorm?.normalizedScore ?? null,
         normalizedDetails: candNorm?.details ?? [],
         highlight,
-        isBba: isApplicantBba(s, questionLabels),
+        isBba,
       };
     });
 
@@ -1444,13 +1581,23 @@ async function getRoundCandidates(
         .map((a) => a.brother_email);
 
       const candNorm = normResult.candidateScores.get(s.id);
+      let answers = s.answers || {};
+      if (typeof answers === "string") {
+        try {
+          answers = JSON.parse(answers);
+        } catch {
+          answers = {};
+        }
+      }
+      const isBba = isApplicantBba({ ...s, answers }, questionLabels);
+      s.is_bba = isBba;
 
       return {
         submissionId: s.id,
         applicantName: s.applicant_name,
         applicantEmail: s.applicant_email,
         submittedAt: s.submitted_at,
-        answers: s.answers,
+        answers,
         status,
         isOverridden,
         assignedBrothers,
@@ -1460,7 +1607,7 @@ async function getRoundCandidates(
         normalizedScore: candNorm?.normalizedScore ?? null,
         normalizedDetails: candNorm?.details ?? [],
         highlight,
-        isBba: isApplicantBba(s, questionLabels),
+        isBba,
       };
     });
 
@@ -1988,12 +2135,14 @@ recruitmentRouter.post("/submit", requireAuth, async (req: AuthRequest, res: Res
       ? `${userEmail.toLowerCase()}#test_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
       : userEmail;
 
+    const questionLabels = extractQuestionLabels(sections);
     const submission = await createSubmission({
       cycleId: cycle.id,
       applicantUserId,
       applicantEmail,
       applicantName,
       answers,
+      questionLabels,
     });
 
     res.json({

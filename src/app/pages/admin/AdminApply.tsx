@@ -2405,7 +2405,7 @@ function RoundReviewTab({
                     <div>
                       <span className="text-[10px] text-stone-400 uppercase font-bold block">Ross Student?</span>
                       <span className="font-semibold text-stone-800">
-                        {selectedCandidate.answers?.isRoss || (selectedCandidate.isBba ? "Yes" : "No")}
+                        {selectedCandidate.isBba ? "Yes (Ross / BBA)" : "No (Non-BBA)"}
                       </span>
                     </div>
                   </div>
@@ -2578,54 +2578,102 @@ function RoundReviewTab({
               {/* Candidate Answers */}
               <div className="py-6 space-y-4 text-xs">
                 <h4 className="font-bold text-stone-900 text-sm">Application Responses</h4>
-                {Object.entries(selectedCandidate.answers).map(([key, val]) => {
-                  if (!val || typeof val !== "string") return null;
-                  const isUrl = val.startsWith("http://") || val.startsWith("https://") || val.startsWith("/uploads/");
-                  const isImage = isUrl && /\.(jpe?g|png|webp|gif|avif)$/i.test(val);
-                  const rawLabel = questionLabels[key];
-                  const cleanTitle = rawLabel || key
-                    .replace(/_/g, " ")
-                    .replace(/([A-Z])/g, " $1")
-                    .replace(/^./, (str) => str.toUpperCase());
+                {(() => {
+                  const answersObj: Record<string, any> = (() => {
+                    if (!selectedCandidate.answers) return {};
+                    if (typeof selectedCandidate.answers === "string") {
+                      try {
+                        const parsed = JSON.parse(selectedCandidate.answers);
+                        return typeof parsed === "object" && parsed !== null ? parsed : {};
+                      } catch {
+                        return {};
+                      }
+                    }
+                    return typeof selectedCandidate.answers === "object" ? selectedCandidate.answers : {};
+                  })();
 
-                  return (
-                    <div key={key} className="p-3 bg-stone-50/70 rounded-xl border border-stone-100">
-                      <span className="text-[11px] font-bold text-[#7A0C0C] block mb-1 whitespace-pre-wrap">
-                        {cleanTitle}
-                      </span>
-                      {isImage ? (
-                        <div className="space-y-2 mt-1">
-                          <a href={val} target="_blank" rel="noopener noreferrer" className="block w-fit group">
-                            <img
-                              src={val}
-                              alt={key}
-                              className="max-h-48 rounded-lg border border-stone-200 object-cover shadow-xs group-hover:opacity-90 transition-opacity"
-                            />
-                          </a>
-                          <a
-                            href={val}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-[#7A0C0C] font-semibold underline inline-flex items-center gap-1 text-[11px]"
-                          >
-                            View Full Photo <ExternalLink size={12} />
-                          </a>
-                        </div>
-                      ) : isUrl ? (
-                        <a
-                          href={val}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-[#7A0C0C] font-semibold underline inline-flex items-center gap-1"
-                        >
-                          View Uploaded Document <ExternalLink size={12} />
-                        </a>
-                      ) : (
-                        <p className="text-stone-700 whitespace-pre-wrap leading-relaxed">{val}</p>
-                      )}
-                    </div>
-                  );
-                })}
+                  if (Object.keys(answersObj).length === 0) {
+                    return (
+                      <p className="text-stone-400 italic">No application responses found.</p>
+                    );
+                  }
+
+                  return Object.entries(answersObj).map(([key, rawVal]) => {
+                    if (rawVal === undefined || rawVal === null) return null;
+                    const val = typeof rawVal === "object"
+                      ? (Array.isArray(rawVal) ? rawVal.join(", ") : JSON.stringify(rawVal, null, 2))
+                      : String(rawVal);
+                    if (!val) return null;
+
+                    const isUrl = val.startsWith("http://") || val.startsWith("https://") || val.startsWith("/uploads/") || val.startsWith("data:image/");
+                    const isImage = isUrl && (
+                      val.startsWith("data:image/") ||
+                      val.startsWith("/uploads/photo_") ||
+                      /\.(jpe?g|png|webp|gif|avif|bmp|svg)(\?.*)?$/i.test(val)
+                    );
+                    const rawLabel = questionLabels[key];
+                    const cleanTitle = rawLabel || key
+                      .replace(/_/g, " ")
+                      .replace(/([A-Z])/g, " $1")
+                      .replace(/^./, (str) => str.toUpperCase());
+
+                    return (
+                      <div key={key} className="p-3 bg-stone-50/70 rounded-xl border border-stone-100">
+                        <span className="text-[11px] font-bold text-[#7A0C0C] block mb-1 whitespace-pre-wrap">
+                          {cleanTitle}
+                        </span>
+                        {isImage ? (
+                          <div className="space-y-2 mt-1">
+                            <a href={val} target="_blank" rel="noopener noreferrer" className="block w-fit group">
+                              <img
+                                src={val}
+                                alt={key}
+                                className="max-h-48 rounded-lg border border-stone-200 object-cover shadow-xs group-hover:opacity-90 transition-opacity"
+                              />
+                            </a>
+                            <div className="flex items-center gap-3">
+                              <a
+                                href={val}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[#7A0C0C] font-semibold underline inline-flex items-center gap-1 text-[11px]"
+                              >
+                                View Full Photo <ExternalLink size={12} />
+                              </a>
+                              <a
+                                href={val}
+                                download
+                                className="text-stone-600 hover:text-stone-900 inline-flex items-center gap-1 text-[11px] font-medium"
+                              >
+                                <Download size={12} /> Download
+                              </a>
+                            </div>
+                          </div>
+                        ) : isUrl ? (
+                          <div className="flex items-center gap-3 mt-1">
+                            <a
+                              href={val}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[#7A0C0C] font-semibold underline inline-flex items-center gap-1"
+                            >
+                              View Uploaded Document <ExternalLink size={12} />
+                            </a>
+                            <a
+                              href={val}
+                              download
+                              className="text-stone-600 hover:text-stone-900 inline-flex items-center gap-1 text-[11px] font-medium"
+                            >
+                              <Download size={12} /> Download
+                            </a>
+                          </div>
+                        ) : (
+                          <p className="text-stone-700 whitespace-pre-wrap leading-relaxed">{val}</p>
+                        )}
+                      </div>
+                    );
+                  });
+                })()}
               </div>
             </div>
 

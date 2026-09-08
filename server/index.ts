@@ -4,6 +4,7 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import cookieParser from "cookie-parser";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 import { applyRouter } from "./routes/apply.js";
 import { authRouter } from "./routes/auth.js";
@@ -63,7 +64,15 @@ app.use("/api/recruitment", recruitmentRouter);
 
 // Serve uploaded files
 const uploadsPath = path.resolve(__dirname, "../public/uploads");
-app.use("/uploads", express.static(uploadsPath));
+fs.mkdirSync(uploadsPath, { recursive: true });
+app.use(
+  "/uploads",
+  express.static(uploadsPath, {
+    setHeaders: (res) => {
+      res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+    },
+  }),
+);
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 

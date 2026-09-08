@@ -35,9 +35,10 @@ export default defineConfig({
   assetsInclude: ['**/*.svg', '**/*.csv', '**/*.mp4', '**/*.webm', '**/*.png', '**/*.jpg', '**/*.jpeg', '**/*.webp'],
 
   server: {
-    // Proxy API calls to the Express server during development
+    // Proxy API calls and static uploads to the Express server during development
     proxy: {
       '/api': 'http://localhost:3000',
+      '/uploads': 'http://localhost:3000',
     },
   },
 })
