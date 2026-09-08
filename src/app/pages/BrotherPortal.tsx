@@ -23,6 +23,9 @@ type AssignedSubmission = {
   responses?: Record<string, any>;
   assigned_at?: string;
   assigned_by?: string;
+  question_labels?: Record<string, string>;
+  current_round?: "application" | "round1" | "round2";
+  current_round_name?: string;
   existingScore?: {
     score: number;
     notes?: string;
@@ -93,6 +96,8 @@ function BrotherPortalInner() {
     setSavingScore(true);
     setSaveSuccess(false);
     try {
+      const targetRound = selectedSub.current_round || "application";
+      const targetRoundName = selectedSub.current_round_name || "Application";
       const res = await fetch("/api/recruitment/brother/score", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -100,7 +105,8 @@ function BrotherPortalInner() {
           submissionId: selectedSub.id,
           score: scoreVal,
           notes: notesVal,
-          roundName: "Application",
+          round: targetRound,
+          roundName: targetRoundName,
         }),
       });
       const data = await res.json();
@@ -115,7 +121,7 @@ function BrotherPortalInner() {
             existingScore: {
               score: scoreVal,
               notes: notesVal,
-              round_name: "Application",
+              round_name: targetRoundName,
             },
           };
         }
@@ -127,7 +133,7 @@ function BrotherPortalInner() {
         existingScore: {
           score: scoreVal,
           notes: notesVal,
-          round_name: "Application",
+          round_name: targetRoundName,
         },
       });
       setTimeout(() => setSaveSuccess(false), 3000);
@@ -310,6 +316,13 @@ function BrotherPortalInner() {
                           <p className={`text-[11px] truncate mt-0.5 ${isSelected ? "text-stone-400" : "text-stone-400"}`}>
                             {displayEmail}
                           </p>
+                          {sub.current_round_name && (
+                            <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-md mt-1 ${
+                              isSelected ? "bg-white/10 text-stone-200" : "bg-stone-100 text-stone-600"
+                            }`}>
+                              {sub.current_round_name}
+                            </span>
+                          )}
                         </div>
 
                         <div className="flex flex-col items-end gap-1.5 shrink-0">
@@ -355,26 +368,33 @@ function BrotherPortalInner() {
                 <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-6 space-y-5">
                   <div className="flex items-center justify-between border-b border-stone-100 pb-4">
                     <div>
-                      <h3 className="text-lg font-semibold text-stone-900 font-serif">
-                        Evaluation & Scoring
+                      <h3 className="text-base font-semibold text-stone-900">
+                        Candidate Deliberation Vote
                       </h3>
                       <p className="text-xs text-stone-500 mt-0.5">
                         Assign your vote for {selectedSub.full_name}. This goes directly into the deliberations pool.
                       </p>
                     </div>
 
-                    {selectedSub.existingScore && (
-                      <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1.5">
-                        <CheckCircle2 size={12} className="text-emerald-600" />
-                        Previously Evaluated ({selectedSub.existingScore.score > 0 ? `+${selectedSub.existingScore.score}` : selectedSub.existingScore.score})
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {selectedSub.current_round_name && (
+                        <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-amber-50 text-[#7A0C0C] border border-amber-200">
+                          {selectedSub.current_round_name}
+                        </span>
+                      )}
+                      {selectedSub.existingScore && (
+                        <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1.5">
+                          <CheckCircle2 size={12} className="text-emerald-600" />
+                          Evaluated ({selectedSub.existingScore.score > 0 ? `+${selectedSub.existingScore.score}` : selectedSub.existingScore.score})
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Score Pill Buttons */}
                   <div>
                     <label className="block text-xs font-bold uppercase tracking-wider text-stone-600 mb-2">
-                      Deliberation Vote (Round 1 / Application)
+                      Deliberation Vote ({selectedSub.current_round_name || "Application Round"})
                     </label>
                     <div className="grid grid-cols-5 gap-2">
                       {SCORE_OPTIONS.map((opt) => {
@@ -480,24 +500,67 @@ function BrotherPortalInner() {
                   </div>
 
                   {/* Key Academic & Identity Metrics */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-stone-50 p-4 rounded-xl border border-stone-100">
-                    <div>
-                      <div className="text-[11px] text-stone-400 uppercase font-bold tracking-wider">Major</div>
-                      <div className="text-sm font-semibold text-stone-800 mt-0.5">{selectedSub.major || "N/A"}</div>
-                    </div>
-                    <div>
-                      <div className="text-[11px] text-stone-400 uppercase font-bold tracking-wider">Minor</div>
-                      <div className="text-sm font-semibold text-stone-800 mt-0.5">{selectedSub.minor || "None"}</div>
-                    </div>
-                    <div>
-                      <div className="text-[11px] text-stone-400 uppercase font-bold tracking-wider">GPA</div>
-                      <div className="text-sm font-semibold text-stone-800 mt-0.5">{selectedSub.gpa || "N/A"}</div>
-                    </div>
-                    <div>
-                      <div className="text-[11px] text-stone-400 uppercase font-bold tracking-wider">Graduation</div>
-                      <div className="text-sm font-semibold text-stone-800 mt-0.5">{selectedSub.grad_term || "N/A"}</div>
-                    </div>
-                  </div>
+                  {(() => {
+                    const effectiveMajor = selectedSub.major || (() => {
+                      if (!selectedSub.responses) return "";
+                      for (const [k, v] of Object.entries(selectedSub.responses)) {
+                        const label = (selectedSub.question_labels?.[k] || k).toLowerCase();
+                        if (/major|field.*study|concentration/i.test(label) && typeof v === "string") return v;
+                      }
+                      return "";
+                    })();
+
+                    const effectiveMinor = selectedSub.minor || (() => {
+                      if (!selectedSub.responses) return "";
+                      for (const [k, v] of Object.entries(selectedSub.responses)) {
+                        const label = (selectedSub.question_labels?.[k] || k).toLowerCase();
+                        if (/minor/i.test(label) && typeof v === "string") return v;
+                      }
+                      return "";
+                    })();
+
+                    const effectiveGpa = selectedSub.gpa || (() => {
+                      if (!selectedSub.responses) return "";
+                      for (const [k, v] of Object.entries(selectedSub.responses)) {
+                        const label = (selectedSub.question_labels?.[k] || k).toLowerCase();
+                        if (/gpa|grade\s*point/i.test(label) && typeof v === "string") return v;
+                      }
+                      return "";
+                    })();
+
+                    const effectiveGrad = selectedSub.grad_term || (() => {
+                      if (!selectedSub.responses) return "";
+                      for (const [k, v] of Object.entries(selectedSub.responses)) {
+                        const label = (selectedSub.question_labels?.[k] || k).toLowerCase();
+                        if (/grad.*term|graduation|grad.*year|class\s*standing/i.test(label) && typeof v === "string") return v;
+                      }
+                      return "";
+                    })();
+
+                    const hasAnyAcademicMetric = Boolean(effectiveMajor || effectiveMinor || effectiveGpa || effectiveGrad);
+                    if (!hasAnyAcademicMetric) return null;
+
+                    return (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-stone-50 p-4 rounded-xl border border-stone-100">
+                        <div>
+                          <div className="text-[11px] text-stone-400 uppercase font-bold tracking-wider">Major</div>
+                          <div className="text-sm font-semibold text-stone-800 mt-0.5">{effectiveMajor || "N/A"}</div>
+                        </div>
+                        <div>
+                          <div className="text-[11px] text-stone-400 uppercase font-bold tracking-wider">Minor</div>
+                          <div className="text-sm font-semibold text-stone-800 mt-0.5">{effectiveMinor || "None"}</div>
+                        </div>
+                        <div>
+                          <div className="text-[11px] text-stone-400 uppercase font-bold tracking-wider">GPA</div>
+                          <div className="text-sm font-semibold text-stone-800 mt-0.5">{effectiveGpa || "N/A"}</div>
+                        </div>
+                        <div>
+                          <div className="text-[11px] text-stone-400 uppercase font-bold tracking-wider">Graduation</div>
+                          <div className="text-sm font-semibold text-stone-800 mt-0.5">{effectiveGrad || "N/A"}</div>
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* Application Question Responses */}
                   <div>
@@ -509,8 +572,8 @@ function BrotherPortalInner() {
                     {selectedSub.responses && Object.keys(selectedSub.responses).length > 0 ? (
                       <div className="space-y-4">
                         {Object.entries(selectedSub.responses).map(([key, value]: [string, any]) => {
-                          // Format clean label from key
-                          const cleanLabel = key
+                          // Format clean label from question_labels or formatted key
+                          const prompt = selectedSub.question_labels?.[key] || key
                             .replace(/_/g, " ")
                             .replace(/([A-Z])/g, " $1")
                             .replace(/^./, (str) => str.toUpperCase());
@@ -525,8 +588,8 @@ function BrotherPortalInner() {
 
                           return (
                             <div key={key} className="bg-stone-50/60 p-4 rounded-xl border border-stone-200/60 space-y-1.5">
-                              <span className="text-xs font-semibold text-stone-700 block">
-                                {cleanLabel}
+                              <span className="text-xs font-semibold text-stone-800 block whitespace-pre-wrap">
+                                {prompt}
                               </span>
                               {isImageUrl ? (
                                 <div className="space-y-2 pt-1">

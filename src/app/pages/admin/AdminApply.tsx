@@ -517,6 +517,7 @@ function AdminApplyPortal() {
                 rejectStatusKey="not_selected_application"
                 advanceStatusLabel="Advance to Round 1"
                 rejectStatusLabel="Not Selected"
+                onSubmissionDeleted={() => loadCycles(selectedCycleId)}
               />
             )}
 
@@ -531,6 +532,7 @@ function AdminApplyPortal() {
                 rejectStatusKey="not_selected"
                 advanceStatusLabel="Advance to Round 2"
                 rejectStatusLabel="Not Selected"
+                onSubmissionDeleted={() => loadCycles(selectedCycleId)}
               />
             )}
 
@@ -545,6 +547,7 @@ function AdminApplyPortal() {
                 rejectStatusKey="not_selected"
                 advanceStatusLabel="Extend Bid 🎉"
                 rejectStatusLabel="Not Selected"
+                onSubmissionDeleted={() => loadCycles(selectedCycleId)}
               />
             )}
 
@@ -701,6 +704,7 @@ function RoundReviewTab({
   rejectStatusKey,
   advanceStatusLabel,
   rejectStatusLabel,
+  onSubmissionDeleted,
 }: {
   cycleId: number;
   round: "application" | "round1" | "round2";
@@ -711,6 +715,7 @@ function RoundReviewTab({
   rejectStatusKey: string;
   advanceStatusLabel: string;
   rejectStatusLabel: string;
+  onSubmissionDeleted?: () => void;
 }) {
   const [candidates, setCandidates] = useState<CandidateRow[]>([]);
   const [raters, setRaters] = useState<{ raterId: string; raterName: string }[]>([]);
@@ -759,6 +764,7 @@ function RoundReviewTab({
   const [assignEmailInput, setAssignEmailInput] = useState("");
   const [assigningLoading, setAssigningLoading] = useState(false);
   const [assignError, setAssignError] = useState("");
+  const [questionLabels, setQuestionLabels] = useState<Record<string, string>>({});
 
   useEffect(() => {
     setMajorPool(round === "application" ? "all" : "bba");
@@ -774,6 +780,9 @@ function RoundReviewTab({
         setCandidates(data.candidates);
         setRaters(data.raters || []);
         setRatersCalibration(data.ratersCalibration || {});
+        if (data.questionLabels) {
+          setQuestionLabels(data.questionLabels);
+        }
       }
     } catch (err) {
       console.error("Failed to load round candidates:", err);
@@ -889,6 +898,34 @@ function RoundReviewTab({
       }
     } catch (err: any) {
       alert("Error removing brother: " + err.message);
+    }
+  }
+
+  // Delete application handler
+  async function handleDeleteApplication(submissionId: number, applicantName?: string) {
+    const confirmName = applicantName ? ` "${applicantName}"` : "";
+    if (
+      !confirm(
+        `Are you sure you want to permanently delete application${confirmName}?\n\nThis will remove their submission, all evaluations, notes, and reviewer assignments. This action cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/recruitment/submissions/${submissionId}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to delete application");
+      if (selectedCandidate && selectedCandidate.submissionId === submissionId) {
+        setSelectedCandidate(null);
+      }
+      await loadData();
+      if (onSubmissionDeleted) {
+        onSubmissionDeleted();
+      }
+    } catch (err: any) {
+      alert("Error deleting application: " + (err.message || "Failed to delete"));
     }
   }
 
@@ -1146,7 +1183,7 @@ function RoundReviewTab({
       "Applicant Email",
       "Major Pool",
       "Highlight Tier",
-      ...(round === "application" ? ["Assigned Brothers"] : []),
+      "Assigned Brothers",
       "Submitted At",
       ...raterHeaders,
       "Reference Sum",
@@ -1169,7 +1206,7 @@ function RoundReviewTab({
         c.applicantEmail,
         c.isBba ? "Ross / BBA" : "Non-BBA",
         c.highlight ? c.highlight.toUpperCase() : "NONE",
-        ...(round === "application" ? [assignedBrothersStr] : []),
+        assignedBrothersStr,
         new Date(c.submittedAt).toLocaleDateString(),
         ...raterScores,
         c.referenceSum,
@@ -1481,9 +1518,7 @@ function RoundReviewTab({
                       />
                     </div>
                   </th>
-                  {round === "application" && (
-                    <th className="px-4 py-3.5 whitespace-nowrap">Assigned Brothers</th>
-                  )}
+                  <th className="px-4 py-3.5 whitespace-nowrap">Assigned Brothers</th>
                   {/* Distinct columns for each rater who scored */}
                   {raters.map((r) => (
                     <th key={r.raterId} className="px-3 py-3.5 whitespace-nowrap text-center">
@@ -1722,48 +1757,46 @@ function RoundReviewTab({
                       </td>
 
                       {/* Assigned Brothers Column */}
-                      {round === "application" && (
-                        <td className="px-4 py-4 whitespace-nowrap">
-                          <div className="flex items-center gap-1.5 flex-wrap max-w-xs">
-                            {c.assignedBrothers && c.assignedBrothers.length > 0 ? (
-                              c.assignedBrothers.map((bEmail) => (
-                                <span
-                                  key={bEmail}
-                                  className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-stone-100 text-stone-700 border border-stone-200"
-                                  title={bEmail}
+                      <td className="px-4 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5 flex-wrap max-w-xs">
+                          {c.assignedBrothers && c.assignedBrothers.length > 0 ? (
+                            c.assignedBrothers.map((bEmail) => (
+                              <span
+                                key={bEmail}
+                                className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-stone-100 text-stone-700 border border-stone-200"
+                                title={bEmail}
+                              >
+                                <span className="max-w-[90px] truncate">{bEmail.split("@")[0]}</span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleUnassignBrother(c.submissionId, bEmail);
+                                  }}
+                                  className="text-stone-400 hover:text-red-600 transition cursor-pointer"
+                                  title={`Remove ${bEmail}`}
                                 >
-                                  <span className="max-w-[90px] truncate">{bEmail.split("@")[0]}</span>
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleUnassignBrother(c.submissionId, bEmail);
-                                    }}
-                                    className="text-stone-400 hover:text-red-600 transition cursor-pointer"
-                                    title={`Remove ${bEmail}`}
-                                  >
-                                    <X size={10} />
-                                  </button>
-                                </span>
-                              ))
-                            ) : (
-                              <span className="text-stone-300 text-[11px] italic">None</span>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setAssignModalTarget(c);
-                                setAssignEmailInput("");
-                                setAssignError("");
-                              }}
-                              className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-[#7A0C0C] hover:text-[#5C0A0A] bg-[#7A0C0C]/5 hover:bg-[#7A0C0C]/10 px-1.5 py-0.5 rounded-md transition cursor-pointer"
-                              title="Assign brother for review"
-                            >
-                              <UserPlus size={10} /> Assign
-                            </button>
-                          </div>
-                        </td>
-                      )}
+                                  <X size={10} />
+                                </button>
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-stone-300 text-[11px] italic">None</span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAssignModalTarget(c);
+                              setAssignEmailInput("");
+                              setAssignError("");
+                            }}
+                            className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-[#7A0C0C] hover:text-[#5C0A0A] bg-[#7A0C0C]/5 hover:bg-[#7A0C0C]/10 px-1.5 py-0.5 rounded-md transition cursor-pointer"
+                            title="Assign brother for review"
+                          >
+                            <UserPlus size={10} /> Assign
+                          </button>
+                        </div>
+                      </td>
 
                       {/* Other Raters' individual raw scores */}
                       {raters.map((r) => {
@@ -1931,13 +1964,23 @@ function RoundReviewTab({
 
                       {/* Actions */}
                       <td className="px-4 py-4 text-right whitespace-nowrap">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedCandidate(c)}
-                          className="text-xs text-stone-500 hover:text-[#7A0C0C] font-semibold inline-flex items-center gap-1 cursor-pointer"
-                        >
-                          <Eye size={13} /> View
-                        </button>
+                        <div className="inline-flex items-center gap-1.5 justify-end">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedCandidate(c)}
+                            className="text-xs text-stone-500 hover:text-[#7A0C0C] font-semibold inline-flex items-center gap-1 cursor-pointer px-2 py-1 rounded-lg hover:bg-stone-100 transition-colors"
+                          >
+                            <Eye size={13} /> View
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteApplication(c.submissionId, c.applicantName)}
+                            className="text-stone-300 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition cursor-pointer"
+                            title="Delete this application"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -2497,41 +2540,39 @@ function RoundReviewTab({
                 </div>
 
                 {/* Assigned Brothers for Review */}
-                {round === "application" && (
-                  <div className="p-4 bg-stone-50 rounded-xl border border-stone-100 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-stone-700 flex items-center gap-1.5">
-                        <Users size={13} className="text-[#7A0C0C]" />
-                        Assigned Brother Reviewers
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAssignModalTarget(selectedCandidate);
-                          setAssignEmailInput("");
-                          setAssignError("");
-                        }}
-                        className="text-[11px] font-semibold text-[#7A0C0C] hover:underline flex items-center gap-1 cursor-pointer"
-                      >
-                        <UserPlus size={12} /> Manage Assignments
-                      </button>
-                    </div>
-                    {selectedCandidate.assignedBrothers && selectedCandidate.assignedBrothers.length > 0 ? (
-                      <div className="flex flex-wrap gap-1.5 pt-1">
-                        {selectedCandidate.assignedBrothers.map((bEmail) => (
-                          <span
-                            key={bEmail}
-                            className="inline-flex items-center gap-1 text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-white text-stone-700 border border-stone-200"
-                          >
-                            {bEmail}
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-[11px] text-stone-400 italic">No brothers currently assigned to this candidate.</p>
-                    )}
+                <div className="p-4 bg-stone-50 rounded-xl border border-stone-100 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-stone-700 flex items-center gap-1.5">
+                      <Users size={13} className="text-[#7A0C0C]" />
+                      Assigned Brother Reviewers
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAssignModalTarget(selectedCandidate);
+                        setAssignEmailInput("");
+                        setAssignError("");
+                      }}
+                      className="text-[11px] font-semibold text-[#7A0C0C] hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <UserPlus size={12} /> Manage Assignments
+                    </button>
                   </div>
-                )}
+                  {selectedCandidate.assignedBrothers && selectedCandidate.assignedBrothers.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {selectedCandidate.assignedBrothers.map((bEmail) => (
+                        <span
+                          key={bEmail}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-white text-stone-700 border border-stone-200"
+                        >
+                          {bEmail}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-stone-400 italic">No brothers currently assigned to this candidate.</p>
+                  )}
+                </div>
               </div>
 
               {/* Candidate Answers */}
@@ -2541,10 +2582,16 @@ function RoundReviewTab({
                   if (!val || typeof val !== "string") return null;
                   const isUrl = val.startsWith("http://") || val.startsWith("https://") || val.startsWith("/uploads/");
                   const isImage = isUrl && /\.(jpe?g|png|webp|gif|avif)$/i.test(val);
+                  const rawLabel = questionLabels[key];
+                  const cleanTitle = rawLabel || key
+                    .replace(/_/g, " ")
+                    .replace(/([A-Z])/g, " $1")
+                    .replace(/^./, (str) => str.toUpperCase());
+
                   return (
                     <div key={key} className="p-3 bg-stone-50/70 rounded-xl border border-stone-100">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#7A0C0C] block mb-1">
-                        {key}
+                      <span className="text-[11px] font-bold text-[#7A0C0C] block mb-1 whitespace-pre-wrap">
+                        {cleanTitle}
                       </span>
                       {isImage ? (
                         <div className="space-y-2 mt-1">
@@ -2582,11 +2629,22 @@ function RoundReviewTab({
               </div>
             </div>
 
-            <div className="pt-4 border-t border-stone-100 flex justify-end">
+            <div className="pt-4 border-t border-stone-100 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => {
+                  const subId = selectedCandidate.submissionId;
+                  const name = selectedCandidate.applicantName;
+                  handleDeleteApplication(subId, name);
+                }}
+                className="px-4 py-2 text-red-600 hover:bg-red-50 text-xs font-bold tracking-wider uppercase rounded-xl transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 size={13} /> Delete Application
+              </button>
               <button
                 type="button"
                 onClick={() => setSelectedCandidate(null)}
-                className="px-6 py-2 bg-stone-900 text-white text-xs font-bold tracking-wider uppercase rounded-xl"
+                className="px-6 py-2 bg-stone-900 text-white text-xs font-bold tracking-wider uppercase rounded-xl cursor-pointer hover:bg-stone-800 transition-colors"
               >
                 Close
               </button>

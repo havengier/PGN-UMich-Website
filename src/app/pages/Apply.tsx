@@ -654,8 +654,8 @@ function ApplicantStatusScreen({
 
   const isBidOffered = stage === "round2" && statusKey === "offered_bid";
   const isAdvanced =
-    (stage === "application" && statusKey === "advanced_to_round_1") ||
-    (stage === "round1" && statusKey === "advanced") ||
+    statusKey === "advanced_to_round_1" ||
+    statusKey === "advanced" ||
     isBidOffered;
   const isNotSelected =
     statusKey === "not_selected_application" || statusKey === "not_selected";
@@ -678,15 +678,15 @@ function ApplicantStatusScreen({
   const steps = [
     {
       label: "1. Written Application",
-      active: stage === "application",
-      done: stage === "round1" || stage === "round2",
+      active: stage === "application" && statusKey !== "advanced_to_round_1",
+      done: stage === "round1" || stage === "round2" || submission.application_status === "advanced_to_round_1",
       passed: submission.application_status === "advanced_to_round_1",
       failed: submission.application_status === "not_selected_application",
     },
     {
       label: "2. Round 1 Interviews",
-      active: stage === "round1",
-      done: stage === "round2",
+      active: stage === "round1" && statusKey !== "advanced",
+      done: stage === "round2" || submission.round_1_status === "advanced",
       passed: submission.round_1_status === "advanced",
       failed: submission.round_1_status === "not_selected",
     },

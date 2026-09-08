@@ -650,6 +650,26 @@ async function createSubmission(data: {
   }
 }
 
+async function deleteSubmission(submissionId: number): Promise<boolean> {
+  if (useDb) {
+    const res = await pool.query(
+      "DELETE FROM application_submissions WHERE id = $1 RETURNING id",
+      [submissionId],
+    );
+    return (res.rowCount ?? 0) > 0;
+  } else {
+    const store = readLocalStore();
+    const idx = store.submissions.findIndex((s) => s.id === submissionId);
+    if (idx === -1) return false;
+    store.submissions.splice(idx, 1);
+    store.appScores = store.appScores.filter((sc) => sc.submission_id !== submissionId);
+    store.roundEvals = store.roundEvals.filter((ev) => ev.submission_id !== submissionId);
+    store.assignments = store.assignments.filter((a) => a.submission_id !== submissionId);
+    writeLocalStore(store);
+    return true;
+  }
+}
+
 // ── Application Assignment Operations ──────────────────────────────────────────
 
 async function assignBrother(
@@ -699,6 +719,69 @@ async function unassignBrother(submissionId: number, brotherEmail: string): Prom
   }
 }
 
+export function extractQuestionLabels(formQuestions: any[]): Record<string, string> {
+  const labels: Record<string, string> = {};
+  if (!Array.isArray(formQuestions)) return labels;
+  for (const sec of formQuestions) {
+    if (sec && Array.isArray(sec.fields)) {
+      for (const f of sec.fields) {
+        if (f && f.id) {
+          labels[f.id] = (f.label || f.id).trim();
+        }
+      }
+    }
+  }
+  return labels;
+}
+
+export function resolveApplicantFields(
+  answers: Record<string, any> = {},
+  questionLabels: Record<string, string> = {},
+) {
+  let major = answers.major || "";
+  let minor = answers.minor || "";
+  let gpa = answers.gpa || "";
+  let grad_term = answers.grad_term || answers.graduation_term || answers.grad_year || "";
+  let phone = answers.phone || answers.phone_number || "";
+  let pronouns = answers.pronouns || "";
+  let resume_url = answers.resume || answers.resume_url || "";
+
+  // Scan answers with key & label fuzzy matching
+  for (const [key, val] of Object.entries(answers)) {
+    if (!val || typeof val !== "string") continue;
+    const strVal = val.trim();
+    if (!strVal) continue;
+    const label = (questionLabels[key] || "").toLowerCase();
+    const keyLower = key.toLowerCase();
+
+    if (!major && (/major|field.*study|concentration/i.test(label) || /major|field.*study|concentration/i.test(keyLower))) {
+      major = strVal;
+    }
+    if (!minor && (/minor/i.test(label) || /minor/i.test(keyLower))) {
+      minor = strVal;
+    }
+    if (!gpa && (/gpa|grade\s*point/i.test(label) || /^gpa$/i.test(keyLower))) {
+      gpa = strVal;
+    }
+    if (!grad_term && (/grad.*term|graduation|grad.*year|class\s*standing/i.test(label) || /grad/i.test(keyLower))) {
+      grad_term = strVal;
+    }
+    if (!phone && (/phone/i.test(label) || /phone/i.test(keyLower))) {
+      phone = strVal;
+    }
+    if (!pronouns && (/pronoun/i.test(label) || /pronoun/i.test(keyLower))) {
+      pronouns = strVal;
+    }
+    if (!resume_url && (/resume/i.test(label) || /resume/i.test(keyLower))) {
+      if (strVal.startsWith("http") || strVal.startsWith("/uploads/")) {
+        resume_url = strVal;
+      }
+    }
+  }
+
+  return { major, minor, gpa, grad_term, phone, pronouns, resume_url };
+}
+
 async function getAssignedSubmissionsForBrother(
   brotherEmail: string,
   isAdmin: boolean,
@@ -706,7 +789,7 @@ async function getAssignedSubmissionsForBrother(
   const normEmail = brotherEmail.trim().toLowerCase();
   if (useDb) {
     let query = `
-      SELECT s.*, c.name as cycle_name,
+      SELECT s.*, c.name as cycle_name, f.questions as form_questions,
         COALESCE(
           (SELECT json_agg(a.brother_email) FROM application_assignments a WHERE a.submission_id = s.id),
           '[]'::json
@@ -714,9 +797,18 @@ async function getAssignedSubmissionsForBrother(
         (SELECT json_build_object('score', sc.score, 'note', sc.note, 'rated_at', sc.rated_at)
          FROM application_scores sc
          WHERE sc.submission_id = s.id AND LOWER(sc.rater_id) = $1
-         LIMIT 1) as my_score
+         LIMIT 1) as app_score,
+        (SELECT json_build_object('score', re1.score, 'note', re1.note, 'rated_at', re1.rated_at)
+         FROM round_evaluations re1
+         WHERE re1.submission_id = s.id AND re1.round = 1 AND LOWER(re1.rater_id) = $1
+         LIMIT 1) as r1_score,
+        (SELECT json_build_object('score', re2.score, 'note', re2.note, 'rated_at', re2.rated_at)
+         FROM round_evaluations re2
+         WHERE re2.submission_id = s.id AND re2.round = 2 AND LOWER(re2.rater_id) = $1
+         LIMIT 1) as r2_score
       FROM application_submissions s
       JOIN recruitment_cycles c ON c.id = s.cycle_id
+      LEFT JOIN recruitment_cycle_forms f ON f.cycle_id = c.id
     `;
     if (!isAdmin) {
       query += ` JOIN application_assignments aa ON aa.submission_id = s.id AND LOWER(aa.brother_email) = $1`;
@@ -726,22 +818,46 @@ async function getAssignedSubmissionsForBrother(
     const mapSubmission = (s: any) => {
       const answers = s.answers || {};
       const assigned_brothers = s.assigned_brothers || [];
-      const myScoreObj = s.my_score || null;
+      const formQuestions = s.form_questions || [];
+      const question_labels = extractQuestionLabels(formQuestions);
+      const resolved = resolveApplicantFields(answers, question_labels);
+
+      let current_round: "application" | "round1" | "round2" = "application";
+      let current_round_name = "Application Round";
+      let myScoreObj = s.app_score || null;
+
+      if (s.application_status === "advanced_to_round_1") {
+        if (s.round_1_status === "advanced") {
+          current_round = "round2";
+          current_round_name = "Round 2 Interview";
+          myScoreObj = s.r2_score || null;
+        } else {
+          current_round = "round1";
+          current_round_name = "Round 1 Interview";
+          myScoreObj = s.r1_score || null;
+        }
+      }
 
       return {
         ...s,
         full_name: s.applicant_name,
         email: s.applicant_email,
-        phone: answers.phone || answers.phone_number || "",
-        major: answers.major || "",
-        minor: answers.minor || "",
-        gpa: answers.gpa || "",
-        grad_term: answers.grad_term || answers.graduation_term || "",
-        pronouns: answers.pronouns || "",
-        resume_url: answers.resume || answers.resume_url || "",
+        phone: resolved.phone,
+        major: resolved.major,
+        minor: resolved.minor,
+        gpa: resolved.gpa,
+        grad_term: resolved.grad_term,
+        pronouns: resolved.pronouns,
+        resume_url: resolved.resume_url,
         responses: answers,
+        question_labels,
+        current_round,
+        current_round_name,
+        cycle_name: s.cycle_name || "Active Cycle",
+        assigned_brothers,
+        my_score: myScoreObj,
         existingScore: myScoreObj
-          ? { score: myScoreObj.score, notes: myScoreObj.note, round_name: "Application" }
+          ? { score: myScoreObj.score, notes: myScoreObj.note, round_name: current_round_name }
           : null,
       };
     };
@@ -762,33 +878,63 @@ async function getAssignedSubmissionsForBrother(
 
     return subs.map((s) => {
       const cycle = store.cycles.find((c) => c.id === s.cycle_id);
+      const form = store.forms.find((f) => f.cycle_id === s.cycle_id);
+      const formQuestions = form?.questions || [];
+      const question_labels = extractQuestionLabels(formQuestions);
       const assigned_brothers = store.assignments
         .filter((a) => a.submission_id === s.id)
         .map((a) => a.brother_email);
-      const myScoreObj = store.appScores.find(
-        (sc) => sc.submission_id === s.id && sc.rater_id.toLowerCase() === normEmail,
-      );
+
+      let current_round: "application" | "round1" | "round2" = "application";
+      let current_round_name = "Application Round";
+      let myScoreObj: any = null;
+
+      if (s.application_status === "advanced_to_round_1") {
+        if (s.round_1_status === "advanced") {
+          current_round = "round2";
+          current_round_name = "Round 2 Interview";
+          const r2 = store.roundEvals.find(
+            (sc) => sc.submission_id === s.id && sc.round === 2 && sc.rater_id.toLowerCase() === normEmail,
+          );
+          myScoreObj = r2 ? { score: r2.score, note: r2.note, rated_at: r2.rated_at } : null;
+        } else {
+          current_round = "round1";
+          current_round_name = "Round 1 Interview";
+          const r1 = store.roundEvals.find(
+            (sc) => sc.submission_id === s.id && sc.round === 1 && sc.rater_id.toLowerCase() === normEmail,
+          );
+          myScoreObj = r1 ? { score: r1.score, note: r1.note, rated_at: r1.rated_at } : null;
+        }
+      } else {
+        const app = store.appScores.find(
+          (sc) => sc.submission_id === s.id && sc.rater_id.toLowerCase() === normEmail,
+        );
+        myScoreObj = app ? { score: app.score, note: app.note, rated_at: app.rated_at } : null;
+      }
 
       const answers = s.answers || {};
+      const resolved = resolveApplicantFields(answers, question_labels);
+
       return {
         ...s,
         full_name: s.applicant_name,
         email: s.applicant_email,
-        phone: answers.phone || answers.phone_number || "",
-        major: answers.major || "",
-        minor: answers.minor || "",
-        gpa: answers.gpa || "",
-        grad_term: answers.grad_term || answers.graduation_term || "",
-        pronouns: answers.pronouns || "",
-        resume_url: answers.resume || answers.resume_url || "",
+        phone: resolved.phone,
+        major: resolved.major,
+        minor: resolved.minor,
+        gpa: resolved.gpa,
+        grad_term: resolved.grad_term,
+        pronouns: resolved.pronouns,
+        resume_url: resolved.resume_url,
         responses: answers,
+        question_labels,
+        current_round,
+        current_round_name,
         cycle_name: cycle?.name || "Active Cycle",
         assigned_brothers,
-        my_score: myScoreObj
-          ? { score: myScoreObj.score, note: myScoreObj.note, rated_at: myScoreObj.rated_at }
-          : null,
+        my_score: myScoreObj,
         existingScore: myScoreObj
-          ? { score: myScoreObj.score, notes: myScoreObj.note, round_name: "Application" }
+          ? { score: myScoreObj.score, notes: myScoreObj.note, round_name: current_round_name }
           : null,
       };
     });
@@ -810,7 +956,7 @@ export interface CandidateRow {
   referenceSum: number;
   scoredCount: number;
   normalizedScore: number | null;
-  normalizedDetails?: Array<{
+  normalizedDetails: Array<{
     raterId: string;
     raterName: string;
     rawScore: number;
@@ -820,10 +966,13 @@ export interface CandidateRow {
   isBba: boolean;
 }
 
-export function isApplicantBba(sub: {
-  is_bba?: boolean | null;
-  answers?: Record<string, any> | null;
-}): boolean {
+export function isApplicantBba(
+  sub: {
+    is_bba?: boolean | null;
+    answers?: Record<string, any> | null;
+  },
+  questionLabels?: Record<string, string>,
+): boolean {
   if (typeof sub.is_bba === "boolean") {
     return sub.is_bba;
   }
@@ -831,7 +980,15 @@ export function isApplicantBba(sub: {
   // 1. Direct check for isRoss question or any ross/bba questionnaire keys
   for (const [k, v] of Object.entries(answers)) {
     const keyLower = k.toLowerCase();
-    if (keyLower.includes("ross") || keyLower.includes("is_bba") || keyLower === "isross") {
+    const labelLower = (questionLabels?.[k] || "").toLowerCase();
+    if (
+      keyLower.includes("ross") ||
+      keyLower.includes("is_bba") ||
+      keyLower === "isross" ||
+      labelLower.includes("ross student") ||
+      labelLower.includes("ross business") ||
+      labelLower.includes("bba student")
+    ) {
       if (typeof v === "boolean") return v;
       if (typeof v === "string") {
         const valLower = v.trim().toLowerCase();
@@ -841,8 +998,9 @@ export function isApplicantBba(sub: {
     }
   }
   // 2. Check major
-  if (typeof answers.major === "string") {
-    const mLower = answers.major.toLowerCase();
+  const resolved = resolveApplicantFields(answers, questionLabels || {});
+  if (typeof resolved.major === "string") {
+    const mLower = resolved.major.toLowerCase();
     if (
       mLower.includes("business administration") ||
       mLower.includes("bba") ||
@@ -1048,9 +1206,11 @@ async function getRoundCandidates(
   raters: { raterId: string; raterName: string }[];
   ratersCalibration: Record<string, RaterCalibration>;
   normalizationConfig: NormalizationConfig;
+  questionLabels: Record<string, string>;
 }> {
   const form = await getCycleForm(cycleId);
   const normConfig = form?.normalization_config || DEFAULT_NORMALIZATION_CONFIG;
+  const questionLabels = extractQuestionLabels(form?.questions || []);
 
   if (useDb) {
     let filterClause = "cycle_id = $1";
@@ -1071,6 +1231,7 @@ async function getRoundCandidates(
         raters: [],
         ratersCalibration: {},
         normalizationConfig: normConfig,
+        questionLabels,
       };
     }
 
@@ -1176,7 +1337,7 @@ async function getRoundCandidates(
         normalizedScore: candNorm?.normalizedScore ?? null,
         normalizedDetails: candNorm?.details ?? [],
         highlight,
-        isBba: isApplicantBba(s),
+        isBba: isApplicantBba(s, questionLabels),
       };
     });
 
@@ -1185,6 +1346,7 @@ async function getRoundCandidates(
       raters,
       ratersCalibration: normResult.calibrationByRater,
       normalizationConfig: normConfig,
+      questionLabels,
     };
   } else {
     const store = readLocalStore();
@@ -1203,6 +1365,7 @@ async function getRoundCandidates(
         raters: [],
         ratersCalibration: {},
         normalizationConfig: normConfig,
+        questionLabels,
       };
     }
 
@@ -1297,7 +1460,7 @@ async function getRoundCandidates(
         normalizedScore: candNorm?.normalizedScore ?? null,
         normalizedDetails: candNorm?.details ?? [],
         highlight,
-        isBba: isApplicantBba(s),
+        isBba: isApplicantBba(s, questionLabels),
       };
     });
 
@@ -1306,6 +1469,7 @@ async function getRoundCandidates(
       raters,
       ratersCalibration: normResult.calibrationByRater,
       normalizationConfig: normConfig,
+      questionLabels,
     };
   }
 }
@@ -1662,13 +1826,32 @@ recruitmentRouter.get("/my-submission", requireAuth, async (req: AuthRequest, re
 
     if (submission.application_status === "advanced_to_round_1") {
       stage = "round1";
-      statusKey = submission.round_1_status;
-      message = messages.round1?.[statusKey] || DEFAULT_STATUS_MESSAGES.round1[statusKey as keyof typeof DEFAULT_STATUS_MESSAGES.round1];
-
       if (submission.round_1_status === "advanced") {
         stage = "round2";
-        statusKey = submission.round_2_status;
-        message = messages.round2?.[statusKey] || DEFAULT_STATUS_MESSAGES.round2[statusKey as keyof typeof DEFAULT_STATUS_MESSAGES.round2];
+        if (submission.round_2_status === "offered_bid") {
+          statusKey = "offered_bid";
+          message = messages.round2?.offered_bid || DEFAULT_STATUS_MESSAGES.round2.offered_bid;
+        } else if (submission.round_2_status === "not_selected") {
+          statusKey = "not_selected";
+          message = messages.round2?.not_selected || DEFAULT_STATUS_MESSAGES.round2.not_selected;
+        } else if (submission.round_2_status === "pending_review" || submission.round_2_status === "under_review") {
+          statusKey = "pending";
+          message = messages.round2?.pending || DEFAULT_STATUS_MESSAGES.round2.pending;
+        } else {
+          // Newly advanced to round 2 - show congrats on moving on message!
+          statusKey = "advanced";
+          message = messages.round1?.advanced || DEFAULT_STATUS_MESSAGES.round1.advanced;
+        }
+      } else if (submission.round_1_status === "not_selected") {
+        statusKey = "not_selected";
+        message = messages.round1?.not_selected || DEFAULT_STATUS_MESSAGES.round1.not_selected;
+      } else if (submission.round_1_status === "pending_review" || submission.round_1_status === "under_review") {
+        statusKey = "pending";
+        message = messages.round1?.pending || DEFAULT_STATUS_MESSAGES.round1.pending;
+      } else {
+        // Newly advanced to round 1 - show congrats on moving on message!
+        statusKey = "advanced_to_round_1";
+        message = messages.application?.advanced_to_round_1 || DEFAULT_STATUS_MESSAGES.application.advanced_to_round_1;
       }
     }
 
@@ -1895,9 +2078,11 @@ recruitmentRouter.get("/brother/assigned", requireBrother, async (req: AuthReque
 recruitmentRouter.post("/brother/score", requireBrother, async (req: AuthRequest, res: Response) => {
   const raterId = req.user?.email || "";
   const raterName = req.user?.name || raterId.split("@")[0];
-  const { submissionId, score } = req.body as {
+  const { submissionId, score, round, roundName } = req.body as {
     submissionId?: number;
     score?: number;
+    round?: "application" | "round1" | "round2";
+    roundName?: string;
   };
   const note = (req.body?.note ?? req.body?.notes) as string | undefined;
 
@@ -1907,15 +2092,41 @@ recruitmentRouter.post("/brother/score", requireBrother, async (req: AuthRequest
   }
 
   try {
+    let targetRound: "application" | "round1" | "round2" = "application";
+    if (round && ["application", "round1", "round2"].includes(round)) {
+      targetRound = round;
+    } else if (roundName?.toLowerCase().includes("round 2")) {
+      targetRound = "round2";
+    } else if (roundName?.toLowerCase().includes("round 1")) {
+      targetRound = "round1";
+    } else {
+      // Look up candidate's active round
+      let sub: ApplicationSubmission | null = null;
+      if (useDb) {
+        const subRes = await pool.query("SELECT * FROM application_submissions WHERE id = $1", [Number(submissionId)]);
+        sub = subRes.rows[0] ?? null;
+      } else {
+        const store = readLocalStore();
+        sub = store.submissions.find((s) => s.id === Number(submissionId)) ?? null;
+      }
+      if (sub) {
+        if (sub.application_status === "advanced_to_round_1" && sub.round_1_status === "advanced") {
+          targetRound = "round2";
+        } else if (sub.application_status === "advanced_to_round_1") {
+          targetRound = "round1";
+        }
+      }
+    }
+
     await upsertScore({
-      round: "application",
+      round: targetRound,
       submissionId: Number(submissionId),
       raterId,
       raterName,
       score: Number(score),
       note,
     });
-    res.json({ ok: true });
+    res.json({ ok: true, round: targetRound });
   } catch (err: any) {
     console.error("Error rating application as brother:", err);
     res.status(400).json({ error: err.message || "Failed to record score." });
@@ -2109,6 +2320,30 @@ recruitmentRouter.delete(
     } catch (err) {
       console.error("Error removing assigned brother:", err);
       res.status(500).json({ error: "Failed to unassign brother." });
+    }
+  },
+);
+
+// DELETE /api/recruitment/submissions/:id  (Admin: delete application submission)
+recruitmentRouter.delete(
+  "/submissions/:id",
+  requireAdmin,
+  async (req: Request, res: Response) => {
+    const submissionId = Number(req.params.id);
+    if (!submissionId || isNaN(submissionId)) {
+      res.status(400).json({ error: "Invalid submission ID." });
+      return;
+    }
+    try {
+      const deleted = await deleteSubmission(submissionId);
+      if (!deleted) {
+        res.status(404).json({ error: "Application submission not found." });
+        return;
+      }
+      res.json({ ok: true, deletedId: submissionId });
+    } catch (err: any) {
+      console.error("Error deleting application submission:", err);
+      res.status(500).json({ error: err.message || "Failed to delete application submission." });
     }
   },
 );
