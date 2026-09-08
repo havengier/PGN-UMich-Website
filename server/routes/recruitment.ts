@@ -154,6 +154,7 @@ export interface ApplicationSubmission {
   r1_highlight?: "green" | "yellow" | "red" | null;
   r2_highlight?: "green" | "yellow" | "red" | null;
   is_bba?: boolean | null;
+  candidate_number?: number | null;
   submitted_at: string;
 }
 
@@ -614,8 +615,10 @@ async function createSubmission(data: {
   if (useDb) {
     const res = await pool.query(
       `INSERT INTO application_submissions
-       (cycle_id, applicant_user_id, applicant_email, applicant_name, answers, application_status, round_1_status, round_2_status, is_bba, submitted_at)
-       VALUES ($1, $2, $3, $4, $5, 'pending_review', 'pending', 'pending', $6, NOW())
+       (cycle_id, applicant_user_id, applicant_email, applicant_name, answers, application_status, round_1_status, round_2_status, is_bba, candidate_number, submitted_at)
+       VALUES ($1, $2, $3, $4, $5, 'pending_review', 'pending', 'pending', $6,
+         (SELECT COALESCE(MAX(candidate_number), 0) + 1 FROM application_submissions WHERE cycle_id = $1),
+         NOW())
        RETURNING *`,
       [data.cycleId, normEmail, data.applicantEmail.trim(), data.applicantName.trim(), JSON.stringify(data.answers), isBba],
     );
@@ -629,6 +632,9 @@ async function createSubmission(data: {
     if (existing && !isTestId) {
       throw new Error("Application already submitted for this cycle.");
     }
+    const cycleSubs = store.submissions.filter((s) => s.cycle_id === data.cycleId);
+    const nextCandidateNum = cycleSubs.reduce((max, s) => Math.max(max, s.candidate_number || 0), 0) + 1;
+
     const submission: ApplicationSubmission = {
       id: store.nextId.submissions++,
       cycle_id: data.cycleId,
@@ -643,6 +649,7 @@ async function createSubmission(data: {
       r1_override: false,
       r2_override: false,
       is_bba: isBba,
+      candidate_number: nextCandidateNum,
       submitted_at: new Date().toISOString(),
     };
     store.submissions.push(submission);
@@ -718,6 +725,191 @@ async function unassignBrother(submissionId: number, brotherEmail: string): Prom
     );
     writeLocalStore(store);
   }
+}
+
+export async function ensureCandidateNumbers(cycleId: number): Promise<void> {
+  if (useDb) {
+    const unnumbered = await pool.query(
+      "SELECT id FROM application_submissions WHERE cycle_id = $1 AND candidate_number IS NULL ORDER BY submitted_at ASC, id ASC",
+      [cycleId],
+    );
+    if (unnumbered.rows.length === 0) return;
+
+    const maxRes = await pool.query(
+      "SELECT COALESCE(MAX(candidate_number), 0) AS max_num FROM application_submissions WHERE cycle_id = $1",
+      [cycleId],
+    );
+    let nextNum = Number(maxRes.rows[0]?.max_num || 0) + 1;
+
+    for (const row of unnumbered.rows) {
+      await pool.query(
+        "UPDATE application_submissions SET candidate_number = $1 WHERE id = $2",
+        [nextNum++, row.id],
+      );
+    }
+  } else {
+    const store = readLocalStore();
+    const cycleSubs = store.submissions.filter((s) => s.cycle_id === cycleId);
+    const unnumbered = cycleSubs
+      .filter((s) => s.candidate_number == null)
+      .sort((a, b) => (a.submitted_at || "").localeCompare(b.submitted_at || "") || a.id - b.id);
+    if (unnumbered.length === 0) return;
+
+    let maxNum = cycleSubs.reduce((m, s) => Math.max(m, s.candidate_number || 0), 0);
+    for (const s of unnumbered) {
+      s.candidate_number = ++maxNum;
+    }
+    writeLocalStore(store);
+  }
+}
+
+export interface GradingGroupInput {
+  name: string;
+  brothers: string[];
+}
+
+export interface MassAssignResult {
+  ok: boolean;
+  totalApplicants: number;
+  groups: Array<{
+    name: string;
+    brotherCount: number;
+    applicantCount: number;
+    brothers: string[];
+  }>;
+}
+
+export async function massAssignGroups(
+  cycleId: number,
+  groupsInput: GradingGroupInput[],
+  assignedBy: string,
+): Promise<MassAssignResult> {
+  // 1. Sanitize groups
+  const cleanGroups: Array<{ name: string; brothers: string[] }> = [];
+  for (let i = 0; i < (groupsInput || []).length; i++) {
+    const g = groupsInput[i];
+    const name = (g.name || `Group ${i + 1}`).trim();
+    const brothers = Array.from(
+      new Set(
+        (g.brothers || [])
+          .map((b) => (typeof b === "string" ? b.trim().toLowerCase() : ""))
+          .filter((b) => b.length > 0),
+      ),
+    );
+    if (brothers.length > 0) {
+      cleanGroups.push({ name, brothers });
+    }
+  }
+
+  if (cleanGroups.length === 0) {
+    throw new Error("At least one group with valid brother email(s) must be provided.");
+  }
+
+  // 2. Ensure all candidates have permanent, stable candidate numbers
+  await ensureCandidateNumbers(cycleId);
+
+  // 3. Fetch submissions for this cycle
+  let submissionIds: number[] = [];
+  if (useDb) {
+    const subRes = await pool.query(
+      "SELECT id FROM application_submissions WHERE cycle_id = $1 ORDER BY id ASC",
+      [cycleId],
+    );
+    submissionIds = subRes.rows.map((r: any) => r.id);
+  } else {
+    const store = readLocalStore();
+    submissionIds = store.submissions
+      .filter((s) => s.cycle_id === cycleId)
+      .map((s) => s.id);
+  }
+
+  if (submissionIds.length === 0) {
+    return {
+      ok: true,
+      totalApplicants: 0,
+      groups: cleanGroups.map((g) => ({
+        name: g.name,
+        brotherCount: g.brothers.length,
+        applicantCount: 0,
+        brothers: g.brothers,
+      })),
+    };
+  }
+
+  // 4. Shuffle submission IDs randomly purely for group distribution (Fisher-Yates)
+  // NOTE: Candidate numbers remain completely unchanged and permanent!
+  const shuffledIds = [...submissionIds];
+  for (let i = shuffledIds.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffledIds[i], shuffledIds[j]] = [shuffledIds[j], shuffledIds[i]];
+  }
+
+  // 5. Distribute submissions round-robin across cleanGroups
+  const groupApplicantCounts = new Array(cleanGroups.length).fill(0);
+  const newAssignments: Array<{ submissionId: number; brotherEmail: string }> = [];
+
+  for (let idx = 0; idx < shuffledIds.length; idx++) {
+    const groupIdx = idx % cleanGroups.length;
+    groupApplicantCounts[groupIdx]++;
+    const subId = shuffledIds[idx];
+    for (const bEmail of cleanGroups[groupIdx].brothers) {
+      newAssignments.push({ submissionId: subId, brotherEmail: bEmail });
+    }
+  }
+
+  // 6. Clear existing assignments for submissions of this cycle and insert new ones
+  if (useDb) {
+    await pool.query(
+      "DELETE FROM application_assignments WHERE submission_id IN (SELECT id FROM application_submissions WHERE cycle_id = $1)",
+      [cycleId],
+    );
+
+    if (newAssignments.length > 0) {
+      const batchSize = 400;
+      for (let b = 0; b < newAssignments.length; b += batchSize) {
+        const batch = newAssignments.slice(b, b + batchSize);
+        const valuePlaceholders: string[] = [];
+        const params: any[] = [];
+        let pIdx = 1;
+        for (const item of batch) {
+          valuePlaceholders.push(`($${pIdx++}, $${pIdx++}, $${pIdx++}, NOW())`);
+          params.push(item.submissionId, item.brotherEmail, assignedBy);
+        }
+        await pool.query(
+          `INSERT INTO application_assignments (submission_id, brother_email, assigned_by, assigned_at)
+           VALUES ${valuePlaceholders.join(", ")}
+           ON CONFLICT (submission_id, brother_email) DO NOTHING`,
+          params,
+        );
+      }
+    }
+  } else {
+    const store = readLocalStore();
+    const cycleSubSet = new Set(submissionIds);
+    store.assignments = store.assignments.filter((a) => !cycleSubSet.has(a.submission_id));
+
+    for (const item of newAssignments) {
+      store.assignments.push({
+        id: store.nextId.assignments++,
+        submission_id: item.submissionId,
+        brother_email: item.brotherEmail,
+        assigned_by: assignedBy,
+        assigned_at: new Date().toISOString(),
+      });
+    }
+    writeLocalStore(store);
+  }
+
+  return {
+    ok: true,
+    totalApplicants: submissionIds.length,
+    groups: cleanGroups.map((g, idx) => ({
+      name: g.name,
+      brotherCount: g.brothers.length,
+      applicantCount: groupApplicantCounts[idx],
+      brothers: g.brothers,
+    })),
+  };
 }
 
 export function extractQuestionLabels(formQuestions: any[]): Record<string, string> {
@@ -886,6 +1078,8 @@ async function getAssignedSubmissionsForBrother(
         current_round_name,
         cycle_name: s.cycle_name || "Active Cycle",
         assigned_brothers,
+        candidate_number: s.candidate_number ?? null,
+        candidateNumber: s.candidate_number ?? null,
         my_score: myScoreObj,
         existingScore: myScoreObj
           ? { score: myScoreObj.score, notes: myScoreObj.note, round_name: current_round_name }
@@ -973,6 +1167,8 @@ async function getAssignedSubmissionsForBrother(
         current_round_name,
         cycle_name: cycle?.name || "Active Cycle",
         assigned_brothers,
+        candidate_number: s.candidate_number ?? null,
+        candidateNumber: s.candidate_number ?? null,
         my_score: myScoreObj,
         existingScore: myScoreObj
           ? { score: myScoreObj.score, notes: myScoreObj.note, round_name: current_round_name }
@@ -986,6 +1182,7 @@ async function getAssignedSubmissionsForBrother(
 
 export interface CandidateRow {
   submissionId: number;
+  candidateNumber?: number | null;
   applicantName: string;
   applicantEmail: string;
   submittedAt: string;
@@ -1005,6 +1202,14 @@ export interface CandidateRow {
   }>;
   highlight?: "green" | "yellow" | "red" | null;
   isBba: boolean;
+  photoUrl?: string | null;
+  resumeUrl?: string | null;
+  major?: string | null;
+  minor?: string | null;
+  gpa?: string | null;
+  gradTerm?: string | null;
+  phone?: string | null;
+  pronouns?: string | null;
 }
 
 export function isApplicantBba(
@@ -1334,6 +1539,8 @@ async function getRoundCandidates(
   const normConfig = form?.normalization_config || DEFAULT_NORMALIZATION_CONFIG;
   const questionLabels = extractQuestionLabels(form?.questions || []);
 
+  await ensureCandidateNumbers(cycleId);
+
   if (useDb) {
     let filterClause = "cycle_id = $1";
     if (round === "round1") {
@@ -1459,8 +1666,11 @@ async function getRoundCandidates(
         pool.query("UPDATE application_submissions SET is_bba = $1 WHERE id = $2", [isBba, s.id]).catch(() => {});
       }
 
+      const resolved = resolveApplicantFields(answers, questionLabels);
+
       return {
         submissionId: s.id,
+        candidateNumber: s.candidate_number ?? null,
         applicantName: s.applicant_name,
         applicantEmail: s.applicant_email,
         submittedAt: s.submitted_at,
@@ -1475,6 +1685,14 @@ async function getRoundCandidates(
         normalizedDetails: candNorm?.details ?? [],
         highlight,
         isBba,
+        photoUrl: resolved.photo_url || null,
+        resumeUrl: resolved.resume_url || null,
+        major: resolved.major || "",
+        minor: resolved.minor || "",
+        gpa: resolved.gpa || "",
+        gradTerm: resolved.grad_term || "",
+        phone: resolved.phone || "",
+        pronouns: resolved.pronouns || "",
       };
     });
 
@@ -1592,8 +1810,11 @@ async function getRoundCandidates(
       const isBba = isApplicantBba({ ...s, answers }, questionLabels);
       s.is_bba = isBba;
 
+      const resolved = resolveApplicantFields(answers, questionLabels);
+
       return {
         submissionId: s.id,
+        candidateNumber: s.candidate_number ?? null,
         applicantName: s.applicant_name,
         applicantEmail: s.applicant_email,
         submittedAt: s.submitted_at,
@@ -1608,6 +1829,14 @@ async function getRoundCandidates(
         normalizedDetails: candNorm?.details ?? [],
         highlight,
         isBba,
+        photoUrl: resolved.photo_url || null,
+        resumeUrl: resolved.resume_url || null,
+        major: resolved.major || "",
+        minor: resolved.minor || "",
+        gpa: resolved.gpa || "",
+        gradTerm: resolved.grad_term || "",
+        phone: resolved.phone || "",
+        pronouns: resolved.pronouns || "",
       };
     });
 
@@ -2493,6 +2722,33 @@ recruitmentRouter.delete(
     } catch (err: any) {
       console.error("Error deleting application submission:", err);
       res.status(500).json({ error: err.message || "Failed to delete application submission." });
+    }
+  },
+);
+
+// POST /api/recruitment/cycles/:id/mass-assign  (Admin: mass assign groups to applicants)
+recruitmentRouter.post(
+  "/cycles/:id/mass-assign",
+  requireAdmin,
+  async (req: Request, res: Response) => {
+    const cycleId = Number(req.params.id);
+    if (!cycleId || isNaN(cycleId)) {
+      res.status(400).json({ error: "Invalid cycle ID." });
+      return;
+    }
+    const { groups } = req.body as { groups?: GradingGroupInput[] };
+    if (!Array.isArray(groups) || groups.length === 0) {
+      res.status(400).json({ error: "Groups array is required." });
+      return;
+    }
+
+    try {
+      const assignedBy = (req as any).user?.email || "admin";
+      const result = await massAssignGroups(cycleId, groups, assignedBy);
+      res.json(result);
+    } catch (err: any) {
+      console.error("Error executing mass assignment:", err);
+      res.status(500).json({ error: err.message || "Failed to execute mass assignment." });
     }
   },
 );

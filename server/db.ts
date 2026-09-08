@@ -122,7 +122,8 @@ export async function runMigrations() {
       ADD COLUMN IF NOT EXISTS app_highlight VARCHAR(20) DEFAULT NULL,
       ADD COLUMN IF NOT EXISTS r1_highlight VARCHAR(20) DEFAULT NULL,
       ADD COLUMN IF NOT EXISTS r2_highlight VARCHAR(20) DEFAULT NULL,
-      ADD COLUMN IF NOT EXISTS is_bba BOOLEAN DEFAULT NULL
+      ADD COLUMN IF NOT EXISTS is_bba BOOLEAN DEFAULT NULL,
+      ADD COLUMN IF NOT EXISTS candidate_number INT DEFAULT NULL
   `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS application_scores (

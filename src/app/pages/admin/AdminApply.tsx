@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Link } from "react-router";
 import {
   ArrowLeft,
@@ -16,6 +16,8 @@ import {
   FileText,
   ExternalLink,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Calendar,
   MessageSquare,
   Settings,
@@ -34,6 +36,7 @@ import {
   TrendingDown,
   Check,
   GraduationCap,
+  Shuffle,
 } from "lucide-react";
 import { LoginGate } from "@/app/components/LoginGate";
 import { useAuth } from "@/app/context/AuthContext";
@@ -115,6 +118,7 @@ interface RecruitmentCycle {
 
 interface CandidateRow {
   submissionId: number;
+  candidateNumber?: number | null;
   applicantName: string;
   applicantEmail: string;
   submittedAt: string;
@@ -134,6 +138,14 @@ interface CandidateRow {
   }>;
   highlight?: "green" | "yellow" | "red" | null;
   isBba: boolean;
+  photoUrl?: string | null;
+  resumeUrl?: string | null;
+  major?: string | null;
+  minor?: string | null;
+  gpa?: string | null;
+  gradTerm?: string | null;
+  phone?: string | null;
+  pronouns?: string | null;
 }
 
 const SCORE_OPTIONS = [-1, -0.5, 0, 0.5, 1];
@@ -142,8 +154,78 @@ function newFieldId() {
   return `custom_${Date.now()}`;
 }
 
-function newSectionId() {
-  return `section_${Date.now()}`;
+function resolveApplicantInfo(c: CandidateRow, questionLabels: Record<string, string> = {}) {
+  let answers: Record<string, any> = {};
+  if (c.answers) {
+    if (typeof c.answers === "string") {
+      try {
+        answers = JSON.parse(c.answers);
+      } catch {
+        answers = {};
+      }
+    } else if (typeof c.answers === "object") {
+      answers = c.answers;
+    }
+  }
+
+  let photoUrl = c.photoUrl || "";
+  let resumeUrl = c.resumeUrl || "";
+  let major = c.major || "";
+  let minor = c.minor || "";
+  let gpa = c.gpa || "";
+  let gradTerm = c.gradTerm || "";
+  let phone = c.phone || "";
+  let pronouns = c.pronouns || "";
+
+  for (const [key, val] of Object.entries(answers)) {
+    if (!val) continue;
+    const strVal = typeof val === "string" ? val.trim() : "";
+    if (!strVal) continue;
+    const label = (questionLabels[key] || "").toLowerCase();
+    const keyLower = key.toLowerCase();
+
+    if (
+      !photoUrl &&
+      (/photo|headshot|picture|portrait/i.test(label) ||
+        /photo|headshot|picture/i.test(keyLower) ||
+        strVal.startsWith("/uploads/photo_") ||
+        (strVal.startsWith("data:image/") && strVal.length > 50))
+    ) {
+      if (strVal.startsWith("http") || strVal.startsWith("/uploads/") || strVal.startsWith("data:image/")) {
+        photoUrl = strVal;
+      }
+    }
+    if (
+      !resumeUrl &&
+      (/resume|cv|curriculum/i.test(label) ||
+        /resume|cv/i.test(keyLower) ||
+        strVal.startsWith("/uploads/resume_"))
+    ) {
+      if (strVal.startsWith("http") || strVal.startsWith("/uploads/")) {
+        resumeUrl = strVal;
+      }
+    }
+    if (!major && (/major|field.*study|concentration/i.test(label) || /major|field.*study|concentration/i.test(keyLower))) {
+      major = strVal;
+    }
+    if (!minor && (/minor/i.test(label) || /minor/i.test(keyLower))) {
+      minor = strVal;
+    }
+    if (!gpa && (/gpa|grade\s*point/i.test(label) || /^gpa$/i.test(keyLower))) {
+      gpa = strVal;
+    }
+    if (!gradTerm && (/grad.*term|graduation|grad.*year|class\s*standing/i.test(label) || /grad/i.test(keyLower))) {
+      gradTerm = strVal;
+    }
+    if (!phone && (/phone/i.test(label) || /phone/i.test(keyLower))) {
+      phone = strVal;
+    }
+    if (!pronouns && (/pronoun/i.test(label) || /pronoun/i.test(keyLower))) {
+      pronouns = strVal;
+    }
+  }
+
+  return { photoUrl, resumeUrl, major, minor, gpa, gradTerm, phone, pronouns };
 }
 
 // ── Admin Apply Main Component ────────────────────────────────────────────────
@@ -764,6 +846,7 @@ function RoundReviewTab({
   const [assignEmailInput, setAssignEmailInput] = useState("");
   const [assigningLoading, setAssigningLoading] = useState(false);
   const [assignError, setAssignError] = useState("");
+  const [showMassAssignModal, setShowMassAssignModal] = useState(false);
   const [questionLabels, setQuestionLabels] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -1043,6 +1126,10 @@ function RoundReviewTab({
         comparison = a.referenceSum - b.referenceSum;
       } else if (sortColumn === "name") {
         comparison = a.applicantName.localeCompare(b.applicantName);
+      } else if (sortColumn === "candNum") {
+        const numA = a.candidateNumber ?? Infinity;
+        const numB = b.candidateNumber ?? Infinity;
+        comparison = numA - numB;
       } else if (sortColumn === "status") {
         comparison = a.status.localeCompare(b.status);
       }
@@ -1177,6 +1264,7 @@ function RoundReviewTab({
 
     const raterHeaders = raters.map((r) => `Rater: ${r.raterName} (${r.raterId})`);
     const headers = [
+      "Candidate #",
       "Rank in Pool",
       "Submission ID",
       "Applicant Name",
@@ -1200,6 +1288,7 @@ function RoundReviewTab({
       const assignedBrothersStr = `"${(c.assignedBrothers || []).join("; ")}"`;
       const rank = rankMap.get(c.submissionId) || "";
       return [
+        c.candidateNumber ? `#${c.candidateNumber}` : "",
         rank,
         c.submissionId,
         `"${c.applicantName.replace(/"/g, '""')}"`,
@@ -1229,10 +1318,15 @@ function RoundReviewTab({
 
   // Filter & Sort candidates (strictly from active pool)
   const filteredCandidates = useMemo(() => {
+    const query = search.trim().toLowerCase();
     return poolCandidates.filter((c) => {
+      const candNumStr = c.candidateNumber ? String(c.candidateNumber) : "";
       const matchesSearch =
-        c.applicantName.toLowerCase().includes(search.toLowerCase()) ||
-        c.applicantEmail.toLowerCase().includes(search.toLowerCase());
+        !query ||
+        c.applicantName.toLowerCase().includes(query) ||
+        c.applicantEmail.toLowerCase().includes(query) ||
+        candNumStr === query ||
+        `#${candNumStr}` === query;
       const matchesStatus = statusFilter === "all" || c.status === statusFilter;
       const matchesHighlight =
         highlightFilter === "all" ||
@@ -1249,12 +1343,68 @@ function RoundReviewTab({
         comparison = a.referenceSum - b.referenceSum;
       } else if (sortColumn === "name") {
         comparison = a.applicantName.localeCompare(b.applicantName);
+      } else if (sortColumn === "candNum") {
+        const numA = a.candidateNumber ?? Infinity;
+        const numB = b.candidateNumber ?? Infinity;
+        comparison = numA - numB;
       } else if (sortColumn === "status") {
         comparison = a.status.localeCompare(b.status);
       }
       return sortDirection === "asc" ? comparison : -comparison;
     });
   }, [poolCandidates, search, statusFilter, highlightFilter, sortColumn, sortDirection]);
+
+  // Selected candidate index in filteredCandidates (for prev/next navigation)
+  const selectedIndex = useMemo(() => {
+    if (!selectedCandidate) return -1;
+    return filteredCandidates.findIndex(
+      (c) => c.submissionId === selectedCandidate.submissionId,
+    );
+  }, [selectedCandidate, filteredCandidates]);
+
+  const modalBodyRef = useRef<HTMLDivElement>(null);
+
+  // Scroll candidate modal to top when switching candidates
+  useEffect(() => {
+    if (modalBodyRef.current) {
+      modalBodyRef.current.scrollTop = 0;
+    }
+  }, [selectedCandidate?.submissionId]);
+
+  // Keyboard navigation (Arrow keys to browse, Esc to close)
+  useEffect(() => {
+    if (!selectedCandidate) return;
+
+    function handleKeyDown(e: KeyboardEvent) {
+      const activeEl = document.activeElement as HTMLElement | null;
+      if (
+        activeEl &&
+        (activeEl.tagName === "INPUT" ||
+          activeEl.tagName === "TEXTAREA" ||
+          activeEl.isContentEditable)
+      ) {
+        return;
+      }
+
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        if (selectedIndex > 0) {
+          setSelectedCandidate(filteredCandidates[selectedIndex - 1]);
+        }
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        if (selectedIndex >= 0 && selectedIndex < filteredCandidates.length - 1) {
+          setSelectedCandidate(filteredCandidates[selectedIndex + 1]);
+        }
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        setSelectedCandidate(null);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedCandidate, selectedIndex, filteredCandidates]);
 
   return (
     <div className="space-y-6">
@@ -1283,6 +1433,13 @@ function RoundReviewTab({
             className="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-stone-950 text-xs font-bold tracking-wider uppercase rounded-xl transition-all shadow-xs cursor-pointer"
           >
             <Sliders size={14} /> Cutoff & Highlight Tool ({majorPool === "bba" ? "Ross/BBA" : majorPool === "non_bba" ? "Non-BBA" : "All"})
+          </button>
+          <button
+            onClick={() => setShowMassAssignModal(true)}
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-900 text-xs font-bold tracking-wider uppercase rounded-xl transition-all border border-stone-200 shadow-2xs cursor-pointer"
+            title="Mass assign brother grading groups to all applicants with stable candidate numbers"
+          >
+            <Shuffle size={14} className="text-[#7A0C0C]" /> Mass Assign
           </button>
           <button
             onClick={handleExportCsv}
@@ -1495,8 +1652,28 @@ function RoundReviewTab({
             <table className="w-full text-left text-xs text-stone-700">
               <thead className="bg-stone-50/80 border-b border-stone-200 text-stone-500 font-bold uppercase tracking-wider text-[10px]">
                 <tr>
-                  <th className="px-3 py-3.5 whitespace-nowrap text-center w-14 font-extrabold text-stone-700">
-                    # Rank
+                  <th className="px-2.5 py-3.5 whitespace-nowrap text-center w-12 font-extrabold text-stone-700">
+                    Rank
+                  </th>
+                  <th
+                    onClick={() => {
+                      if (sortColumn === "candNum") {
+                        setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+                      } else {
+                        setSortColumn("candNum");
+                        setSortDirection("asc");
+                      }
+                    }}
+                    className="px-2.5 py-3.5 whitespace-nowrap text-center cursor-pointer hover:bg-stone-100 transition-colors select-none group w-16"
+                    title="Candidate Number (Permanent & Stable). Click to sort."
+                  >
+                    <div className="inline-flex items-center justify-center gap-0.5">
+                      <span>Cand #</span>
+                      <ArrowUpDown
+                        size={10}
+                        className={`text-stone-400 ${sortColumn === "candNum" ? "text-stone-800 font-bold" : ""}`}
+                      />
+                    </div>
                   </th>
                   <th
                     onClick={() => {
@@ -1635,6 +1812,17 @@ function RoundReviewTab({
                             </span>
                           );
                         })()}
+                      </td>
+
+                      {/* Candidate Number */}
+                      <td className="px-2.5 py-4 text-center whitespace-nowrap font-mono">
+                        {c.candidateNumber ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-stone-100 text-stone-800 text-[11px] font-bold border border-stone-200 shadow-2xs">
+                            #{c.candidateNumber}
+                          </span>
+                        ) : (
+                          <span className="text-stone-300 text-xs">—</span>
+                        )}
                       </td>
 
                       <td className="px-5 py-4">
@@ -2347,129 +2535,296 @@ function RoundReviewTab({
         ratersCalibration={ratersCalibration}
       />
 
-      {/* ── Slide-Over Drawer: Candidate Full Details ── */}
-      {selectedCandidate && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex justify-end">
-          <div className="bg-white w-full max-w-xl h-full shadow-2xl overflow-y-auto p-6 sm:p-8 flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between pb-6 border-b border-stone-100">
-                <div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#7A0C0C]">
-                    Candidate Application
+      {/* ── Centered Modal: Candidate Streamlined Review Overlay ── */}
+      {selectedCandidate && (() => {
+        const info = resolveApplicantInfo(selectedCandidate, questionLabels);
+        const hasPrev = selectedIndex > 0;
+        const hasNext = selectedIndex >= 0 && selectedIndex < filteredCandidates.length - 1;
+
+        return (
+          <div
+            className="fixed inset-0 z-50 bg-black/65 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 overflow-y-auto"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setSelectedCandidate(null);
+            }}
+          >
+            <div className="bg-white w-full max-w-4xl max-h-[92vh] rounded-2xl shadow-2xl border border-stone-200 flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150 my-auto">
+              {/* Top Navigation & Status Bar */}
+              <div className="px-6 py-2.5 bg-stone-50 border-b border-stone-200 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-[10px] uppercase tracking-widest text-[#7A0C0C] bg-[#7A0C0C]/10 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    {roundTitle} Review
                   </span>
-                  <h3 className="text-xl font-bold text-stone-900">{selectedCandidate.applicantName}</h3>
-                  <span className="text-xs text-stone-400">{selectedCandidate.applicantEmail}</span>
+                  <span className="text-stone-300">•</span>
+                  <span className="text-stone-500 font-mono font-semibold text-[11px]">
+                    Candidate {selectedIndex >= 0 ? selectedIndex + 1 : 1} of {filteredCandidates.length}
+                  </span>
                 </div>
-                <button
-                  onClick={() => setSelectedCandidate(null)}
-                  className="p-1.5 text-stone-400 hover:text-stone-700 rounded-lg hover:bg-stone-100 cursor-pointer"
-                >
-                  <X size={18} />
-                </button>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => hasPrev && setSelectedCandidate(filteredCandidates[selectedIndex - 1])}
+                    disabled={!hasPrev}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-stone-200 bg-white text-stone-700 hover:bg-stone-100 disabled:opacity-35 text-xs font-semibold transition cursor-pointer disabled:cursor-not-allowed"
+                    title="Previous Candidate (Left Arrow key)"
+                  >
+                    <ChevronLeft size={14} />
+                    <span className="hidden sm:inline">Prev</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => hasNext && setSelectedCandidate(filteredCandidates[selectedIndex + 1])}
+                    disabled={!hasNext}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-stone-200 bg-white text-stone-700 hover:bg-stone-100 disabled:opacity-35 text-xs font-semibold transition cursor-pointer disabled:cursor-not-allowed"
+                    title="Next Candidate (Right Arrow key)"
+                  >
+                    <span className="hidden sm:inline">Next</span>
+                    <ChevronRight size={14} />
+                  </button>
+
+                  <span className="text-[10px] text-stone-400 font-mono hidden md:inline ml-1">
+                    (← / → keys)
+                  </span>
+
+                  <button
+                    onClick={() => setSelectedCandidate(null)}
+                    className="ml-2 p-1 text-stone-400 hover:text-stone-700 rounded-lg hover:bg-stone-200 transition cursor-pointer"
+                    title="Close (Esc)"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
               </div>
 
-              {/* Status and scoring breakdown */}
-              <div className="py-6 border-b border-stone-100 space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-stone-600">Current Status</span>
-                  <span className="px-3 py-1 bg-amber-50 border border-amber-200 rounded-full text-xs font-bold text-[#7A0C0C]">
-                    {selectedCandidate.status}
-                  </span>
-                </div>
+              {/* Profile Overview Header (Exact Brother Portal Aesthetic) */}
+              <div className="p-6 pb-5 border-b border-stone-100 bg-white">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5 sm:gap-4">
+                    {info.photoUrl ? (
+                      <a
+                        href={info.photoUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="group relative shrink-0"
+                        title="Click to view full-size photo"
+                      >
+                        <img
+                          src={info.photoUrl}
+                          alt={selectedCandidate.applicantName}
+                          className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl object-cover border-2 border-stone-200 shadow-xs group-hover:opacity-90 transition"
+                        />
+                        <div className="absolute inset-0 rounded-2xl bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center transition text-white">
+                          <ExternalLink size={14} />
+                        </div>
+                      </a>
+                    ) : (
+                      <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-stone-100 border border-stone-200 flex items-center justify-center text-stone-400 font-bold text-xl shrink-0 font-serif">
+                        {selectedCandidate.applicantName?.charAt(0) || "P"}
+                      </div>
+                    )}
 
-                {/* Major & BBA Classification Card */}
-                <div className="p-4 bg-stone-50 rounded-xl border border-stone-200 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-stone-700 flex items-center gap-1.5">
-                      <GraduationCap size={14} className="text-[#7A0C0C]" />
-                      Major Pool Classification
-                    </span>
-                    <span
-                      className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
-                        selectedCandidate.isBba
-                          ? "bg-blue-50 text-blue-800 border-blue-200"
-                          : "bg-purple-50 text-purple-800 border-purple-200"
-                      }`}
-                    >
-                      {selectedCandidate.isBba ? "Ross / BBA Pool" : "Non-BBA Pool"}
-                    </span>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h2 className="text-2xl font-serif text-stone-900 font-normal">
+                          {selectedCandidate.applicantName}
+                        </h2>
+                        {selectedCandidate.candidateNumber && (
+                          <span className="px-2.5 py-0.5 bg-stone-100 border border-stone-300 rounded-full font-mono text-xs font-bold text-stone-800 shadow-2xs">
+                            #{selectedCandidate.candidateNumber}
+                          </span>
+                        )}
+                        <span
+                          className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${
+                            selectedCandidate.isBba
+                              ? "bg-amber-50 text-amber-900 border-amber-200"
+                              : "bg-stone-100 text-stone-700 border-stone-200"
+                          }`}
+                        >
+                          {selectedCandidate.isBba ? "Ross / BBA" : "Non-BBA"}
+                        </span>
+                        {info.major && (
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full border bg-stone-50 text-stone-800 border-stone-300">
+                            {info.major}
+                          </span>
+                        )}
+                        {selectedCandidate.highlight && (
+                          <span
+                            className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${
+                              selectedCandidate.highlight === "green"
+                                ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                : selectedCandidate.highlight === "yellow"
+                                  ? "bg-amber-50 text-amber-800 border-amber-200"
+                                  : "bg-rose-50 text-rose-800 border-rose-200"
+                            }`}
+                          >
+                            {selectedCandidate.highlight === "green"
+                              ? "🟢 Green Tier"
+                              : selectedCandidate.highlight === "yellow"
+                                ? "🟡 Yellow Tier"
+                                : "🔴 Red Tier"}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-stone-500 mt-1">
+                        <span>{selectedCandidate.applicantEmail}</span>
+                        {info.major && (
+                          <span className="font-medium text-stone-700">
+                            • Major: <strong>{info.major}</strong>
+                            {info.minor ? ` (Minor: ${info.minor})` : ""}
+                          </span>
+                        )}
+                        {info.gradTerm && <span>• Class of {info.gradTerm}</span>}
+                        {info.gpa && <span>• GPA: {info.gpa}</span>}
+                        {info.pronouns && <span>• ({info.pronouns})</span>}
+                        {info.phone && <span>• {info.phone}</span>}
+                        {selectedCandidate.assignedBrothers && selectedCandidate.assignedBrothers.length > 0 && (
+                          <span className="font-medium text-stone-600">
+                            • Assigned:{" "}
+                            {selectedCandidate.assignedBrothers.map((e) => e.split("@")[0]).join(", ")}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 text-xs pt-1">
-                    <div>
-                      <span className="text-[10px] text-stone-400 uppercase font-bold block">Major</span>
-                      <span className="font-semibold text-stone-800">
-                        {selectedCandidate.answers?.major || "Not specified"}
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    {info.resumeUrl && (
+                      <a
+                        href={info.resumeUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-stone-100 text-stone-800 text-xs font-semibold hover:bg-stone-200 transition border border-stone-200 shadow-2xs cursor-pointer"
+                      >
+                        <FileText size={14} className="text-[#7A0C0C]" />
+                        <span>View Resume PDF</span>
+                        <ExternalLink size={12} className="text-stone-400" />
+                      </a>
+                    )}
+                    {info.photoUrl && (
+                      <a
+                        href={info.photoUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-stone-100 text-stone-700 text-xs font-semibold hover:bg-stone-200 transition border border-stone-200 shadow-2xs cursor-pointer"
+                      >
+                        <span>Photo</span>
+                        <ExternalLink size={12} className="text-stone-400" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Scrollable Modal Content */}
+              <div ref={modalBodyRef} className="p-6 overflow-y-auto flex-1 space-y-6">
+                {/* Status, Classification & Highlight Controls Bar */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Major & BBA Classification Card */}
+                  <div className="p-4 bg-stone-50 rounded-xl border border-stone-200 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-stone-700 flex items-center gap-1.5">
+                        <GraduationCap size={14} className="text-[#7A0C0C]" />
+                        Major Pool Classification
+                      </span>
+                      <span
+                        className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
+                          selectedCandidate.isBba
+                            ? "bg-blue-50 text-blue-800 border-blue-200"
+                            : "bg-purple-50 text-purple-800 border-purple-200"
+                        }`}
+                      >
+                        {selectedCandidate.isBba ? "Ross / BBA Pool" : "Non-BBA Pool"}
                       </span>
                     </div>
-                    <div>
-                      <span className="text-[10px] text-stone-400 uppercase font-bold block">Ross Student?</span>
-                      <span className="font-semibold text-stone-800">
-                        {selectedCandidate.isBba ? "Yes (Ross / BBA)" : "No (Non-BBA)"}
-                      </span>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                      <div>
+                        <span className="text-[10px] text-stone-400 uppercase font-bold block">Major</span>
+                        <span className="font-semibold text-stone-800">
+                          {info.major || selectedCandidate.answers?.major || "Not specified"}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-stone-400 uppercase font-bold block">Ross Student?</span>
+                        <span className="font-semibold text-stone-800">
+                          {selectedCandidate.isBba ? "Yes (Ross / BBA)" : "No (Non-BBA)"}
+                        </span>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="pt-2 border-t border-stone-200/80 flex items-center justify-between">
-                    <span className="text-[11px] text-stone-500">
-                      Ranked in {selectedCandidate.isBba ? "Ross/BBA" : "Non-BBA"} interview rounds
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleToggleBba(selectedCandidate.submissionId, !selectedCandidate.isBba)}
-                      className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-lg bg-white border border-stone-200 hover:border-stone-400 text-stone-700 shadow-2xs transition cursor-pointer"
-                    >
-                      Switch to {selectedCandidate.isBba ? "Non-BBA Pool" : "Ross / BBA Pool"}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Highlight Tier Selector in Drawer */}
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-stone-600">Highlight Tier</span>
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => handleSetHighlight(selectedCandidate.submissionId, "green")}
-                      className={`px-2.5 py-1 rounded-full text-xs font-bold border transition cursor-pointer ${
-                        selectedCandidate.highlight === "green"
-                          ? "bg-emerald-600 text-white border-emerald-700 shadow-xs"
-                          : "bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100"
-                      }`}
-                    >
-                      🟢 Green
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleSetHighlight(selectedCandidate.submissionId, "yellow")}
-                      className={`px-2.5 py-1 rounded-full text-xs font-bold border transition cursor-pointer ${
-                        selectedCandidate.highlight === "yellow"
-                          ? "bg-amber-600 text-white border-amber-700 shadow-xs"
-                          : "bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100"
-                      }`}
-                    >
-                      🟡 Yellow
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleSetHighlight(selectedCandidate.submissionId, "red")}
-                      className={`px-2.5 py-1 rounded-full text-xs font-bold border transition cursor-pointer ${
-                        selectedCandidate.highlight === "red"
-                          ? "bg-rose-600 text-white border-rose-700 shadow-xs"
-                          : "bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100"
-                      }`}
-                    >
-                      🔴 Red
-                    </button>
-                    {selectedCandidate.highlight && (
+                    <div className="pt-2 border-t border-stone-200/80 flex items-center justify-between">
+                      <span className="text-[11px] text-stone-500">
+                        Ranked in {selectedCandidate.isBba ? "Ross/BBA" : "Non-BBA"} interview rounds
+                      </span>
                       <button
                         type="button"
-                        onClick={() => handleSetHighlight(selectedCandidate.submissionId, null)}
-                        className="text-[11px] text-stone-400 hover:text-stone-700 underline ml-1 cursor-pointer"
+                        onClick={() => handleToggleBba(selectedCandidate.submissionId, !selectedCandidate.isBba)}
+                        className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-lg bg-white border border-stone-200 hover:border-stone-400 text-stone-700 shadow-2xs transition cursor-pointer"
                       >
-                        Clear
+                        Switch to {selectedCandidate.isBba ? "Non-BBA Pool" : "Ross / BBA Pool"}
                       </button>
-                    )}
+                    </div>
+                  </div>
+
+                  {/* Status & Highlight Tier Selector Card */}
+                  <div className="p-4 bg-stone-50 rounded-xl border border-stone-200 flex flex-col justify-between gap-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-stone-700">Current Round Status</span>
+                      <span className="px-3 py-1 bg-amber-50 border border-amber-200 rounded-full text-xs font-bold text-[#7A0C0C]">
+                        {selectedCandidate.status}
+                      </span>
+                    </div>
+
+                    <div>
+                      <span className="text-xs font-semibold text-stone-600 block mb-1.5">Highlight Tier</span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => handleSetHighlight(selectedCandidate.submissionId, "green")}
+                          className={`px-3 py-1 rounded-full text-xs font-bold border transition cursor-pointer ${
+                            selectedCandidate.highlight === "green"
+                              ? "bg-emerald-600 text-white border-emerald-700 shadow-xs"
+                              : "bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100"
+                          }`}
+                        >
+                          🟢 Green
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSetHighlight(selectedCandidate.submissionId, "yellow")}
+                          className={`px-3 py-1 rounded-full text-xs font-bold border transition cursor-pointer ${
+                            selectedCandidate.highlight === "yellow"
+                              ? "bg-amber-600 text-white border-amber-700 shadow-xs"
+                              : "bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100"
+                          }`}
+                        >
+                          🟡 Yellow
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSetHighlight(selectedCandidate.submissionId, "red")}
+                          className={`px-3 py-1 rounded-full text-xs font-bold border transition cursor-pointer ${
+                            selectedCandidate.highlight === "red"
+                              ? "bg-rose-600 text-white border-rose-700 shadow-xs"
+                              : "bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100"
+                          }`}
+                        >
+                          🔴 Red
+                        </button>
+                        {selectedCandidate.highlight && (
+                          <button
+                            type="button"
+                            onClick={() => handleSetHighlight(selectedCandidate.submissionId, null)}
+                            className="text-[11px] text-stone-400 hover:text-stone-700 underline ml-1 cursor-pointer"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -2503,7 +2858,7 @@ function RoundReviewTab({
                 </div>
 
                 {/* Individual Scores & Weighting Breakdown */}
-                <div className="p-4 bg-stone-50 rounded-xl border border-stone-100">
+                <div className="p-4 bg-stone-50 rounded-xl border border-stone-200/80">
                   <span className="text-xs font-bold text-stone-700 block mb-2">
                     {roundTitle} — Individual Scores & Weights
                   </span>
@@ -2514,8 +2869,8 @@ function RoundReviewTab({
                         (d) => d.raterId === r.raterId,
                       );
                       return (
-                        <div key={r.raterId} className="flex items-center justify-between text-xs">
-                          <span className="text-stone-600">{r.raterName}</span>
+                        <div key={r.raterId} className="flex items-center justify-between text-xs py-1 border-b border-stone-100 last:border-0">
+                          <span className="text-stone-600 font-medium">{r.raterName}</span>
                           <span className="font-semibold text-stone-900 font-mono flex items-center gap-2">
                             {sc ? (
                               <>
@@ -2540,7 +2895,7 @@ function RoundReviewTab({
                 </div>
 
                 {/* Assigned Brothers for Review */}
-                <div className="p-4 bg-stone-50 rounded-xl border border-stone-100 space-y-2">
+                <div className="p-4 bg-stone-50 rounded-xl border border-stone-200/80 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-stone-700 flex items-center gap-1.5">
                       <Users size={13} className="text-[#7A0C0C]" />
@@ -2573,72 +2928,90 @@ function RoundReviewTab({
                     <p className="text-[11px] text-stone-400 italic">No brothers currently assigned to this candidate.</p>
                   )}
                 </div>
-              </div>
 
-              {/* Candidate Answers */}
-              <div className="py-6 space-y-4 text-xs">
-                <h4 className="font-bold text-stone-900 text-sm">Application Responses</h4>
-                {(() => {
-                  const answersObj: Record<string, any> = (() => {
-                    if (!selectedCandidate.answers) return {};
-                    if (typeof selectedCandidate.answers === "string") {
-                      try {
-                        const parsed = JSON.parse(selectedCandidate.answers);
-                        return typeof parsed === "object" && parsed !== null ? parsed : {};
-                      } catch {
-                        return {};
+                {/* Candidate Answers */}
+                <div className="space-y-3 pt-2">
+                  <h4 className="font-bold text-stone-900 text-sm">Application Responses</h4>
+                  {(() => {
+                    const answersObj: Record<string, any> = (() => {
+                      if (!selectedCandidate.answers) return {};
+                      if (typeof selectedCandidate.answers === "string") {
+                        try {
+                          const parsed = JSON.parse(selectedCandidate.answers);
+                          return typeof parsed === "object" && parsed !== null ? parsed : {};
+                        } catch {
+                          return {};
+                        }
                       }
+                      return typeof selectedCandidate.answers === "object" ? selectedCandidate.answers : {};
+                    })();
+
+                    if (Object.keys(answersObj).length === 0) {
+                      return (
+                        <p className="text-stone-400 italic text-xs">No application responses found.</p>
+                      );
                     }
-                    return typeof selectedCandidate.answers === "object" ? selectedCandidate.answers : {};
-                  })();
 
-                  if (Object.keys(answersObj).length === 0) {
-                    return (
-                      <p className="text-stone-400 italic">No application responses found.</p>
-                    );
-                  }
+                    return Object.entries(answersObj).map(([key, rawVal]) => {
+                      if (rawVal === undefined || rawVal === null) return null;
+                      const val = typeof rawVal === "object"
+                        ? (Array.isArray(rawVal) ? rawVal.join(", ") : JSON.stringify(rawVal, null, 2))
+                        : String(rawVal);
+                      if (!val) return null;
 
-                  return Object.entries(answersObj).map(([key, rawVal]) => {
-                    if (rawVal === undefined || rawVal === null) return null;
-                    const val = typeof rawVal === "object"
-                      ? (Array.isArray(rawVal) ? rawVal.join(", ") : JSON.stringify(rawVal, null, 2))
-                      : String(rawVal);
-                    if (!val) return null;
+                      const isUrl = val.startsWith("http://") || val.startsWith("https://") || val.startsWith("/uploads/") || val.startsWith("data:image/");
+                      const isImage = isUrl && (
+                        val.startsWith("data:image/") ||
+                        val.startsWith("/uploads/photo_") ||
+                        /\.(jpe?g|png|webp|gif|avif|bmp|svg)(\?.*)?$/i.test(val)
+                      );
+                      const rawLabel = questionLabels[key];
+                      const cleanTitle = rawLabel || key
+                        .replace(/_/g, " ")
+                        .replace(/([A-Z])/g, " $1")
+                        .replace(/^./, (str) => str.toUpperCase());
 
-                    const isUrl = val.startsWith("http://") || val.startsWith("https://") || val.startsWith("/uploads/") || val.startsWith("data:image/");
-                    const isImage = isUrl && (
-                      val.startsWith("data:image/") ||
-                      val.startsWith("/uploads/photo_") ||
-                      /\.(jpe?g|png|webp|gif|avif|bmp|svg)(\?.*)?$/i.test(val)
-                    );
-                    const rawLabel = questionLabels[key];
-                    const cleanTitle = rawLabel || key
-                      .replace(/_/g, " ")
-                      .replace(/([A-Z])/g, " $1")
-                      .replace(/^./, (str) => str.toUpperCase());
-
-                    return (
-                      <div key={key} className="p-3 bg-stone-50/70 rounded-xl border border-stone-100">
-                        <span className="text-[11px] font-bold text-[#7A0C0C] block mb-1 whitespace-pre-wrap">
-                          {cleanTitle}
-                        </span>
-                        {isImage ? (
-                          <div className="space-y-2 mt-1">
-                            <a href={val} target="_blank" rel="noopener noreferrer" className="block w-fit group">
-                              <img
-                                src={val}
-                                alt={key}
-                                className="max-h-48 rounded-lg border border-stone-200 object-cover shadow-xs group-hover:opacity-90 transition-opacity"
-                              />
-                            </a>
-                            <div className="flex items-center gap-3">
+                      return (
+                        <div key={key} className="p-3.5 bg-stone-50/70 rounded-xl border border-stone-200/80 text-xs">
+                          <span className="text-[11px] font-bold text-[#7A0C0C] block mb-1 whitespace-pre-wrap">
+                            {cleanTitle}
+                          </span>
+                          {isImage ? (
+                            <div className="space-y-2 mt-1">
+                              <a href={val} target="_blank" rel="noopener noreferrer" className="block w-fit group">
+                                <img
+                                  src={val}
+                                  alt={key}
+                                  className="max-h-48 rounded-lg border border-stone-200 object-cover shadow-xs group-hover:opacity-90 transition-opacity"
+                                />
+                              </a>
+                              <div className="flex items-center gap-3">
+                                <a
+                                  href={val}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[#7A0C0C] font-semibold underline inline-flex items-center gap-1 text-[11px]"
+                                >
+                                  View Full Photo <ExternalLink size={12} />
+                                </a>
+                                <a
+                                  href={val}
+                                  download
+                                  className="text-stone-600 hover:text-stone-900 inline-flex items-center gap-1 text-[11px] font-medium"
+                                >
+                                  <Download size={12} /> Download
+                                </a>
+                              </div>
+                            </div>
+                          ) : isUrl ? (
+                            <div className="flex items-center gap-3 mt-1">
                               <a
                                 href={val}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-[#7A0C0C] font-semibold underline inline-flex items-center gap-1 text-[11px]"
+                                className="text-[#7A0C0C] font-semibold underline inline-flex items-center gap-1"
                               >
-                                View Full Photo <ExternalLink size={12} />
+                                View Uploaded Document <ExternalLink size={12} />
                               </a>
                               <a
                                 href={val}
@@ -2648,58 +3021,66 @@ function RoundReviewTab({
                                 <Download size={12} /> Download
                               </a>
                             </div>
-                          </div>
-                        ) : isUrl ? (
-                          <div className="flex items-center gap-3 mt-1">
-                            <a
-                              href={val}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-[#7A0C0C] font-semibold underline inline-flex items-center gap-1"
-                            >
-                              View Uploaded Document <ExternalLink size={12} />
-                            </a>
-                            <a
-                              href={val}
-                              download
-                              className="text-stone-600 hover:text-stone-900 inline-flex items-center gap-1 text-[11px] font-medium"
-                            >
-                              <Download size={12} /> Download
-                            </a>
-                          </div>
-                        ) : (
-                          <p className="text-stone-700 whitespace-pre-wrap leading-relaxed">{val}</p>
-                        )}
-                      </div>
-                    );
-                  });
-                })()}
+                          ) : (
+                            <p className="text-stone-700 whitespace-pre-wrap leading-relaxed">{val}</p>
+                          )}
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+
+              {/* Modal Footer with Quick Navigation and Actions */}
+              <div className="p-4 px-6 border-t border-stone-200 bg-stone-50/80 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const subId = selectedCandidate.submissionId;
+                      const name = selectedCandidate.applicantName;
+                      handleDeleteApplication(subId, name);
+                    }}
+                    className="px-3 py-1.5 text-red-600 hover:bg-red-50 text-xs font-bold tracking-wider uppercase rounded-xl transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Trash2 size={13} /> Delete
+                  </button>
+                  <span className="text-stone-400 hidden sm:inline">•</span>
+                  <span className="text-stone-500 text-[11px] hidden sm:inline">
+                    Use <strong>←</strong> / <strong>→</strong> keys to browse
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => hasPrev && setSelectedCandidate(filteredCandidates[selectedIndex - 1])}
+                    disabled={!hasPrev}
+                    className="px-3.5 py-1.5 rounded-xl border border-stone-200 bg-white text-stone-700 hover:bg-stone-100 disabled:opacity-40 text-xs font-semibold transition cursor-pointer disabled:cursor-not-allowed"
+                  >
+                    ← Previous
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => hasNext && setSelectedCandidate(filteredCandidates[selectedIndex + 1])}
+                    disabled={!hasNext}
+                    className="px-3.5 py-1.5 rounded-xl border border-stone-200 bg-white text-stone-700 hover:bg-stone-100 disabled:opacity-40 text-xs font-semibold transition cursor-pointer disabled:cursor-not-allowed"
+                  >
+                    Next →
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCandidate(null)}
+                    className="px-5 py-1.5 bg-stone-900 hover:bg-black text-white text-xs font-bold tracking-wider uppercase rounded-xl cursor-pointer transition-colors"
+                  >
+                    Done
+                  </button>
+                </div>
               </div>
             </div>
-
-            <div className="pt-4 border-t border-stone-100 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => {
-                  const subId = selectedCandidate.submissionId;
-                  const name = selectedCandidate.applicantName;
-                  handleDeleteApplication(subId, name);
-                }}
-                className="px-4 py-2 text-red-600 hover:bg-red-50 text-xs font-bold tracking-wider uppercase rounded-xl transition-colors inline-flex items-center gap-1.5 cursor-pointer"
-              >
-                <Trash2 size={13} /> Delete Application
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedCandidate(null)}
-                className="px-6 py-2 bg-stone-900 text-white text-xs font-bold tracking-wider uppercase rounded-xl cursor-pointer hover:bg-stone-800 transition-colors"
-              >
-                Close
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── Modal: Add/Edit Rater Note ── */}
       {noteModalTarget && (
@@ -2849,6 +3230,507 @@ function RoundReviewTab({
                 className="px-5 py-2 font-semibold text-stone-600 hover:bg-stone-100 rounded-xl cursor-pointer"
               >
                 Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── Modal: Mass Assign Grading Groups ── */}
+      <MassAssignModal
+        isOpen={showMassAssignModal}
+        onClose={() => setShowMassAssignModal(false)}
+        cycleId={cycleId}
+        totalApplicants={candidates.length}
+        onSuccess={async () => {
+          await loadData();
+        }}
+      />
+    </div>
+  );
+}
+
+// ── Mass Assign Grading Groups Modal Component ───────────────────────────────
+
+interface MassAssignGroupState {
+  id: string;
+  name: string;
+  brothers: string[];
+  inputEmail: string;
+}
+
+function MassAssignModal({
+  isOpen,
+  onClose,
+  cycleId,
+  totalApplicants,
+  onSuccess,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  cycleId: number;
+  totalApplicants: number;
+  onSuccess: () => Promise<void>;
+}) {
+  if (!isOpen) return null;
+
+  const storageKey = `pgn_mass_assign_groups_${cycleId}`;
+
+  const [groups, setGroups] = useState<MassAssignGroupState[]>(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((g: any, idx: number) => ({
+            id: g.id || `g_${idx + 1}`,
+            name: g.name || `Group ${idx + 1}`,
+            brothers: Array.isArray(g.brothers) ? g.brothers : [],
+            inputEmail: "",
+          }));
+        }
+      }
+    } catch {}
+    return [
+      { id: "g1", name: "Group 1", brothers: [], inputEmail: "" },
+      { id: "g2", name: "Group 2", brothers: [], inputEmail: "" },
+      { id: "g3", name: "Group 3", brothers: [], inputEmail: "" },
+      { id: "g4", name: "Group 4", brothers: [], inputEmail: "" },
+      { id: "g5", name: "Group 5", brothers: [], inputEmail: "" },
+      { id: "g6", name: "Group 6", brothers: [], inputEmail: "" },
+    ];
+  });
+
+  const [executing, setExecuting] = useState(false);
+  const [error, setError] = useState("");
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [resultSummary, setResultSummary] = useState<any | null>(null);
+
+  // Auto-save groups configuration to localStorage
+  useEffect(() => {
+    try {
+      const toSave = groups.map((g) => ({
+        id: g.id,
+        name: g.name,
+        brothers: g.brothers,
+      }));
+      localStorage.setItem(storageKey, JSON.stringify(toSave));
+    } catch {}
+  }, [groups, storageKey]);
+
+  function handleAddBrother(groupId: string, rawText: string) {
+    const parts = rawText
+      .split(/[\s,;]+/)
+      .map((s) => s.trim().toLowerCase())
+      .filter((s) => s.length > 0);
+    if (parts.length === 0) return;
+
+    setGroups((prev) =>
+      prev.map((g) => {
+        if (g.id !== groupId) return g;
+        const newBrothers = Array.from(new Set([...g.brothers, ...parts]));
+        return { ...g, brothers: newBrothers, inputEmail: "" };
+      }),
+    );
+    setError("");
+  }
+
+  function handleRemoveBrother(groupId: string, email: string) {
+    setGroups((prev) =>
+      prev.map((g) => (g.id === groupId ? { ...g, brothers: g.brothers.filter((b) => b !== email) } : g)),
+    );
+  }
+
+  function handleRenameGroup(groupId: string, newName: string) {
+    setGroups((prev) => prev.map((g) => (g.id === groupId ? { ...g, name: newName } : g)));
+  }
+
+  function handleDeleteGroup(groupId: string) {
+    if (groups.length <= 1) return;
+    setGroups((prev) => prev.filter((g) => g.id !== groupId));
+  }
+
+  function handleAddGroup() {
+    if (groups.length >= 12) return;
+    const num = groups.length + 1;
+    setGroups((prev) => [
+      ...prev,
+      { id: `g_${Date.now()}_${Math.random()}`, name: `Group ${num}`, brothers: [], inputEmail: "" },
+    ]);
+  }
+
+  function handleResetDefaults() {
+    if (!window.confirm("Reset all groups and clear assigned brother emails to default 6 groups?")) return;
+    setGroups([
+      { id: "g1", name: "Group 1", brothers: [], inputEmail: "" },
+      { id: "g2", name: "Group 2", brothers: [], inputEmail: "" },
+      { id: "g3", name: "Group 3", brothers: [], inputEmail: "" },
+      { id: "g4", name: "Group 4", brothers: [], inputEmail: "" },
+      { id: "g5", name: "Group 5", brothers: [], inputEmail: "" },
+      { id: "g6", name: "Group 6", brothers: [], inputEmail: "" },
+    ]);
+    setError("");
+    setResultSummary(null);
+  }
+
+  const validGroups = groups.filter((g) => g.brothers.length > 0);
+  const totalUniqueBrothers = new Set(groups.flatMap((g) => g.brothers)).size;
+  const estPerGroup = validGroups.length > 0 ? Math.round(totalApplicants / validGroups.length) : 0;
+
+  async function handleExecuteMassAssign() {
+    if (validGroups.length === 0) {
+      setError("Please add at least one brother email to at least one group.");
+      setConfirmOpen(false);
+      return;
+    }
+
+    setExecuting(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/recruitment/cycles/${cycleId}/mass-assign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          groups: validGroups.map((g) => ({
+            name: g.name,
+            brothers: g.brothers,
+          })),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to execute mass assignment.");
+      }
+      setResultSummary(data);
+      setConfirmOpen(false);
+      await onSuccess();
+    } catch (err: any) {
+      setError(err.message || "Failed to execute mass assignment.");
+    } finally {
+      setExecuting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+      <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-stone-200 animate-in fade-in zoom-in-95 duration-150 my-auto">
+        {/* Header */}
+        <div className="p-6 border-b border-stone-100 flex items-start justify-between bg-stone-50/50 rounded-t-2xl">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-[#7A0C0C] bg-[#7A0C0C]/10 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <Shuffle size={11} /> Application Review Distribution
+              </span>
+              <span className="text-xs text-stone-400">•</span>
+              <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                Stable Candidate Numbering
+              </span>
+            </div>
+            <h3 className="text-lg font-bold text-stone-900">
+              Mass Assign Grading Groups
+            </h3>
+            <p className="text-xs text-stone-500 mt-1 max-w-2xl leading-relaxed">
+              Create brother grading groups (typically 5-6 groups of 4-7 brothers each). All applicants will be evenly and randomly distributed among groups. Every brother in a group grades all applicants assigned to that group. Candidate numbers (#1, #2, ...) remain stable and permanent.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 text-stone-400 hover:text-stone-700 rounded-lg hover:bg-stone-100 transition cursor-pointer"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Live Metrics Summary Bar */}
+        <div className="px-6 py-3.5 bg-amber-50/50 border-b border-amber-100 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+          <div>
+            <span className="text-stone-500 block text-[10px] uppercase tracking-wider font-semibold">Total Applicants</span>
+            <span className="text-base font-extrabold text-stone-900 font-mono">{totalApplicants}</span>
+          </div>
+          <div>
+            <span className="text-stone-500 block text-[10px] uppercase tracking-wider font-semibold">Active Groups</span>
+            <span className="text-base font-extrabold text-stone-900 font-mono">
+              {validGroups.length} <span className="text-xs font-normal text-stone-400">/ {groups.length} configured</span>
+            </span>
+          </div>
+          <div>
+            <span className="text-stone-500 block text-[10px] uppercase tracking-wider font-semibold">Unique Reviewers</span>
+            <span className="text-base font-extrabold text-stone-900 font-mono">{totalUniqueBrothers}</span>
+          </div>
+          <div>
+            <span className="text-stone-500 block text-[10px] uppercase tracking-wider font-semibold">Est. Apps per Group</span>
+            <span className="text-base font-extrabold text-[#7A0C0C] font-mono">
+              {validGroups.length > 0 ? `~${estPerGroup}` : "—"}
+            </span>
+          </div>
+        </div>
+
+        {/* Success View */}
+        {resultSummary ? (
+          <div className="p-6 overflow-y-auto space-y-5">
+            <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex items-start gap-3">
+              <CheckCircle size={20} className="text-emerald-600 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="text-sm font-bold text-emerald-950">Mass Assignment Completed Successfully!</h4>
+                <p className="text-xs text-emerald-800 mt-1">
+                  Distributed <strong>{resultSummary.totalApplicants}</strong> candidates across <strong>{resultSummary.groups?.length}</strong> groups. All candidate numbers (#1 through #{resultSummary.totalApplicants}) were preserved and stable.
+                </p>
+              </div>
+            </div>
+
+            <div className="border border-stone-200 rounded-xl overflow-hidden shadow-2xs">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-stone-50 border-b border-stone-200 text-stone-500 uppercase text-[10px] font-bold">
+                  <tr>
+                    <th className="p-3">Group Name</th>
+                    <th className="p-3 text-center">Brothers</th>
+                    <th className="p-3 text-center">Applicants Assigned</th>
+                    <th className="p-3">Assigned Brother Emails</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-100">
+                  {resultSummary.groups?.map((g: any, i: number) => (
+                    <tr key={i} className="hover:bg-stone-50">
+                      <td className="p-3 font-bold text-stone-900">{g.name}</td>
+                      <td className="p-3 text-center font-mono font-semibold">{g.brotherCount}</td>
+                      <td className="p-3 text-center font-mono font-extrabold text-[#7A0C0C]">
+                        {g.applicantCount}
+                      </td>
+                      <td className="p-3 text-stone-600 text-[11px] font-mono">
+                        {(g.brothers || []).join(", ") || "None"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="pt-2 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setResultSummary(null);
+                  onClose();
+                }}
+                className="px-5 py-2.5 bg-[#7A0C0C] hover:bg-[#5C0A0A] text-white font-bold text-xs uppercase tracking-wider rounded-xl transition cursor-pointer"
+              >
+                Close & View Table
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* Group Configuration Form */
+          <div className="p-6 overflow-y-auto space-y-6 flex-1">
+            {error && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 flex items-center gap-2 text-xs text-rose-800 font-semibold">
+                <AlertCircle size={15} className="shrink-0 text-rose-600" />
+                {error}
+              </div>
+            )}
+
+            {/* Top action toolbar for groups */}
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <span className="text-xs font-bold text-stone-700 uppercase tracking-wider text-[11px]">
+                Grading Groups ({groups.length})
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleResetDefaults}
+                  className="text-xs text-stone-500 hover:text-stone-800 px-2.5 py-1 rounded-lg border border-stone-200 hover:bg-stone-100 transition cursor-pointer"
+                >
+                  Reset Defaults
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAddGroup}
+                  disabled={groups.length >= 12}
+                  className="inline-flex items-center gap-1 text-xs font-bold text-stone-800 bg-stone-100 hover:bg-stone-200 px-3 py-1 rounded-lg border border-stone-200 transition disabled:opacity-50 cursor-pointer"
+                >
+                  <Plus size={13} /> Add Group
+                </button>
+              </div>
+            </div>
+
+            {/* Groups Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {groups.map((group, gIdx) => {
+                const isConfigured = group.brothers.length > 0;
+                return (
+                  <div
+                    key={group.id}
+                    className={`p-4 rounded-xl border transition-all ${
+                      isConfigured
+                        ? "bg-white border-stone-300 shadow-2xs"
+                        : "bg-stone-50/60 border-dashed border-stone-200"
+                    }`}
+                  >
+                    {/* Group Header */}
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <div className="flex items-center gap-2 flex-1">
+                        <span className="w-5 h-5 rounded-full bg-stone-100 text-stone-600 text-[10px] font-bold flex items-center justify-center font-mono">
+                          {gIdx + 1}
+                        </span>
+                        <input
+                          type="text"
+                          value={group.name}
+                          onChange={(e) => handleRenameGroup(group.id, e.target.value)}
+                          className="font-bold text-sm text-stone-900 bg-transparent border-b border-transparent hover:border-stone-300 focus:border-[#7A0C0C] outline-none px-1 py-0.5 transition"
+                          placeholder={`Group ${gIdx + 1}`}
+                        />
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-semibold text-stone-500 bg-stone-100 px-2 py-0.5 rounded-md">
+                          {group.brothers.length} {group.brothers.length === 1 ? "brother" : "brothers"}
+                        </span>
+                        {groups.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteGroup(group.id)}
+                            className="p-1 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded transition cursor-pointer"
+                            title="Remove group"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Brother Chips */}
+                    <div className="mb-3">
+                      {group.brothers.length > 0 ? (
+                        <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto pr-1">
+                          {group.brothers.map((email) => (
+                            <span
+                              key={email}
+                              className="inline-flex items-center gap-1 bg-stone-100 hover:bg-stone-200 border border-stone-200 text-stone-800 text-[11px] font-mono px-2 py-0.5 rounded-full transition"
+                            >
+                              <span>{email}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveBrother(group.id, email)}
+                                className="text-stone-400 hover:text-rose-600 ml-0.5 cursor-pointer"
+                                title="Remove brother"
+                              >
+                                <X size={11} />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-stone-400 italic py-1">
+                          No brothers added yet. Enter @umich.edu email below.
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Add Brother Input */}
+                    <div className="flex gap-1.5">
+                      <input
+                        type="text"
+                        value={group.inputEmail}
+                        placeholder="uniqname@umich.edu (press Enter)"
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setGroups((prev) =>
+                            prev.map((g) => (g.id === group.id ? { ...g, inputEmail: val } : g)),
+                          );
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleAddBrother(group.id, group.inputEmail);
+                          }
+                        }}
+                        className="flex-1 text-xs border border-stone-200 bg-white rounded-lg px-2.5 py-1.5 outline-none focus:border-[#7A0C0C] font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleAddBrother(group.id, group.inputEmail)}
+                        disabled={!group.inputEmail.trim()}
+                        className="px-2.5 py-1.5 bg-stone-800 hover:bg-black text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition cursor-pointer shrink-0"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Stable numbering explanation alert */}
+            <div className="p-4 rounded-xl bg-stone-50 border border-stone-200 text-xs text-stone-600 space-y-1">
+              <div className="flex items-center gap-1.5 font-bold text-stone-800">
+                <CheckCircle size={14} className="text-emerald-600" />
+                Permanent Candidate Numbering Guarantee
+              </div>
+              <p className="text-[11px] text-stone-500 leading-relaxed">
+                Candidate numbers (#1 through #{totalApplicants}) are allocated sequentially by submission order and will <strong>never change</strong> during or after mass assignments. Randomization is applied strictly to group distribution so that every group receives an even, unbiased sample of applicants to evaluate.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Footer actions */}
+        {!resultSummary && (
+          <div className="p-4 px-6 border-t border-stone-100 flex items-center justify-between bg-stone-50/50 rounded-b-2xl">
+            <span className="text-xs text-stone-500">
+              {validGroups.length} valid groups ready • {totalApplicants} applicants to be assigned
+            </span>
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-xs font-semibold text-stone-600 hover:bg-stone-100 rounded-xl transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmOpen(true)}
+                disabled={validGroups.length === 0 || executing}
+                className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-[#7A0C0C] hover:bg-[#5C0A0A] text-white text-xs font-bold uppercase tracking-wider rounded-xl shadow-xs transition disabled:opacity-50 cursor-pointer"
+              >
+                <Shuffle size={13} />
+                {executing ? "Assigning Applicants..." : "Run Mass Assignment"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Confirmation Dialog Modal */}
+      {confirmOpen && (
+        <div className="fixed inset-0 z-60 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-stone-200 text-xs space-y-4 animate-in fade-in zoom-in-95 duration-100">
+            <div className="flex items-center gap-2 text-amber-600">
+              <AlertTriangle size={18} />
+              <h4 className="text-sm font-bold text-stone-900">Confirm Mass Assignment</h4>
+            </div>
+
+            <p className="text-stone-600 leading-relaxed">
+              This will <strong>clear all previous reviewer assignments</strong> for this cycle and randomly distribute <strong>{totalApplicants} applicants</strong> across your <strong>{validGroups.length} groups</strong> (~{estPerGroup} applicants per group).
+            </p>
+
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-900 font-semibold text-[11px]">
+              ✓ Candidate numbers are permanent and will NOT be modified.
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-stone-100">
+              <button
+                type="button"
+                onClick={() => setConfirmOpen(false)}
+                disabled={executing}
+                className="px-4 py-2 text-xs font-semibold text-stone-600 hover:bg-stone-100 rounded-xl transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteMassAssign}
+                disabled={executing}
+                className="px-5 py-2 bg-[#7A0C0C] hover:bg-[#5C0A0A] text-white text-xs font-bold uppercase tracking-wider rounded-xl shadow-xs transition cursor-pointer"
+              >
+                {executing ? "Processing..." : "Confirm & Execute"}
               </button>
             </div>
           </div>

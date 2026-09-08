@@ -24,7 +24,7 @@ const PILLAR_DEFAULTS: Record<string, { title: string; content: string }> = {
   brotherhood: {
     title: "Brotherhood",
     content:
-      "PGN seeks to nurture a sense of community among our members. Brotherhood is at the heart of everything we do â€” from social events and retreats to mentorship and mutual support throughout our time at Michigan. The bonds formed here last well beyond graduation.",
+      "PGN seeks to nurture a sense of community among our members. Brotherhood is at the heart of everything we do — from social events and retreats to mentorship and mutual support throughout our time at Michigan. The bonds formed here last well beyond graduation.",
   },
 };
 
@@ -45,21 +45,20 @@ function PillarAccordion() {
           <div key={title} className="border-t border-gray-200 last:border-b">
             <button
               onClick={() => setOpen(isOpen ? "" : title)}
-              className="w-full flex items-center justify-between py-5 text-left group"
+              className="w-full flex items-center justify-between py-4 sm:py-5 text-left group cursor-pointer gap-4"
+              aria-expanded={isOpen}
             >
               <span
-                className={`text-[1.9rem] font-normal transition-colors ${
-                  isOpen ? "text-[#7A0C0C]" : "text-gray-900"
+                className={`text-xl sm:text-2xl md:text-[1.85rem] font-normal transition-colors leading-snug pr-2 ${
+                  isOpen ? "text-[#7A0C0C]" : "text-gray-900 group-hover:text-[#7A0C0C]"
                 }`}
                 style={{ fontFamily: "'Playfair Display', serif" }}
               >
                 {title}
               </span>
-              {isOpen ? (
-                <Minus size={20} className="text-gray-400 flex-shrink-0" />
-              ) : (
-                <Plus size={20} className="text-gray-400 flex-shrink-0" />
-              )}
+              <span className="flex-shrink-0 text-stone-400 group-hover:text-stone-700 transition-colors p-1">
+                {isOpen ? <Minus size={20} className="text-[#7A0C0C]" /> : <Plus size={20} />}
+              </span>
             </button>
             <AnimatePresence initial={false}>
               {isOpen && (
@@ -71,7 +70,7 @@ function PillarAccordion() {
                   className="overflow-hidden"
                 >
                   <p
-                    className="text-gray-700 leading-relaxed text-[0.95rem] pb-6"
+                    className="text-gray-700 leading-relaxed text-sm sm:text-[0.95rem] pb-5 sm:pb-6"
                     style={{ fontFamily: "'Inter', sans-serif" }}
                   >
                     {content}
@@ -110,7 +109,7 @@ export default function AboutUs() {
   return (
     <>
       {/* Hero Banner */}
-      <div className="relative w-full h-[52vh] overflow-hidden">
+      <div className="relative w-full min-h-[38vh] sm:min-h-[46vh] h-[42vh] sm:h-[50vh] overflow-hidden flex items-end">
         {bannerImageUrl ? (
           <img src={bannerImageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
         ) : (
@@ -126,11 +125,11 @@ export default function AboutUs() {
           </>
         )}
         <div className="absolute inset-0 bg-black/45" />
-        <div className="relative z-10 h-full flex items-end px-16 pb-12 pt-20">
+        <div className="relative z-10 w-full px-6 sm:px-12 md:px-16 pb-8 sm:pb-12 pt-24 sm:pt-28">
           <motion.h1
-            className="text-white font-normal leading-none"
-            style={{ fontFamily: "'Playfair Display', serif", fontSize: "clamp(3rem, 7vw, 5.5rem)" }}
-            initial={{ opacity: 0, y: 30 }}
+            className="text-white font-normal leading-tight max-w-4xl"
+            style={{ fontFamily: "'Playfair Display', serif", fontSize: "clamp(2.4rem, 6.5vw, 5.5rem)" }}
+            initial={{ opacity: 0, y: 25 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, ease: "easeOut" }}
           >
@@ -140,39 +139,45 @@ export default function AboutUs() {
       </div>
 
       {/* What's PGN */}
-      <section className="py-20 px-16" style={{ fontFamily: "'Inter', sans-serif" }}>
-        <div className={`max-w-6xl mx-auto flex ${hidePgnImage ? "justify-center" : "gap-16 items-start"}`}>
+      <section className="py-12 sm:py-16 md:py-20 px-6 sm:px-12 md:px-16" style={{ fontFamily: "'Inter', sans-serif" }}>
+        <div
+          className={`max-w-6xl mx-auto flex flex-col lg:flex-row ${
+            hidePgnImage ? "justify-center" : "gap-10 sm:gap-14 lg:gap-16 items-center lg:items-start"
+          }`}
+        >
           <motion.div
-            className={hidePgnImage ? "max-w-3xl w-full text-center" : "flex-1"}
-            initial={{ opacity: 0, y: 40 }}
+            className={hidePgnImage ? "max-w-3xl w-full text-center" : "w-full lg:flex-1 text-left"}
+            initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.3 }}
             transition={{ duration: 0.6, ease: "easeOut" }}
           >
-            <p className="text-[0.7rem] font-bold tracking-[0.2em] uppercase text-gray-500 mb-6">
+            <p className="text-[0.7rem] font-bold tracking-[0.2em] uppercase text-stone-500 mb-3 sm:mb-6">
               {pgn.overline}
             </p>
             <h2
-              className="text-4xl font-normal text-gray-900 mb-8"
+              className="text-3xl sm:text-4xl lg:text-[2.6rem] font-normal text-gray-900 mb-5 sm:mb-8 leading-tight"
               style={{ fontFamily: "'Playfair Display', serif" }}
             >
               {pgn.heading}
             </h2>
-            <p className="text-gray-700 leading-relaxed text-[0.95rem]">{pgn.body}</p>
+            <p className="text-gray-700 leading-relaxed text-[0.93rem] sm:text-[0.98rem]">{pgn.body}</p>
           </motion.div>
 
           {!hidePgnImage && (
             <motion.div
-              className="w-[420px] flex-shrink-0 rounded-xl overflow-hidden shadow-lg aspect-[4/5] bg-gradient-to-br from-stone-300 via-stone-400 to-stone-500 flex items-end justify-center pb-6"
-              initial={{ opacity: 0, x: 50 }}
-              whileInView={{ opacity: 1, x: 0 }}
+              className="w-full max-w-[340px] sm:max-w-[400px] lg:w-[380px] xl:w-[420px] flex-shrink-0 rounded-2xl overflow-hidden shadow-xl aspect-[4/5] bg-gradient-to-br from-stone-300 via-stone-400 to-stone-500 flex items-end justify-center pb-6 mx-auto lg:mx-0"
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, amount: 0.3 }}
               transition={{ duration: 0.6, ease: "easeOut", delay: 0.15 }}
             >
               {pgn.imageUrl ? (
                 <img src={pgn.imageUrl} alt="Chapter" className="w-full h-full object-cover" />
               ) : (
-                <span className="text-stone-600/60 text-xs tracking-widest uppercase">Chapter Photo</span>
+                <span className="text-stone-600/60 text-xs tracking-widest uppercase font-semibold">
+                  Chapter Photo
+                </span>
               )}
             </motion.div>
           )}
@@ -180,34 +185,34 @@ export default function AboutUs() {
       </section>
 
       {/* Our Four Pillars */}
-      <section className="py-20 px-16 border-t border-gray-100">
-        <div className="max-w-6xl mx-auto flex gap-24 items-start">
-          {/* Left */}
+      <section className="py-12 sm:py-16 md:py-20 px-6 sm:px-12 md:px-16 border-t border-gray-100">
+        <div className="max-w-6xl mx-auto flex flex-col lg:flex-row gap-8 sm:gap-12 lg:gap-20 xl:gap-24 items-start">
+          {/* Left Intro */}
           <motion.div
-            className="w-72 flex-shrink-0"
-            initial={{ opacity: 0, y: 40 }}
+            className="w-full lg:w-72 flex-shrink-0"
+            initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.2 }}
             transition={{ duration: 0.6, ease: "easeOut" }}
           >
             <h2
-              className="text-4xl font-normal text-gray-900 mb-8 leading-tight"
+              className="text-3xl sm:text-4xl font-normal text-gray-900 mb-3 sm:mb-6 leading-tight"
               style={{ fontFamily: "'Playfair Display', serif" }}
             >
               Our Four Pillars
             </h2>
-            <p className="text-gray-700 leading-relaxed text-[0.95rem]" style={{ fontFamily: "'Inter', sans-serif" }}>
+            <p className="text-gray-700 leading-relaxed text-sm sm:text-[0.95rem]" style={{ fontFamily: "'Inter', sans-serif" }}>
               {pillarsIntro}
             </p>
           </motion.div>
 
-          {/* Right â€” Accordion */}
+          {/* Right Accordion */}
           <motion.div
-            className="flex-1"
-            initial={{ opacity: 0, y: 40 }}
+            className="w-full lg:flex-1"
+            initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.2 }}
-            transition={{ duration: 0.6, ease: "easeOut", delay: 0.15 }}
+            transition={{ duration: 0.6, ease: "easeOut", delay: 0.1 }}
           >
             <PillarAccordion />
           </motion.div>
