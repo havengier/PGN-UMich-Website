@@ -3155,56 +3155,58 @@ function ApplicationBuilderTab({
             <div className="space-y-3">
               {(section.fields || []).map((f) => (
                 <div key={f.id} className="p-3 bg-stone-50 rounded-xl border border-stone-100 space-y-2">
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="text"
-                      placeholder="Question / Label"
+                  <div className="flex flex-col sm:flex-row sm:items-start gap-2.5">
+                    <textarea
+                      placeholder="Question / Prompt (press Enter for multiple lines/instructions)…"
                       value={f.label}
+                      rows={Math.max(1, (f.label || "").split("\n").length)}
                       onChange={(e) => updateField(section.id, f.id, { label: e.target.value })}
-                      className="flex-1 text-xs font-semibold text-stone-900 bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-[#7A0C0C]"
+                      className="flex-1 text-xs font-semibold text-stone-900 bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-[#7A0C0C] resize-y min-h-[34px] leading-relaxed"
                     />
 
-                    <select
-                      value={f.type}
-                      disabled={f.core}
-                      onChange={(e) => updateField(section.id, f.id, { type: e.target.value as FieldType })}
-                      className="text-xs bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-[#7A0C0C] disabled:opacity-50"
-                    >
-                      <option value="text">Short Text</option>
-                      <option value="textarea">Long Text</option>
-                      <option value="select">Dropdown</option>
-                      <option value="file">File Upload (Resume / DOCX)</option>
-                      <option value="photo">Photo Upload (Image max 2MB)</option>
-                      <option value="email">Email</option>
-                      <option value="tel">Phone</option>
-                    </select>
-
-                    <label className="flex items-center gap-1 text-xs text-stone-600 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={f.required}
-                        onChange={(e) => updateField(section.id, f.id, { required: e.target.checked })}
-                        className="accent-[#7A0C0C]"
-                      />
-                      Required
-                    </label>
-
-                    {f.word_limit && (f.type === "text" || f.type === "textarea") ? (
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#7A0C0C] bg-[#7A0C0C]/10 px-2 py-0.5 rounded-full">
-                        Max {f.word_limit} words
-                      </span>
-                    ) : null}
-
-                    {!f.core && (
-                      <button
-                        type="button"
-                        onClick={() => deleteField(section.id, f.id)}
-                        className="text-stone-300 hover:text-red-500 p-1"
-                        title="Delete question"
+                    <div className="flex items-center gap-2 flex-wrap shrink-0 sm:pt-0.5">
+                      <select
+                        value={f.type}
+                        disabled={f.core}
+                        onChange={(e) => updateField(section.id, f.id, { type: e.target.value as FieldType })}
+                        className="text-xs bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-[#7A0C0C] disabled:opacity-50"
                       >
-                        <Trash2 size={13} />
-                      </button>
-                    )}
+                        <option value="text">Short Text</option>
+                        <option value="textarea">Long Text</option>
+                        <option value="select">Dropdown</option>
+                        <option value="file">File Upload (Resume / DOCX)</option>
+                        <option value="photo">Photo Upload (Image max 2MB)</option>
+                        <option value="email">Email</option>
+                        <option value="tel">Phone</option>
+                      </select>
+
+                      <label className="flex items-center gap-1 text-xs text-stone-600 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={f.required}
+                          onChange={(e) => updateField(section.id, f.id, { required: e.target.checked })}
+                          className="accent-[#7A0C0C]"
+                        />
+                        Required
+                      </label>
+
+                      {f.word_limit && (f.type === "text" || f.type === "textarea") ? (
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#7A0C0C] bg-[#7A0C0C]/10 px-2 py-0.5 rounded-full">
+                          Max {f.word_limit} words
+                        </span>
+                      ) : null}
+
+                      {!f.core && (
+                        <button
+                          type="button"
+                          onClick={() => deleteField(section.id, f.id)}
+                          className="text-stone-300 hover:text-red-500 p-1 cursor-pointer"
+                          title="Delete question"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {/* Photo Helper Hint */}

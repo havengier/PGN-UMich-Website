@@ -90,7 +90,7 @@ function DynamicSelect({
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="text-sm font-semibold text-gray-700" style={{ fontFamily: "'Inter', sans-serif" }}>
+      <label className="text-sm font-semibold text-gray-700 whitespace-pre-line leading-relaxed" style={{ fontFamily: "'Inter', sans-serif" }}>
         {field.label}
         {field.required && <span className="text-[#7A0C0C] ml-0.5">*</span>}
       </label>
@@ -139,14 +139,14 @@ function DynamicTextarea({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex items-center justify-between">
-        <label htmlFor={field.id} className="text-sm font-semibold text-gray-700" style={{ fontFamily: "'Inter', sans-serif" }}>
+      <div className="flex items-start justify-between gap-4">
+        <label htmlFor={field.id} className="text-sm font-semibold text-gray-700 whitespace-pre-line leading-relaxed" style={{ fontFamily: "'Inter', sans-serif" }}>
           {field.label}
           {field.required && <span className="text-[#7A0C0C] ml-0.5">*</span>}
         </label>
         {field.word_limit ? (
           <span
-            className={`text-xs font-medium tabular-nums transition-colors ${
+            className={`text-xs font-medium tabular-nums transition-colors shrink-0 pt-0.5 ${
               isOverLimit ? "text-red-600 font-bold" : "text-gray-400"
             }`}
             style={{ fontFamily: "'Inter', sans-serif" }}
@@ -198,14 +198,14 @@ function DynamicInput({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex items-center justify-between">
-        <label htmlFor={field.id} className="text-sm font-semibold text-gray-700" style={{ fontFamily: "'Inter', sans-serif" }}>
+      <div className="flex items-start justify-between gap-4">
+        <label htmlFor={field.id} className="text-sm font-semibold text-gray-700 whitespace-pre-line leading-relaxed" style={{ fontFamily: "'Inter', sans-serif" }}>
           {field.label}
           {field.required && <span className="text-[#7A0C0C] ml-0.5">*</span>}
         </label>
         {field.word_limit && isTextType ? (
           <span
-            className={`text-xs font-medium tabular-nums transition-colors ${
+            className={`text-xs font-medium tabular-nums transition-colors shrink-0 pt-0.5 ${
               isOverLimit ? "text-red-600 font-bold" : "text-gray-400"
             }`}
             style={{ fontFamily: "'Inter', sans-serif" }}
@@ -292,7 +292,7 @@ function DynamicFileInput({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="text-sm font-semibold text-gray-700" style={{ fontFamily: "'Inter', sans-serif" }}>
+      <label className="text-sm font-semibold text-gray-700 whitespace-pre-line leading-relaxed" style={{ fontFamily: "'Inter', sans-serif" }}>
         {field.label}
         {field.required && <span className="text-[#7A0C0C] ml-0.5">*</span>}
       </label>
@@ -409,7 +409,7 @@ function DynamicPhotoUpload({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="text-sm font-semibold text-gray-700" style={{ fontFamily: "'Inter', sans-serif" }}>
+      <label className="text-sm font-semibold text-gray-700 whitespace-pre-line leading-relaxed" style={{ fontFamily: "'Inter', sans-serif" }}>
         {field.label}
         {field.required && <span className="text-[#7A0C0C] ml-0.5">*</span>}
       </label>
@@ -1132,7 +1132,8 @@ function ApplyContent() {
             if (typeof val === "string" && val.trim()) {
               const count = getWordCount(val);
               if (count > field.word_limit) {
-                setSubmitError(`"${field.label}" exceeds maximum limit of ${field.word_limit} words (${count} words entered).`);
+                const labelShort = field.label.split("\n")[0].trim() || field.label;
+                setSubmitError(`"${labelShort}" exceeds maximum limit of ${field.word_limit} words (${count} words entered).`);
                 setSubmitting(false);
                 return;
               }

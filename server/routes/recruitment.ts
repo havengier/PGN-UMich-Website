@@ -1766,9 +1766,10 @@ recruitmentRouter.post("/submit", requireAuth, async (req: AuthRequest, res: Res
     for (const section of sections) {
       for (const field of section.fields || []) {
         const val = answers[field.id];
+        const fieldLabel = String(field.label || "").split("\n")[0].trim() || field.label;
         if (field.required) {
           if (val === undefined || val === null || String(val).trim() === "") {
-            res.status(400).json({ error: `Please answer required field: ${field.label}` });
+            res.status(400).json({ error: `Please answer required field: ${fieldLabel}` });
             return;
           }
         }
@@ -1782,7 +1783,7 @@ recruitmentRouter.post("/submit", requireAuth, async (req: AuthRequest, res: Res
           const count = val.trim().split(/\s+/).filter(Boolean).length;
           if (count > Number(field.word_limit)) {
             res.status(400).json({
-              error: `Response for "${field.label}" exceeds the maximum limit of ${field.word_limit} words (${count} words entered).`,
+              error: `Response for "${fieldLabel}" exceeds the maximum limit of ${field.word_limit} words (${count} words entered).`,
             });
             return;
           }
