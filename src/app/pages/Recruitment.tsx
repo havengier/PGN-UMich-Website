@@ -207,7 +207,7 @@ function RushChairCard({ chair, index }: { chair: RushChair; index: number }) {
 
   return (
     <motion.div
-      className="group relative rounded-2xl overflow-hidden bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-[#F5A623]/40 transition-all duration-300 p-6 flex flex-col justify-between backdrop-blur-sm shadow-xl hover:-translate-y-1"
+      className="group relative rounded-2xl overflow-hidden bg-black/35 hover:bg-black/50 border border-white/15 hover:border-[#F5A623]/50 transition-all duration-300 p-6 flex flex-col justify-between backdrop-blur-md shadow-2xl hover:-translate-y-1"
       initial={{ opacity: 0, y: 20 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, amount: 0.2 }}
@@ -218,7 +218,7 @@ function RushChairCard({ chair, index }: { chair: RushChair; index: number }) {
       <div>
         {/* Avatar & LinkedIn */}
         <div className="flex items-start justify-between mb-4">
-          <div className="w-20 h-20 rounded-full ring-2 ring-[#F5A623]/60 ring-offset-2 ring-offset-[#1a0303] overflow-hidden bg-gradient-to-br from-amber-800 via-amber-700 to-stone-800 flex items-center justify-center shadow-lg transition-transform duration-300 group-hover:scale-105">
+          <div className="w-20 h-20 rounded-full ring-2 ring-[#F5A623]/70 ring-offset-2 ring-offset-[#250505] overflow-hidden bg-gradient-to-br from-amber-800 via-amber-700 to-stone-800 flex items-center justify-center shadow-lg transition-transform duration-300 group-hover:scale-105">
             {chair.photo_url ? (
               <img src={chair.photo_url} alt={chair.name} className="w-full h-full object-cover" />
             ) : (
@@ -473,8 +473,33 @@ export default function Recruitment() {
       </section>
 
       {/* ── Rush Chairs & Inquiries Section ─────────────────────────────── */}
-      <section className="relative py-16 md:py-24 px-6 md:px-16 border-t border-white/10 bg-gradient-to-b from-[#1a0303] via-[#170202] to-[#140202]">
-        <div className="max-w-6xl mx-auto">
+      <section className="relative py-20 md:py-28 px-6 md:px-16 overflow-hidden border-t border-white/15 border-b border-black/50 bg-[#250505]">
+        {/* Deep rich wine / burgundy velvet gradient layers */}
+        <div className="absolute inset-0 bg-gradient-to-br from-[#2c0707] via-[#200404] to-[#360909]" />
+
+        {/* Warm ambient glowing radial spotlights */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            backgroundImage:
+              "radial-gradient(ellipse at 20% 30%, rgba(210,35,20,0.35) 0%, transparent 55%), radial-gradient(ellipse at 80% 65%, rgba(245,166,35,0.18) 0%, transparent 50%), radial-gradient(ellipse at 50% 95%, rgba(180,25,15,0.28) 0%, transparent 60%)",
+          }}
+        />
+
+        {/* Subtle golden accent glow line at top border */}
+        <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-[#F5A623]/40 to-transparent pointer-events-none" />
+
+        {/* Subtle micro-dot velvet texture */}
+        <div
+          className="absolute inset-0 opacity-[0.035] pointer-events-none"
+          style={{
+            backgroundImage:
+              "radial-gradient(rgba(255,255,255,0.7) 1px, transparent 1px)",
+            backgroundSize: "20px 20px",
+          }}
+        />
+
+        <div className="relative z-10 max-w-6xl mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-center">
             {/* Left Column: 2 Member Cards */}
             <div className="lg:col-span-7 flex flex-col">
@@ -535,7 +560,7 @@ export default function Recruitment() {
               </p>
 
               {/* Interactive Email Referral Block */}
-              <div className="p-5 rounded-2xl bg-white/[0.04] border border-white/10 backdrop-blur-sm space-y-4 shadow-xl">
+              <div className="p-5 rounded-2xl bg-black/35 border border-white/15 backdrop-blur-md space-y-4 shadow-2xl">
                 <div className="text-xs uppercase tracking-wider text-white/50 font-semibold">
                   Official Recruitment Inquiries
                 </div>
@@ -543,7 +568,7 @@ export default function Recruitment() {
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                   <a
                     href={`mailto:${contactEmail}`}
-                    className="flex-1 flex items-center gap-3 px-4 py-3 rounded-xl bg-black/40 border border-white/10 hover:border-[#F5A623]/50 text-white font-medium text-sm md:text-base tracking-wide transition-all group/email truncate"
+                    className="flex-1 flex items-center gap-3 px-4 py-3 rounded-xl bg-black/50 border border-white/15 hover:border-[#F5A623]/50 text-white font-medium text-sm md:text-base tracking-wide transition-all group/email truncate"
                   >
                     <div className="w-8 h-8 rounded-lg bg-[#F5A623]/15 flex items-center justify-center text-[#F5A623] flex-shrink-0 group-hover/email:scale-105 transition-transform">
                       <Mail size={16} />
