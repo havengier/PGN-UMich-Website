@@ -109,9 +109,20 @@ export async function runMigrations() {
       app_override        BOOLEAN NOT NULL DEFAULT false,
       r1_override         BOOLEAN NOT NULL DEFAULT false,
       r2_override         BOOLEAN NOT NULL DEFAULT false,
+      app_highlight       VARCHAR(20) DEFAULT NULL,
+      r1_highlight        VARCHAR(20) DEFAULT NULL,
+      r2_highlight        VARCHAR(20) DEFAULT NULL,
+      is_bba              BOOLEAN DEFAULT NULL,
       submitted_at        TIMESTAMPTZ DEFAULT NOW(),
       CONSTRAINT uq_cycle_applicant UNIQUE (cycle_id, applicant_user_id)
     )
+  `);
+  await pool.query(`
+    ALTER TABLE application_submissions
+      ADD COLUMN IF NOT EXISTS app_highlight VARCHAR(20) DEFAULT NULL,
+      ADD COLUMN IF NOT EXISTS r1_highlight VARCHAR(20) DEFAULT NULL,
+      ADD COLUMN IF NOT EXISTS r2_highlight VARCHAR(20) DEFAULT NULL,
+      ADD COLUMN IF NOT EXISTS is_bba BOOLEAN DEFAULT NULL
   `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS application_scores (

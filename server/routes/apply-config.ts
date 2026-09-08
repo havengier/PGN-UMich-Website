@@ -25,6 +25,7 @@ export const DEFAULT_APPLY_CONFIG = {
       label: "Academic Background",
       fields: [
         { id: "year", type: "select", label: "Year", options: ["Freshman", "Sophomore", "Junior", "Senior", "Graduate Student"], required: true, core: true },
+        { id: "isRoss", type: "select", label: "Are you a Ross Student? (Double majors and minors included)", options: ["Yes", "No"], required: true, core: true },
         { id: "major", type: "text", label: "Major", placeholder: "e.g. Business Administration", required: true, core: true },
         { id: "minor", type: "text", label: "Minor (if applicable)", placeholder: "e.g. Psychology", required: false, core: false },
         { id: "gpa", type: "text", label: "Cumulative GPA", placeholder: "e.g. 3.7", required: false, core: false },

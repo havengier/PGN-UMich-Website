@@ -150,6 +150,10 @@ export interface ApplicationSubmission {
   app_override: boolean;
   r1_override: boolean;
   r2_override: boolean;
+  app_highlight?: "green" | "yellow" | "red" | null;
+  r1_highlight?: "green" | "yellow" | "red" | null;
+  r2_highlight?: "green" | "yellow" | "red" | null;
+  is_bba?: boolean | null;
   submitted_at: string;
 }
 
@@ -605,13 +609,14 @@ async function createSubmission(data: {
   answers: Record<string, any>;
 }): Promise<ApplicationSubmission> {
   const normEmail = data.applicantUserId.trim().toLowerCase();
+  const isBba = isApplicantBba({ answers: data.answers });
   if (useDb) {
     const res = await pool.query(
       `INSERT INTO application_submissions
-       (cycle_id, applicant_user_id, applicant_email, applicant_name, answers, application_status, round_1_status, round_2_status, submitted_at)
-       VALUES ($1, $2, $3, $4, $5, 'pending_review', 'pending', 'pending', NOW())
+       (cycle_id, applicant_user_id, applicant_email, applicant_name, answers, application_status, round_1_status, round_2_status, is_bba, submitted_at)
+       VALUES ($1, $2, $3, $4, $5, 'pending_review', 'pending', 'pending', $6, NOW())
        RETURNING *`,
-      [data.cycleId, normEmail, data.applicantEmail.trim(), data.applicantName.trim(), JSON.stringify(data.answers)],
+      [data.cycleId, normEmail, data.applicantEmail.trim(), data.applicantName.trim(), JSON.stringify(data.answers), isBba],
     );
     return res.rows[0];
   } else {
@@ -636,6 +641,7 @@ async function createSubmission(data: {
       app_override: false,
       r1_override: false,
       r2_override: false,
+      is_bba: isBba,
       submitted_at: new Date().toISOString(),
     };
     store.submissions.push(submission);
@@ -810,6 +816,42 @@ export interface CandidateRow {
     rawScore: number;
     weight: number;
   }>;
+  highlight?: "green" | "yellow" | "red" | null;
+  isBba: boolean;
+}
+
+export function isApplicantBba(sub: {
+  is_bba?: boolean | null;
+  answers?: Record<string, any> | null;
+}): boolean {
+  if (typeof sub.is_bba === "boolean") {
+    return sub.is_bba;
+  }
+  const answers = sub.answers || {};
+  // 1. Direct check for isRoss question or any ross/bba questionnaire keys
+  for (const [k, v] of Object.entries(answers)) {
+    const keyLower = k.toLowerCase();
+    if (keyLower.includes("ross") || keyLower.includes("is_bba") || keyLower === "isross") {
+      if (typeof v === "boolean") return v;
+      if (typeof v === "string") {
+        const valLower = v.trim().toLowerCase();
+        if (valLower === "yes" || valLower === "true" || valLower === "1") return true;
+        if (valLower === "no" || valLower === "false" || valLower === "0") return false;
+      }
+    }
+  }
+  // 2. Check major
+  if (typeof answers.major === "string") {
+    const mLower = answers.major.toLowerCase();
+    if (
+      mLower.includes("business administration") ||
+      mLower.includes("bba") ||
+      mLower.includes("ross")
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function computeRoundNormalization(
@@ -1102,12 +1144,19 @@ async function getRoundCandidates(
 
       let status = s.application_status as string;
       let isOverridden = s.app_override;
-      if (round === "round1") {
+      let highlight: "green" | "yellow" | "red" | null = null;
+      if (round === "application") {
+        status = s.application_status;
+        isOverridden = s.app_override;
+        highlight = (s as any).app_highlight || null;
+      } else if (round === "round1") {
         status = s.round_1_status;
         isOverridden = s.r1_override;
+        highlight = (s as any).r1_highlight || null;
       } else if (round === "round2") {
         status = s.round_2_status;
         isOverridden = s.r2_override;
+        highlight = (s as any).r2_highlight || null;
       }
 
       const candNorm = normResult.candidateScores.get(s.id);
@@ -1126,6 +1175,8 @@ async function getRoundCandidates(
         scoredCount: scoreValues.length,
         normalizedScore: candNorm?.normalizedScore ?? null,
         normalizedDetails: candNorm?.details ?? [],
+        highlight,
+        isBba: isApplicantBba(s),
       };
     });
 
@@ -1210,12 +1261,19 @@ async function getRoundCandidates(
 
       let status = s.application_status as string;
       let isOverridden = s.app_override;
-      if (round === "round1") {
+      let highlight: "green" | "yellow" | "red" | null = null;
+      if (round === "application") {
+        status = s.application_status;
+        isOverridden = s.app_override;
+        highlight = s.app_highlight || null;
+      } else if (round === "round1") {
         status = s.round_1_status;
         isOverridden = s.r1_override;
+        highlight = s.r1_highlight || null;
       } else if (round === "round2") {
         status = s.round_2_status;
         isOverridden = s.r2_override;
+        highlight = s.r2_highlight || null;
       }
 
       const assignedBrothers = store.assignments
@@ -1238,6 +1296,8 @@ async function getRoundCandidates(
         scoredCount: scoreValues.length,
         normalizedScore: candNorm?.normalizedScore ?? null,
         normalizedDetails: candNorm?.details ?? [],
+        highlight,
+        isBba: isApplicantBba(s),
       };
     });
 
@@ -1372,29 +1432,52 @@ async function overrideSubmissionStatus(
 async function bulkApplyCutoff(params: {
   cycleId: number;
   round: "application" | "round1" | "round2";
-  decisions: { submissionId: number; newStatus: string }[];
+  decisions?: { submissionId: number; newStatus: string }[];
+  highlights?: { submissionId: number; highlight: "green" | "yellow" | "red" | null }[];
 }): Promise<void> {
-  const { round, decisions } = params;
+  const { round, decisions, highlights } = params;
   if (useDb) {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      for (const d of decisions) {
-        if (round === "application") {
-          await client.query(
-            "UPDATE application_submissions SET application_status = $1, app_override = false WHERE id = $2",
-            [d.newStatus, d.submissionId],
-          );
-        } else if (round === "round1") {
-          await client.query(
-            "UPDATE application_submissions SET round_1_status = $1, r1_override = false WHERE id = $2",
-            [d.newStatus, d.submissionId],
-          );
-        } else if (round === "round2") {
-          await client.query(
-            "UPDATE application_submissions SET round_2_status = $1, r2_override = false WHERE id = $2",
-            [d.newStatus, d.submissionId],
-          );
+      if (decisions && decisions.length > 0) {
+        for (const d of decisions) {
+          if (round === "application") {
+            await client.query(
+              "UPDATE application_submissions SET application_status = $1, app_override = false WHERE id = $2",
+              [d.newStatus, d.submissionId],
+            );
+          } else if (round === "round1") {
+            await client.query(
+              "UPDATE application_submissions SET round_1_status = $1, r1_override = false WHERE id = $2",
+              [d.newStatus, d.submissionId],
+            );
+          } else if (round === "round2") {
+            await client.query(
+              "UPDATE application_submissions SET round_2_status = $1, r2_override = false WHERE id = $2",
+              [d.newStatus, d.submissionId],
+            );
+          }
+        }
+      }
+      if (highlights && highlights.length > 0) {
+        for (const h of highlights) {
+          if (round === "application") {
+            await client.query(
+              "UPDATE application_submissions SET app_highlight = $1 WHERE id = $2",
+              [h.highlight, h.submissionId],
+            );
+          } else if (round === "round1") {
+            await client.query(
+              "UPDATE application_submissions SET r1_highlight = $1 WHERE id = $2",
+              [h.highlight, h.submissionId],
+            );
+          } else if (round === "round2") {
+            await client.query(
+              "UPDATE application_submissions SET r2_highlight = $1 WHERE id = $2",
+              [h.highlight, h.submissionId],
+            );
+          }
         }
       }
       await client.query("COMMIT");
@@ -1406,23 +1489,65 @@ async function bulkApplyCutoff(params: {
     }
   } else {
     const store = readLocalStore();
-    const decMap = new Map(decisions.map((d) => [d.submissionId, d.newStatus]));
-    for (const sub of store.submissions) {
-      if (decMap.has(sub.id)) {
-        const newStatus = decMap.get(sub.id)!;
-        if (round === "application") {
-          sub.application_status = newStatus as any;
-          sub.app_override = false;
-        } else if (round === "round1") {
-          sub.round_1_status = newStatus as any;
-          sub.r1_override = false;
-        } else if (round === "round2") {
-          sub.round_2_status = newStatus as any;
-          sub.r2_override = false;
+    if (decisions && decisions.length > 0) {
+      const decMap = new Map(decisions.map((d) => [d.submissionId, d.newStatus]));
+      for (const sub of store.submissions) {
+        if (decMap.has(sub.id)) {
+          const newStatus = decMap.get(sub.id)!;
+          if (round === "application") {
+            sub.application_status = newStatus as any;
+            sub.app_override = false;
+          } else if (round === "round1") {
+            sub.round_1_status = newStatus as any;
+            sub.r1_override = false;
+          } else if (round === "round2") {
+            sub.round_2_status = newStatus as any;
+            sub.r2_override = false;
+          }
+        }
+      }
+    }
+    if (highlights && highlights.length > 0) {
+      const hlMap = new Map(highlights.map((h) => [h.submissionId, h.highlight]));
+      for (const sub of store.submissions) {
+        if (hlMap.has(sub.id)) {
+          const hl = hlMap.get(sub.id) ?? null;
+          if (round === "application") {
+            sub.app_highlight = hl;
+          } else if (round === "round1") {
+            sub.r1_highlight = hl;
+          } else if (round === "round2") {
+            sub.r2_highlight = hl;
+          }
         }
       }
     }
     writeLocalStore(store);
+  }
+}
+
+async function setSingleHighlight(
+  submissionId: number,
+  round: "application" | "round1" | "round2",
+  highlight: "green" | "yellow" | "red" | null,
+): Promise<void> {
+  if (useDb) {
+    if (round === "application") {
+      await pool.query("UPDATE application_submissions SET app_highlight = $1 WHERE id = $2", [highlight, submissionId]);
+    } else if (round === "round1") {
+      await pool.query("UPDATE application_submissions SET r1_highlight = $1 WHERE id = $2", [highlight, submissionId]);
+    } else if (round === "round2") {
+      await pool.query("UPDATE application_submissions SET r2_highlight = $1 WHERE id = $2", [highlight, submissionId]);
+    }
+  } else {
+    const store = readLocalStore();
+    const sub = store.submissions.find((s) => s.id === submissionId);
+    if (sub) {
+      if (round === "application") sub.app_highlight = highlight;
+      else if (round === "round1") sub.r1_highlight = highlight;
+      else if (round === "round2") sub.r2_highlight = highlight;
+      writeLocalStore(store);
+    }
   }
 }
 
@@ -2019,28 +2144,62 @@ recruitmentRouter.post(
   },
 );
 
-// POST /api/recruitment/cycles/:id/round/:round/cutoff  (Admin: apply cutoff tool)
+// POST /api/recruitment/cycles/:id/round/:round/cutoff  (Admin: apply cutoff / bulk highlight tool)
 recruitmentRouter.post(
   "/cycles/:id/round/:round/cutoff",
   requireAdmin,
   async (req: Request, res: Response) => {
     const cycleId = Number(req.params.id);
     const round = req.params.round as "application" | "round1" | "round2";
-    const { decisions } = req.body as {
+    const { decisions, highlights } = req.body as {
       decisions?: { submissionId: number; newStatus: string }[];
+      highlights?: { submissionId: number; highlight: "green" | "yellow" | "red" | null }[];
     };
 
-    if (!Array.isArray(decisions) || decisions.length === 0) {
-      res.status(400).json({ error: "Decisions array is required." });
+    const hasDecisions = Array.isArray(decisions) && decisions.length > 0;
+    const hasHighlights = Array.isArray(highlights) && highlights.length > 0;
+
+    if (!hasDecisions && !hasHighlights) {
+      res.status(400).json({ error: "Either decisions or highlights array is required." });
       return;
     }
 
     try {
-      await bulkApplyCutoff({ cycleId, round, decisions });
-      res.json({ ok: true, updatedCount: decisions.length });
+      await bulkApplyCutoff({ cycleId, round, decisions, highlights });
+      res.json({
+        ok: true,
+        updatedDecisions: decisions?.length || 0,
+        updatedHighlights: highlights?.length || 0,
+      });
     } catch (err) {
       console.error("Error applying cutoff:", err);
       res.status(500).json({ error: "Failed to apply cutoff." });
+    }
+  },
+);
+
+// PUT /api/recruitment/submissions/:id/highlight  (Admin: set candidate highlight)
+recruitmentRouter.put(
+  "/submissions/:id/highlight",
+  requireAdmin,
+  async (req: Request, res: Response) => {
+    const submissionId = Number(req.params.id);
+    const { round, highlight } = req.body as {
+      round: "application" | "round1" | "round2";
+      highlight: "green" | "yellow" | "red" | null;
+    };
+
+    if (!round || !["application", "round1", "round2"].includes(round)) {
+      res.status(400).json({ error: "Valid round parameter (application, round1, round2) is required." });
+      return;
+    }
+
+    try {
+      await setSingleHighlight(submissionId, round, highlight ?? null);
+      res.json({ ok: true, submissionId, round, highlight: highlight ?? null });
+    } catch (err) {
+      console.error("Error setting candidate highlight:", err);
+      res.status(500).json({ error: "Failed to set candidate highlight." });
     }
   },
 );
@@ -2067,6 +2226,40 @@ recruitmentRouter.put(
     } catch (err) {
       console.error("Error overriding submission status:", err);
       res.status(500).json({ error: "Failed to override status." });
+    }
+  },
+);
+
+// PUT /api/recruitment/submissions/:id/bba-status  (Admin: toggle BBA/Ross status)
+recruitmentRouter.put(
+  "/submissions/:id/bba-status",
+  requireAdmin,
+  async (req: Request, res: Response) => {
+    const submissionId = Number(req.params.id);
+    const { isBba } = req.body as { isBba?: boolean };
+
+    if (typeof isBba !== "boolean") {
+      res.status(400).json({ error: "isBba (boolean) is required." });
+      return;
+    }
+
+    try {
+      if (useDb) {
+        await pool.query("UPDATE application_submissions SET is_bba = $1 WHERE id = $2", [isBba, submissionId]);
+      } else {
+        const store = readLocalStore();
+        const sub = store.submissions.find((s) => s.id === submissionId);
+        if (!sub) {
+          res.status(404).json({ error: "Submission not found." });
+          return;
+        }
+        sub.is_bba = isBba;
+        writeLocalStore(store);
+      }
+      res.json({ ok: true, submissionId, isBba });
+    } catch (err) {
+      console.error("Failed to update BBA status:", err);
+      res.status(500).json({ error: "Failed to update BBA status." });
     }
   },
 );

@@ -32,6 +32,8 @@ import {
   ArrowUpDown,
   TrendingUp,
   TrendingDown,
+  Check,
+  GraduationCap,
 } from "lucide-react";
 import { LoginGate } from "@/app/components/LoginGate";
 import { useAuth } from "@/app/context/AuthContext";
@@ -129,6 +131,8 @@ interface CandidateRow {
     rawScore: number;
     weight: number;
   }>;
+  highlight?: "green" | "yellow" | "red" | null;
+  isBba: boolean;
 }
 
 const SCORE_OPTIONS = [-1, -0.5, 0, 0.5, 1];
@@ -714,6 +718,11 @@ function RoundReviewTab({
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
+  // Major Pool Separation: Ross/BBA vs Non-BBA
+  // In Application Round, applicants are evaluated together by default ("all").
+  // In Round 1 and Round 2 interviews, BBA and Non-BBA majors are separated ("bba" default).
+  const [majorPool, setMajorPool] = useState<"all" | "bba" | "non_bba">(round === "application" ? "all" : "bba");
+
   // Sorting state
   const [sortColumn, setSortColumn] = useState<"normalized" | "sum" | "name" | "status">("normalized");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
@@ -721,11 +730,17 @@ function RoundReviewTab({
   // Rater Calibration modal state
   const [showCalibrationModal, setShowCalibrationModal] = useState(false);
 
-  // Cutoff tool modal state
+  // Cutoff & Highlight tool modal state
   const [showCutoffModal, setShowCutoffModal] = useState(false);
+  const [cutoffMode, setCutoffMode] = useState<"highlight" | "status">("highlight");
   const [cutoffColumn, setCutoffColumn] = useState<string>("normalized");
   const [cutoffThreshold, setCutoffThreshold] = useState<number>(0);
+  const [highlightGreenThreshold, setHighlightGreenThreshold] = useState<number>(0.5);
+  const [highlightYellowThreshold, setHighlightYellowThreshold] = useState<number>(-0.2);
+  const [highlightSyncStatus, setHighlightSyncStatus] = useState<boolean>(false);
+  const [statusSyncHighlight, setStatusSyncHighlight] = useState<boolean>(true);
   const [applyingCutoff, setApplyingCutoff] = useState(false);
+  const [highlightFilter, setHighlightFilter] = useState<string>("all");
 
   // Selected candidate details slide-over
   const [selectedCandidate, setSelectedCandidate] = useState<CandidateRow | null>(null);
@@ -745,6 +760,7 @@ function RoundReviewTab({
   const [assignError, setAssignError] = useState("");
 
   useEffect(() => {
+    setMajorPool(round === "application" ? "all" : "bba");
     loadData();
   }, [cycleId, round]);
 
@@ -875,12 +891,88 @@ function RoundReviewTab({
     }
   }
 
-  // Live cutoff computation
+  // Format score helper
+  function formatCandidateScore(c: CandidateRow, col: string) {
+    if (col === "normalized") {
+      return c.normalizedScore !== null
+        ? c.normalizedScore > 0
+          ? `+${c.normalizedScore.toFixed(2)}`
+          : c.normalizedScore.toFixed(2)
+        : "Unscored";
+    } else if (col === "sum") {
+      return c.referenceSum > 0 ? `+${c.referenceSum}` : `${c.referenceSum}`;
+    } else {
+      return c.scores[col]?.score !== undefined ? `${c.scores[col].score}` : "—";
+    }
+  }
+
+  // Major Pool counts
+  const poolCounts = useMemo(() => {
+    let bba = 0;
+    let nonBba = 0;
+    candidates.forEach((c) => {
+      if (c.isBba) bba++;
+      else nonBba++;
+    });
+    return { bba, nonBba, all: candidates.length };
+  }, [candidates]);
+
+  // Candidates filtered by active major pool (Ross/BBA vs Non-BBA vs All)
+  const poolCandidates = useMemo(() => {
+    if (majorPool === "bba") return candidates.filter((c) => c.isBba);
+    if (majorPool === "non_bba") return candidates.filter((c) => !c.isBba);
+    return candidates;
+  }, [candidates, majorPool]);
+
+  // Highlight counts summary (scoped to active pool)
+  const highlightCounts = useMemo(() => {
+    let green = 0;
+    let yellow = 0;
+    let red = 0;
+    let none = 0;
+    poolCandidates.forEach((c) => {
+      if (c.highlight === "green") green++;
+      else if (c.highlight === "yellow") yellow++;
+      else if (c.highlight === "red") red++;
+      else none++;
+    });
+    return { green, yellow, red, none };
+  }, [poolCandidates]);
+
+  // Live 3-way highlight preview computation (scoped to active pool)
+  const highlightPreview = useMemo(() => {
+    const green: CandidateRow[] = [];
+    const yellow: CandidateRow[] = [];
+    const red: CandidateRow[] = [];
+
+    poolCandidates.forEach((c) => {
+      let val = 0;
+      if (cutoffColumn === "normalized") {
+        val = c.normalizedScore !== null ? c.normalizedScore : -999;
+      } else if (cutoffColumn === "sum") {
+        val = c.referenceSum;
+      } else {
+        val = c.scores[cutoffColumn]?.score ?? 0;
+      }
+
+      if (val >= highlightGreenThreshold) {
+        green.push(c);
+      } else if (val >= highlightYellowThreshold) {
+        yellow.push(c);
+      } else {
+        red.push(c);
+      }
+    });
+
+    return { green, yellow, red };
+  }, [poolCandidates, cutoffColumn, highlightGreenThreshold, highlightYellowThreshold]);
+
+  // Live cutoff computation (for status mode, scoped to active pool)
   const cutoffPreview = useMemo(() => {
     const above: CandidateRow[] = [];
     const below: CandidateRow[] = [];
 
-    candidates.forEach((c) => {
+    poolCandidates.forEach((c) => {
       let val = 0;
       if (cutoffColumn === "normalized") {
         val = c.normalizedScore !== null ? c.normalizedScore : -999;
@@ -898,91 +990,11 @@ function RoundReviewTab({
     });
 
     return { above, below };
-  }, [candidates, cutoffColumn, cutoffThreshold]);
+  }, [poolCandidates, cutoffColumn, cutoffThreshold]);
 
-  // Execute cutoff bulk update
-  async function handleConfirmCutoff() {
-    setApplyingCutoff(true);
-    try {
-      const decisions = [
-        ...cutoffPreview.above.map((c) => ({ submissionId: c.submissionId, newStatus: advanceStatusKey })),
-        ...cutoffPreview.below.map((c) => ({ submissionId: c.submissionId, newStatus: rejectStatusKey })),
-      ];
-
-      await fetch(`/api/recruitment/cycles/${cycleId}/round/${round}/cutoff`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ decisions }),
-      });
-      setShowCutoffModal(false);
-      await loadData();
-    } catch (err) {
-      console.error("Failed to apply cutoff:", err);
-    } finally {
-      setApplyingCutoff(false);
-    }
-  }
-
-  // CSV Export handler
-  function handleExportCsv() {
-    if (candidates.length === 0) return;
-
-    const raterHeaders = raters.map((r) => `Rater: ${r.raterName} (${r.raterId})`);
-    const headers = [
-      "Submission ID",
-      "Applicant Name",
-      "Applicant Email",
-      ...(round === "application" ? ["Assigned Brothers"] : []),
-      "Submitted At",
-      ...raterHeaders,
-      "Reference Sum",
-      "Normalized Score",
-      "Status",
-      "Manually Overridden",
-    ];
-
-    const rows = candidates.map((c) => {
-      const raterScores = raters.map((r) => {
-        const item = c.scores[r.raterId];
-        return item ? item.score : "";
-      });
-      const assignedBrothersStr = `"${(c.assignedBrothers || []).join("; ")}"`;
-      return [
-        c.submissionId,
-        `"${c.applicantName.replace(/"/g, '""')}"`,
-        c.applicantEmail,
-        ...(round === "application" ? [assignedBrothersStr] : []),
-        new Date(c.submittedAt).toLocaleDateString(),
-        ...raterScores,
-        c.referenceSum,
-        c.normalizedScore !== null ? c.normalizedScore : "",
-        c.status,
-        c.isOverridden ? "Yes" : "No",
-      ];
-    });
-
-    const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download", `PGN_${round}_candidates_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  }
-
-  // Filter & Sort candidates
-  const filteredCandidates = useMemo(() => {
-    const list = candidates.filter((c) => {
-      const matchesSearch =
-        c.applicantName.toLowerCase().includes(search.toLowerCase()) ||
-        c.applicantEmail.toLowerCase().includes(search.toLowerCase());
-      const matchesStatus = statusFilter === "all" || c.status === statusFilter;
-      return matchesSearch && matchesStatus;
-    });
-
-    list.sort((a, b) => {
+  // Separate Rank computation: Rank each candidate strictly within their active pool
+  const rankMap = useMemo(() => {
+    const sorted = [...poolCandidates].sort((a, b) => {
       let comparison = 0;
       if (sortColumn === "normalized") {
         if (a.normalizedScore === null && b.normalizedScore === null) comparison = 0;
@@ -999,8 +1011,212 @@ function RoundReviewTab({
       return sortDirection === "asc" ? comparison : -comparison;
     });
 
-    return list;
-  }, [candidates, search, statusFilter, sortColumn, sortDirection]);
+    const map = new Map<number, number>();
+    sorted.forEach((c, idx) => {
+      map.set(c.submissionId, idx + 1);
+    });
+    return map;
+  }, [poolCandidates, sortColumn, sortDirection]);
+
+  // Toggle BBA / Non-BBA status for candidate
+  async function handleToggleBba(submissionId: number, isBba: boolean) {
+    setCandidates((prev) =>
+      prev.map((c) => (c.submissionId === submissionId ? { ...c, isBba } : c))
+    );
+    if (selectedCandidate && selectedCandidate.submissionId === submissionId) {
+      setSelectedCandidate((prev) => (prev ? { ...prev, isBba } : null));
+    }
+    try {
+      const res = await fetch(`/api/recruitment/submissions/${submissionId}/bba-status`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isBba }),
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || "Failed to update BBA status");
+      }
+    } catch (err: any) {
+      console.error("Failed to toggle BBA status:", err);
+      await loadData();
+    }
+  }
+
+  // Single candidate highlight handler
+  async function handleSetHighlight(submissionId: number, highlight: "green" | "yellow" | "red" | null) {
+    setCandidates((prev) =>
+      prev.map((c) => (c.submissionId === submissionId ? { ...c, highlight } : c))
+    );
+    if (selectedCandidate && selectedCandidate.submissionId === submissionId) {
+      setSelectedCandidate((prev) => (prev ? { ...prev, highlight } : null));
+    }
+    try {
+      await fetch(`/api/recruitment/submissions/${submissionId}/highlight`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ round, highlight }),
+      });
+    } catch (err) {
+      console.error("Failed to update candidate highlight:", err);
+      await loadData();
+    }
+  }
+
+  // Clear all highlights (scoped to active pool)
+  async function handleClearAllHighlights() {
+    const poolLabel =
+      majorPool === "bba" ? "Ross / BBA candidates" : majorPool === "non_bba" ? "Non-BBA candidates" : "all candidates";
+    if (!window.confirm(`Are you sure you want to clear all highlight colors for ${poolLabel} in this round?`)) return;
+    setApplyingCutoff(true);
+    try {
+      const highlights = poolCandidates.map((c) => ({ submissionId: c.submissionId, highlight: null }));
+      await fetch(`/api/recruitment/cycles/${cycleId}/round/${round}/cutoff`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ highlights }),
+      });
+      setShowCutoffModal(false);
+      await loadData();
+    } catch (err) {
+      console.error("Failed to clear highlights:", err);
+    } finally {
+      setApplyingCutoff(false);
+    }
+  }
+
+  // Execute cutoff bulk update (scoped to active pool)
+  async function handleConfirmCutoff() {
+    setApplyingCutoff(true);
+    try {
+      if (cutoffMode === "highlight") {
+        const highlights = [
+          ...highlightPreview.green.map((c) => ({ submissionId: c.submissionId, highlight: "green" as const })),
+          ...highlightPreview.yellow.map((c) => ({ submissionId: c.submissionId, highlight: "yellow" as const })),
+          ...highlightPreview.red.map((c) => ({ submissionId: c.submissionId, highlight: "red" as const })),
+        ];
+        const decisions = highlightSyncStatus
+          ? [
+              ...highlightPreview.green.map((c) => ({ submissionId: c.submissionId, newStatus: advanceStatusKey })),
+              ...highlightPreview.red.map((c) => ({ submissionId: c.submissionId, newStatus: rejectStatusKey })),
+            ]
+          : undefined;
+
+        await fetch(`/api/recruitment/cycles/${cycleId}/round/${round}/cutoff`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ highlights, decisions }),
+        });
+      } else {
+        const decisions = [
+          ...cutoffPreview.above.map((c) => ({ submissionId: c.submissionId, newStatus: advanceStatusKey })),
+          ...cutoffPreview.below.map((c) => ({ submissionId: c.submissionId, newStatus: rejectStatusKey })),
+        ];
+        const highlights = statusSyncHighlight
+          ? [
+              ...cutoffPreview.above.map((c) => ({ submissionId: c.submissionId, highlight: "green" as const })),
+              ...cutoffPreview.below.map((c) => ({ submissionId: c.submissionId, highlight: "red" as const })),
+            ]
+          : undefined;
+
+        await fetch(`/api/recruitment/cycles/${cycleId}/round/${round}/cutoff`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ decisions, highlights }),
+        });
+      }
+      setShowCutoffModal(false);
+      await loadData();
+    } catch (err) {
+      console.error("Failed to apply cutoff/highlights:", err);
+    } finally {
+      setApplyingCutoff(false);
+    }
+  }
+
+  // CSV Export handler
+  function handleExportCsv() {
+    if (poolCandidates.length === 0) return;
+
+    const raterHeaders = raters.map((r) => `Rater: ${r.raterName} (${r.raterId})`);
+    const headers = [
+      "Rank in Pool",
+      "Submission ID",
+      "Applicant Name",
+      "Applicant Email",
+      "Major Pool",
+      "Highlight Tier",
+      ...(round === "application" ? ["Assigned Brothers"] : []),
+      "Submitted At",
+      ...raterHeaders,
+      "Reference Sum",
+      "Normalized Score",
+      "Status",
+      "Manually Overridden",
+    ];
+
+    const rows = filteredCandidates.map((c) => {
+      const raterScores = raters.map((r) => {
+        const item = c.scores[r.raterId];
+        return item ? item.score : "";
+      });
+      const assignedBrothersStr = `"${(c.assignedBrothers || []).join("; ")}"`;
+      const rank = rankMap.get(c.submissionId) || "";
+      return [
+        rank,
+        c.submissionId,
+        `"${c.applicantName.replace(/"/g, '""')}"`,
+        c.applicantEmail,
+        c.isBba ? "Ross / BBA" : "Non-BBA",
+        c.highlight ? c.highlight.toUpperCase() : "NONE",
+        ...(round === "application" ? [assignedBrothersStr] : []),
+        new Date(c.submittedAt).toLocaleDateString(),
+        ...raterScores,
+        c.referenceSum,
+        c.normalizedScore !== null ? c.normalizedScore : "",
+        c.status,
+        c.isOverridden ? "Yes" : "No",
+      ];
+    });
+
+    const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `PGN_${round}_${majorPool}_candidates_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  // Filter & Sort candidates (strictly from active pool)
+  const filteredCandidates = useMemo(() => {
+    return poolCandidates.filter((c) => {
+      const matchesSearch =
+        c.applicantName.toLowerCase().includes(search.toLowerCase()) ||
+        c.applicantEmail.toLowerCase().includes(search.toLowerCase());
+      const matchesStatus = statusFilter === "all" || c.status === statusFilter;
+      const matchesHighlight =
+        highlightFilter === "all" ||
+        (highlightFilter === "none" ? !c.highlight : c.highlight === highlightFilter);
+      return matchesSearch && matchesStatus && matchesHighlight;
+    }).sort((a, b) => {
+      let comparison = 0;
+      if (sortColumn === "normalized") {
+        if (a.normalizedScore === null && b.normalizedScore === null) comparison = 0;
+        else if (a.normalizedScore === null) comparison = -1;
+        else if (b.normalizedScore === null) comparison = 1;
+        else comparison = a.normalizedScore - b.normalizedScore;
+      } else if (sortColumn === "sum") {
+        comparison = a.referenceSum - b.referenceSum;
+      } else if (sortColumn === "name") {
+        comparison = a.applicantName.localeCompare(b.applicantName);
+      } else if (sortColumn === "status") {
+        comparison = a.status.localeCompare(b.status);
+      }
+      return sortDirection === "asc" ? comparison : -comparison;
+    });
+  }, [poolCandidates, search, statusFilter, highlightFilter, sortColumn, sortDirection]);
 
   return (
     <div className="space-y-6">
@@ -1022,11 +1238,13 @@ function RoundReviewTab({
             onClick={() => {
               setCutoffColumn("normalized");
               setCutoffThreshold(0);
+              setHighlightGreenThreshold(0.5);
+              setHighlightYellowThreshold(-0.2);
               setShowCutoffModal(true);
             }}
             className="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-stone-950 text-xs font-bold tracking-wider uppercase rounded-xl transition-all shadow-xs cursor-pointer"
           >
-            <Sliders size={14} /> Set Cutoff Tool
+            <Sliders size={14} /> Cutoff & Highlight Tool ({majorPool === "bba" ? "Ross/BBA" : majorPool === "non_bba" ? "Non-BBA" : "All"})
           </button>
           <button
             onClick={handleExportCsv}
@@ -1045,32 +1263,179 @@ function RoundReviewTab({
         </div>
       </div>
 
-      {/* Filter & Search Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="relative w-full sm:w-80">
-          <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
-          <input
-            type="text"
-            placeholder="Search candidate name or email…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full text-xs pl-9 pr-4 py-2 bg-white border border-stone-200 rounded-xl outline-none focus:border-[#7A0C0C]"
-          />
+      {/* ── Major Pool Switcher (BBA vs Non-BBA Separation) ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-stone-200/80 shadow-xs">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-stone-700 uppercase tracking-wider pl-1">
+            <GraduationCap size={15} className="text-[#7A0C0C]" />
+            <span>Applicant Pool:</span>
+          </div>
+          <div className="inline-flex p-1 bg-stone-100/80 rounded-xl border border-stone-200/60 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => setMajorPool("bba")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                majorPool === "bba"
+                  ? "bg-[#7A0C0C] text-white shadow-xs"
+                  : "text-stone-600 hover:text-stone-950 hover:bg-white/60"
+              }`}
+            >
+              <span>Ross / BBA Majors</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                  majorPool === "bba" ? "bg-white/20 text-white" : "bg-stone-200 text-stone-700"
+                }`}
+              >
+                {poolCounts.bba}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setMajorPool("non_bba")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                majorPool === "non_bba"
+                  ? "bg-[#7A0C0C] text-white shadow-xs"
+                  : "text-stone-600 hover:text-stone-950 hover:bg-white/60"
+              }`}
+            >
+              <span>Non-BBA Majors</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                  majorPool === "non_bba" ? "bg-white/20 text-white" : "bg-stone-200 text-stone-700"
+                }`}
+              >
+                {poolCounts.nonBba}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setMajorPool("all")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                majorPool === "all"
+                  ? "bg-stone-900 text-white shadow-xs"
+                  : "text-stone-600 hover:text-stone-950 hover:bg-white/60"
+              }`}
+            >
+              <span>All Pools</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                  majorPool === "all" ? "bg-white/20 text-white" : "bg-stone-200 text-stone-700"
+                }`}
+              >
+                {poolCounts.all}
+              </span>
+            </button>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <Filter size={14} className="text-stone-400" />
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="text-xs bg-white border border-stone-200 rounded-xl px-3 py-2 outline-none focus:border-[#7A0C0C]"
+        <div className="text-[11px] text-stone-500 pr-1">
+          {round === "application" ? (
+            <span className="inline-flex items-center gap-1 text-stone-600">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+              <strong>Application Review:</strong> Evaluated together in unified pool.
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-stone-700">
+              <span className="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
+              <strong>{majorPool === "bba" ? "Ross / BBA Pool Active" : majorPool === "non_bba" ? "Non-BBA Pool Active" : "All Applicants Active"}:</strong>{" "}
+              Graded, ranked, &amp; cut off separately.
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Filter, Highlight Tiers & Search Bar */}
+      <div className="space-y-3">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="relative w-full sm:w-80">
+            <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
+            <input
+              type="text"
+              placeholder="Search candidates by name or email…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 text-xs bg-white border border-stone-200 rounded-xl outline-none focus:border-[#7A0C0C]"
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <Filter size={14} className="text-stone-400" />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="text-xs border border-stone-200 bg-white rounded-xl px-3 py-2 outline-none focus:border-[#7A0C0C]"
+            >
+              <option value="all">All Round Statuses</option>
+              <option value={advanceStatusKey}>{advanceStatusLabel}</option>
+              <option value={rejectStatusKey}>{rejectStatusLabel}</option>
+              <option value="pending">Pending</option>
+              <option value="pending_review">Pending Review</option>
+            </select>
+
+            <select
+              value={highlightFilter}
+              onChange={(e) => setHighlightFilter(e.target.value)}
+              className="text-xs border border-stone-200 bg-white rounded-xl px-3 py-2 outline-none focus:border-[#7A0C0C]"
+            >
+              <option value="all">All Highlights</option>
+              <option value="green">🟢 Green ({highlightCounts.green})</option>
+              <option value="yellow">🟡 Yellow ({highlightCounts.yellow})</option>
+              <option value="red">🔴 Red ({highlightCounts.red})</option>
+              <option value="none">⚪ Unhighlighted ({highlightCounts.none})</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Quick-filter highlight pills bar */}
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-stone-400 font-medium text-[11px]">Quick Highlight Filter:</span>
+          <button
+            type="button"
+            onClick={() => setHighlightFilter(highlightFilter === "green" ? "all" : "green")}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-semibold text-[11px] transition-all cursor-pointer ${
+              highlightFilter === "green"
+                ? "bg-emerald-600 text-white shadow-xs"
+                : "bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100"
+            }`}
           >
-            <option value="all">All Statuses ({candidates.length})</option>
-            <option value={advanceStatusKey}>{advanceStatusLabel}</option>
-            <option value={rejectStatusKey}>{rejectStatusLabel}</option>
-            <option value="pending">Pending</option>
-            <option value="pending_review">Pending Review</option>
-          </select>
+            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+            Green ({highlightCounts.green})
+          </button>
+          <button
+            type="button"
+            onClick={() => setHighlightFilter(highlightFilter === "yellow" ? "all" : "yellow")}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-semibold text-[11px] transition-all cursor-pointer ${
+              highlightFilter === "yellow"
+                ? "bg-amber-600 text-white shadow-xs"
+                : "bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100"
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+            Yellow ({highlightCounts.yellow})
+          </button>
+          <button
+            type="button"
+            onClick={() => setHighlightFilter(highlightFilter === "red" ? "all" : "red")}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-semibold text-[11px] transition-all cursor-pointer ${
+              highlightFilter === "red"
+                ? "bg-rose-600 text-white shadow-xs"
+                : "bg-rose-50 text-rose-800 border border-rose-200 hover:bg-rose-100"
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+            Red ({highlightCounts.red})
+          </button>
+          {highlightFilter !== "all" && (
+            <button
+              type="button"
+              onClick={() => setHighlightFilter("all")}
+              className="text-[11px] text-stone-400 hover:text-stone-700 underline ml-1 cursor-pointer"
+            >
+              Reset filter
+            </button>
+          )}
         </div>
       </div>
 
@@ -1092,6 +1457,9 @@ function RoundReviewTab({
             <table className="w-full text-left text-xs text-stone-700">
               <thead className="bg-stone-50/80 border-b border-stone-200 text-stone-500 font-bold uppercase tracking-wider text-[10px]">
                 <tr>
+                  <th className="px-3 py-3.5 whitespace-nowrap text-center w-14 font-extrabold text-stone-700">
+                    # Rank
+                  </th>
                   <th
                     onClick={() => {
                       if (sortColumn === "name") {
@@ -1179,17 +1547,177 @@ function RoundReviewTab({
                   const myScoreObj = c.scores[currentUserEmail];
                   const myScore = myScoreObj ? myScoreObj.score : null;
 
+                  let rowStyle = "hover:bg-stone-50/70 border-l-4 border-l-transparent";
+                  if (c.highlight === "green") {
+                    rowStyle = "bg-emerald-50/30 hover:bg-emerald-50/60 border-l-4 border-l-emerald-500";
+                  } else if (c.highlight === "yellow") {
+                    rowStyle = "bg-amber-50/30 hover:bg-amber-50/60 border-l-4 border-l-amber-400";
+                  } else if (c.highlight === "red") {
+                    rowStyle = "bg-rose-50/30 hover:bg-rose-50/60 border-l-4 border-l-rose-400";
+                  }
+
                   return (
-                    <tr key={c.submissionId} className="hover:bg-stone-50/70 transition-colors">
+                    <tr key={c.submissionId} className={`group/row transition-colors ${rowStyle}`}>
+                      {/* Rank in Active Pool */}
+                      <td className="px-3 py-4 text-center whitespace-nowrap font-mono font-bold">
+                        {(() => {
+                          const rank = rankMap.get(c.submissionId);
+                          if (!rank) return <span className="text-stone-300">—</span>;
+                          if (rank === 1) {
+                            return (
+                              <span
+                                className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-xs shadow-2xs font-extrabold"
+                                title="Rank 1 in active pool"
+                              >
+                                🥇 1
+                              </span>
+                            );
+                          }
+                          if (rank === 2) {
+                            return (
+                              <span
+                                className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-stone-200 text-stone-800 border border-stone-300 text-xs shadow-2xs font-bold"
+                                title="Rank 2 in active pool"
+                              >
+                                🥈 2
+                              </span>
+                            );
+                          }
+                          if (rank === 3) {
+                            return (
+                              <span
+                                className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-orange-100 text-orange-900 border border-orange-300 text-xs shadow-2xs font-bold"
+                                title="Rank 3 in active pool"
+                              >
+                                🥉 3
+                              </span>
+                            );
+                          }
+                          return (
+                            <span className="inline-flex items-center justify-center min-w-6 px-1.5 py-0.5 rounded-md bg-stone-100 text-stone-600 text-xs font-semibold">
+                              #{rank}
+                            </span>
+                          );
+                        })()}
+                      </td>
+
                       <td className="px-5 py-4">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedCandidate(c)}
-                          className="text-left font-semibold text-stone-900 hover:text-[#7A0C0C] transition-colors block"
-                        >
-                          {c.applicantName}
-                        </button>
-                        <span className="text-[11px] text-stone-400 block">{c.applicantEmail}</span>
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedCandidate(c)}
+                                className="text-left font-semibold text-stone-900 hover:text-[#7A0C0C] transition-colors block"
+                              >
+                                {c.applicantName}
+                              </button>
+
+                              {/* BBA Major / Non-BBA badge with click-to-toggle */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleBba(c.submissionId, !c.isBba);
+                                }}
+                                title={`Currently ${c.isBba ? "Ross / BBA" : "Non-BBA"}. Click to toggle.`}
+                                className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border transition cursor-pointer ${
+                                  c.isBba
+                                    ? "bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100"
+                                    : "bg-purple-50 text-purple-800 border-purple-200 hover:bg-purple-100"
+                                }`}
+                              >
+                                <GraduationCap size={10} />
+                                {c.isBba ? "Ross / BBA" : "Non-BBA"}
+                              </button>
+                            </div>
+                            <span className="text-[11px] text-stone-400 block mt-0.5">{c.applicantEmail}</span>
+                          </div>
+
+                          {/* Inline Highlight Tag with Hover Color Picker */}
+                          <div className="relative group/hl inline-flex items-center shrink-0">
+                            {c.highlight ? (
+                              <span
+                                className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border shadow-2xs cursor-pointer ${
+                                  c.highlight === "green"
+                                    ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                                    : c.highlight === "yellow"
+                                    ? "bg-amber-100 text-amber-800 border-amber-300"
+                                    : "bg-rose-100 text-rose-800 border-rose-300"
+                                }`}
+                                title={`Highlighted ${c.highlight}. Hover to change.`}
+                              >
+                                <span
+                                  className={`w-1.5 h-1.5 rounded-full ${
+                                    c.highlight === "green"
+                                      ? "bg-emerald-600"
+                                      : c.highlight === "yellow"
+                                      ? "bg-amber-500"
+                                      : "bg-rose-600"
+                                  }`}
+                                />
+                                <span className="capitalize">{c.highlight}</span>
+                              </span>
+                            ) : (
+                              <span
+                                className="opacity-0 group-hover/row:opacity-100 text-[10px] text-stone-400 hover:text-stone-700 px-1.5 py-0.5 rounded border border-dashed border-stone-300 cursor-pointer transition-opacity"
+                                title="Click to highlight"
+                              >
+                                + Tag
+                              </span>
+                            )}
+
+                            {/* Hover Quick Color Picker Popover */}
+                            <div className="absolute left-0 top-full mt-1 hidden group-hover/hl:flex items-center gap-1 p-1 bg-stone-900 text-white rounded-lg shadow-lg z-20 animate-in fade-in zoom-in-95 duration-100">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSetHighlight(c.submissionId, "green");
+                                }}
+                                className="w-5 h-5 rounded-full bg-emerald-500 hover:scale-110 transition flex items-center justify-center cursor-pointer"
+                                title="Highlight Green"
+                              >
+                                {c.highlight === "green" && <Check size={10} className="text-white" />}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSetHighlight(c.submissionId, "yellow");
+                                }}
+                                className="w-5 h-5 rounded-full bg-amber-400 hover:scale-110 transition flex items-center justify-center cursor-pointer"
+                                title="Highlight Yellow"
+                              >
+                                {c.highlight === "yellow" && <Check size={10} className="text-stone-900" />}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSetHighlight(c.submissionId, "red");
+                                }}
+                                className="w-5 h-5 rounded-full bg-rose-500 hover:scale-110 transition flex items-center justify-center cursor-pointer"
+                                title="Highlight Red"
+                              >
+                                {c.highlight === "red" && <Check size={10} className="text-white" />}
+                              </button>
+                              {c.highlight && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSetHighlight(c.submissionId, null);
+                                  }}
+                                  className="px-1 text-[9px] text-stone-400 hover:text-white cursor-pointer ml-0.5"
+                                  title="Clear Highlight"
+                                >
+                                  Clear
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
                       </td>
 
                       {/* Assigned Brothers Column */}
@@ -1419,32 +1947,68 @@ function RoundReviewTab({
         </div>
       )}
 
-      {/* ── Cutoff Tool Modal ── */}
+      {/* ── Cutoff & Highlight Tool Modal ── */}
       {showCutoffModal && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-stone-200 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-4 border-b border-stone-100">
-              <div className="flex items-center gap-2">
-                <Sliders size={16} className="text-[#7A0C0C]" />
-                <h3 className="font-bold text-stone-900 text-base">Bulk Cutoff Decision Tool</h3>
+          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-stone-200 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-stone-100">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Sliders size={18} className="text-[#7A0C0C]" />
+                <h3 className="font-bold text-stone-900 text-base">Bulk Cutoff & Highlight Tool</h3>
+                <span
+                  className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
+                    majorPool === "bba"
+                      ? "bg-blue-50 text-blue-800 border-blue-200"
+                      : majorPool === "non_bba"
+                      ? "bg-purple-50 text-purple-800 border-purple-200"
+                      : "bg-stone-100 text-stone-700 border-stone-200"
+                  }`}
+                >
+                  {majorPool === "bba" ? "Ross / BBA Pool" : majorPool === "non_bba" ? "Non-BBA Pool" : "All Candidates"} ({poolCandidates.length})
+                </span>
               </div>
               <button
                 type="button"
                 onClick={() => setShowCutoffModal(false)}
-                className="p-1 text-stone-400 hover:text-stone-700 rounded-lg hover:bg-stone-100"
+                className="p-1 text-stone-400 hover:text-stone-700 rounded-lg hover:bg-stone-100 cursor-pointer"
               >
                 <X size={16} />
               </button>
             </div>
 
-            <div className="mt-4 space-y-4 text-xs">
-              <p className="text-stone-600">
-                Select the numeric column to filter on and set a threshold. Candidates meeting or exceeding the
-                cutoff will be marked <strong>{advanceStatusLabel}</strong>, while candidates below will be
-                marked <strong>{rejectStatusLabel}</strong>. You can manually override individual candidates afterward.
-              </p>
+            {/* Mode Switcher Tabs */}
+            <div className="grid grid-cols-2 gap-2 mt-4 p-1 bg-stone-100 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setCutoffMode("highlight")}
+                className={`py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  cutoffMode === "highlight"
+                    ? "bg-white text-stone-900 shadow-xs"
+                    : "text-stone-600 hover:text-stone-900"
+                }`}
+              >
+                <Sparkles size={13} className="text-amber-500" /> Bulk Highlight Tiers (🟢 🟡 🔴)
+              </button>
+              <button
+                type="button"
+                onClick={() => setCutoffMode("status")}
+                className={`py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  cutoffMode === "status"
+                    ? "bg-white text-stone-900 shadow-xs"
+                    : "text-stone-600 hover:text-stone-900"
+                }`}
+              >
+                <Sliders size={13} className="text-[#7A0C0C]" /> Status Decisions (Advance / Reject)
+              </button>
+            </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Content for Highlight Mode */}
+            {cutoffMode === "highlight" && (
+              <div className="mt-4 space-y-4 text-xs">
+                <p className="text-stone-600 leading-relaxed">
+                  Bulk color-code candidates into <strong>Green</strong> (top tier), <strong>Yellow</strong> (bubble/deliberation tier), and <strong>Red</strong> (cut tier) based on score thresholds. Highlights are visible across the review table and candidate views.
+                </p>
+
                 <div>
                   <label className="font-bold text-stone-700 block mb-1">Filter Column</label>
                   <select
@@ -1453,7 +2017,11 @@ function RoundReviewTab({
                       const val = e.target.value;
                       setCutoffColumn(val);
                       if (val === "normalized") {
-                        setCutoffThreshold(0);
+                        setHighlightGreenThreshold(0.5);
+                        setHighlightYellowThreshold(-0.2);
+                      } else if (val === "sum") {
+                        setHighlightGreenThreshold(2);
+                        setHighlightYellowThreshold(0);
                       }
                     }}
                     className="w-full border border-stone-200 rounded-xl px-3 py-2 outline-none focus:border-[#7A0C0C]"
@@ -1468,101 +2036,260 @@ function RoundReviewTab({
                   </select>
                 </div>
 
-                <div>
-                  <label className="font-bold text-stone-700 block mb-1">Cutoff Threshold (&gt;= Value)</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="p-3 bg-emerald-50/60 rounded-xl border border-emerald-200">
+                    <label className="font-bold text-emerald-900 block mb-1">
+                      🟢 Green Threshold (&gt;= High)
+                    </label>
+                    <input
+                      type="number"
+                      step={cutoffColumn === "normalized" ? "0.05" : "0.5"}
+                      value={highlightGreenThreshold}
+                      onChange={(e) => setHighlightGreenThreshold(Number(e.target.value))}
+                      className="w-full bg-white border border-emerald-300 rounded-lg px-3 py-1.5 outline-none font-mono font-bold text-emerald-900 focus:border-emerald-600"
+                    />
+                    <span className="text-[10px] text-emerald-700 mt-1 block">
+                      Score &ge; {highlightGreenThreshold} &rarr; Highlight Green
+                    </span>
+                  </div>
+
+                  <div className="p-3 bg-amber-50/60 rounded-xl border border-amber-200">
+                    <label className="font-bold text-amber-900 block mb-1">
+                      🟡 Yellow Threshold (&gt;= Mid)
+                    </label>
+                    <input
+                      type="number"
+                      step={cutoffColumn === "normalized" ? "0.05" : "0.5"}
+                      value={highlightYellowThreshold}
+                      onChange={(e) => setHighlightYellowThreshold(Number(e.target.value))}
+                      className="w-full bg-white border border-amber-300 rounded-lg px-3 py-1.5 outline-none font-mono font-bold text-amber-900 focus:border-amber-600"
+                    />
+                    <span className="text-[10px] text-amber-700 mt-1 block">
+                      Score &lt; {highlightYellowThreshold} &rarr; Highlight 🔴 Red
+                    </span>
+                  </div>
+                </div>
+
+                {/* 3-Column Live Preview */}
+                <div className="p-3.5 bg-stone-50 rounded-xl border border-stone-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-bold text-stone-800 uppercase text-[10px] tracking-wider">
+                      Live Tier Distribution ({candidates.length} Candidates)
+                    </span>
+                    <span className="text-[10px] text-stone-500 font-medium">
+                      Green: {highlightPreview.green.length} | Yellow: {highlightPreview.yellow.length} | Red: {highlightPreview.red.length}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 mb-2">
+                    <div className="p-2.5 bg-emerald-50 rounded-lg border border-emerald-200 text-center">
+                      <span className="text-lg font-bold text-emerald-800 block">{highlightPreview.green.length}</span>
+                      <span className="text-[10px] font-bold text-emerald-700 block">🟢 Green</span>
+                      <span className="text-[9px] text-emerald-600 block">&ge; {highlightGreenThreshold}</span>
+                    </div>
+
+                    <div className="p-2.5 bg-amber-50 rounded-lg border border-amber-200 text-center">
+                      <span className="text-lg font-bold text-amber-800 block">{highlightPreview.yellow.length}</span>
+                      <span className="text-[10px] font-bold text-amber-700 block">🟡 Yellow</span>
+                      <span className="text-[9px] text-amber-600 block">&ge; {highlightYellowThreshold}</span>
+                    </div>
+
+                    <div className="p-2.5 bg-rose-50 rounded-lg border border-rose-200 text-center">
+                      <span className="text-lg font-bold text-rose-800 block">{highlightPreview.red.length}</span>
+                      <span className="text-[10px] font-bold text-rose-700 block">🔴 Red</span>
+                      <span className="text-[9px] text-rose-600 block">&lt; {highlightYellowThreshold}</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 max-h-32 overflow-y-auto text-[10px] border-t border-stone-200 pt-2">
+                    <div className="space-y-1">
+                      {highlightPreview.green.map((c) => (
+                        <div key={c.submissionId} className="flex justify-between text-emerald-900 truncate">
+                          <span className="truncate">{c.applicantName}</span>
+                          <span className="font-mono font-bold ml-1">
+                            {formatCandidateScore(c, cutoffColumn)}
+                          </span>
+                        </div>
+                      ))}
+                      {highlightPreview.green.length === 0 && (
+                        <span className="text-stone-300 italic">None</span>
+                      )}
+                    </div>
+
+                    <div className="space-y-1">
+                      {highlightPreview.yellow.map((c) => (
+                        <div key={c.submissionId} className="flex justify-between text-amber-900 truncate">
+                          <span className="truncate">{c.applicantName}</span>
+                          <span className="font-mono font-bold ml-1">
+                            {formatCandidateScore(c, cutoffColumn)}
+                          </span>
+                        </div>
+                      ))}
+                      {highlightPreview.yellow.length === 0 && (
+                        <span className="text-stone-300 italic">None</span>
+                      )}
+                    </div>
+
+                    <div className="space-y-1">
+                      {highlightPreview.red.map((c) => (
+                        <div key={c.submissionId} className="flex justify-between text-rose-900 truncate">
+                          <span className="truncate">{c.applicantName}</span>
+                          <span className="font-mono font-bold ml-1">
+                            {formatCandidateScore(c, cutoffColumn)}
+                          </span>
+                        </div>
+                      ))}
+                      {highlightPreview.red.length === 0 && (
+                        <span className="text-stone-300 italic">None</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <label className="flex items-center gap-2 text-stone-700 cursor-pointer pt-1">
                   <input
-                    type="number"
-                    step={cutoffColumn === "normalized" ? "0.05" : "0.5"}
-                    value={cutoffThreshold}
-                    onChange={(e) => setCutoffThreshold(Number(e.target.value))}
-                    className="w-full border border-stone-200 rounded-xl px-3 py-2 outline-none focus:border-[#7A0C0C]"
+                    type="checkbox"
+                    checked={highlightSyncStatus}
+                    onChange={(e) => setHighlightSyncStatus(e.target.checked)}
+                    className="rounded border-stone-300 text-[#7A0C0C] focus:ring-[#7A0C0C]"
                   />
-                </div>
+                  <span>
+                    Also sync round status: advance Green candidates to <strong>{advanceStatusLabel}</strong>, mark Red candidates as <strong>{rejectStatusLabel}</strong> (Yellow remains for deliberation)
+                  </span>
+                </label>
               </div>
+            )}
 
-              {/* Live Preview Split Box */}
-              <div className="p-4 bg-stone-50 rounded-xl border border-stone-200">
-                <span className="font-bold text-stone-800 block mb-2 uppercase text-[10px] tracking-wider">
-                  Live Split Preview ({candidates.length} Total Candidates)
-                </span>
-                <div className="grid grid-cols-2 gap-3 mb-3">
-                  <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200 text-center">
-                    <span className="text-xl font-bold text-emerald-800 block">{cutoffPreview.above.length}</span>
-                    <span className="text-[11px] font-semibold text-emerald-700">
-                      {advanceStatusLabel} (&gt;= {cutoffThreshold})
-                    </span>
+            {/* Content for Status Mode */}
+            {cutoffMode === "status" && (
+              <div className="mt-4 space-y-4 text-xs">
+                <p className="text-stone-600">
+                  Select the numeric column to filter on and set a threshold. Candidates meeting or exceeding the
+                  cutoff will be marked <strong>{advanceStatusLabel}</strong>, while candidates below will be
+                  marked <strong>{rejectStatusLabel}</strong>. You can manually override individual candidates afterward.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-stone-700 block mb-1">Filter Column</label>
+                    <select
+                      value={cutoffColumn}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setCutoffColumn(val);
+                        if (val === "normalized") {
+                          setCutoffThreshold(0);
+                        }
+                      }}
+                      className="w-full border border-stone-200 rounded-xl px-3 py-2 outline-none focus:border-[#7A0C0C]"
+                    >
+                      <option value="normalized">✨ Normalized Score (Calibrated)</option>
+                      <option value="sum">Reference Sum (Σ Scores)</option>
+                      {raters.map((r) => (
+                        <option key={r.raterId} value={r.raterId}>
+                          {r.raterName}'s Score
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                  <div className="p-3 bg-stone-100 rounded-lg border border-stone-300 text-center">
-                    <span className="text-xl font-bold text-stone-800 block">{cutoffPreview.below.length}</span>
-                    <span className="text-[11px] font-semibold text-stone-600">
-                      {rejectStatusLabel} (&lt; {cutoffThreshold})
-                    </span>
+
+                  <div>
+                    <label className="font-bold text-stone-700 block mb-1">Cutoff Threshold (&gt;= Value)</label>
+                    <input
+                      type="number"
+                      step={cutoffColumn === "normalized" ? "0.05" : "0.5"}
+                      value={cutoffThreshold}
+                      onChange={(e) => setCutoffThreshold(Number(e.target.value))}
+                      className="w-full border border-stone-200 rounded-xl px-3 py-2 outline-none focus:border-[#7A0C0C]"
+                    />
                   </div>
                 </div>
 
-                <div className="max-h-36 overflow-y-auto divide-y divide-stone-200 text-[11px]">
-                  {cutoffPreview.above.map((c) => (
-                    <div key={c.submissionId} className="py-1 flex justify-between text-emerald-900">
-                      <span>{c.applicantName}</span>
-                      <span className="font-semibold font-mono">
-                        Score:{" "}
-                        {cutoffColumn === "normalized"
-                          ? c.normalizedScore !== null
-                            ? c.normalizedScore > 0
-                              ? `+${c.normalizedScore.toFixed(2)}`
-                              : c.normalizedScore.toFixed(2)
-                            : "Unscored"
-                          : cutoffColumn === "sum"
-                          ? c.referenceSum > 0
-                            ? `+${c.referenceSum}`
-                            : c.referenceSum
-                          : c.scores[cutoffColumn]?.score !== undefined
-                          ? c.scores[cutoffColumn].score
-                          : "—"}
+                {/* Live Preview Split Box */}
+                <div className="p-4 bg-stone-50 rounded-xl border border-stone-200">
+                  <span className="font-bold text-stone-800 block mb-2 uppercase text-[10px] tracking-wider">
+                    Live Split Preview ({poolCandidates.length} Candidates in {majorPool === "bba" ? "Ross / BBA Pool" : majorPool === "non_bba" ? "Non-BBA Pool" : "Active Pool"})
+                  </span>
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200 text-center">
+                      <span className="text-xl font-bold text-emerald-800 block">{cutoffPreview.above.length}</span>
+                      <span className="text-[11px] font-semibold text-emerald-700">
+                        {advanceStatusLabel} (&gt;= {cutoffThreshold})
                       </span>
                     </div>
-                  ))}
-                  {cutoffPreview.below.map((c) => (
-                    <div key={c.submissionId} className="py-1 flex justify-between text-stone-500">
-                      <span>{c.applicantName}</span>
-                      <span className="font-semibold font-mono">
-                        Score:{" "}
-                        {cutoffColumn === "normalized"
-                          ? c.normalizedScore !== null
-                            ? c.normalizedScore > 0
-                              ? `+${c.normalizedScore.toFixed(2)}`
-                              : c.normalizedScore.toFixed(2)
-                            : "Unscored"
-                          : cutoffColumn === "sum"
-                          ? c.referenceSum > 0
-                            ? `+${c.referenceSum}`
-                            : c.referenceSum
-                          : c.scores[cutoffColumn]?.score !== undefined
-                          ? c.scores[cutoffColumn].score
-                          : "—"}
+                    <div className="p-3 bg-stone-100 rounded-lg border border-stone-300 text-center">
+                      <span className="text-xl font-bold text-stone-800 block">{cutoffPreview.below.length}</span>
+                      <span className="text-[11px] font-semibold text-stone-600">
+                        {rejectStatusLabel} (&lt; {cutoffThreshold})
                       </span>
                     </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+                  </div>
 
-            <div className="flex items-center justify-end gap-2 pt-4 border-t border-stone-100 mt-4">
+                  <div className="max-h-36 overflow-y-auto divide-y divide-stone-200 text-[11px]">
+                    {cutoffPreview.above.map((c) => (
+                      <div key={c.submissionId} className="py-1 flex justify-between text-emerald-900">
+                        <span>{c.applicantName}</span>
+                        <span className="font-semibold font-mono">
+                          Score: {formatCandidateScore(c, cutoffColumn)}
+                        </span>
+                      </div>
+                    ))}
+                    {cutoffPreview.below.map((c) => (
+                      <div key={c.submissionId} className="py-1 flex justify-between text-stone-500">
+                        <span>{c.applicantName}</span>
+                        <span className="font-semibold font-mono">
+                          Score: {formatCandidateScore(c, cutoffColumn)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <label className="flex items-center gap-2 text-stone-700 cursor-pointer pt-1">
+                  <input
+                    type="checkbox"
+                    checked={statusSyncHighlight}
+                    onChange={(e) => setStatusSyncHighlight(e.target.checked)}
+                    className="rounded border-stone-300 text-[#7A0C0C] focus:ring-[#7A0C0C]"
+                  />
+                  <span>
+                    Also apply highlight tiers: 🟢 Green for advanced, 🔴 Red for rejected
+                  </span>
+                </label>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-4 border-t border-stone-100 mt-4">
               <button
                 type="button"
-                onClick={() => setShowCutoffModal(false)}
-                className="px-4 py-2 text-xs font-semibold text-stone-600 hover:bg-stone-100 rounded-lg cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmCutoff}
+                onClick={handleClearAllHighlights}
                 disabled={applyingCutoff || candidates.length === 0}
-                className="px-5 py-2 text-xs font-bold tracking-wider uppercase bg-[#7A0C0C] hover:bg-[#5C0A0A] text-white rounded-lg disabled:opacity-50 cursor-pointer"
+                className="text-xs text-stone-500 hover:text-red-600 underline font-medium cursor-pointer disabled:opacity-40"
               >
-                {applyingCutoff ? "Applying…" : "Apply Cutoff & Update"}
+                Clear All Highlights
               </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCutoffModal(false)}
+                  className="px-4 py-2 text-xs font-semibold text-stone-600 hover:bg-stone-100 rounded-lg cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmCutoff}
+                  disabled={applyingCutoff || poolCandidates.length === 0}
+                  className="px-5 py-2 text-xs font-bold tracking-wider uppercase bg-[#7A0C0C] hover:bg-[#5C0A0A] text-white rounded-lg disabled:opacity-50 cursor-pointer shadow-xs"
+                >
+                  {applyingCutoff
+                    ? "Applying…"
+                    : cutoffMode === "highlight"
+                    ? `Apply Highlights to ${majorPool === "bba" ? "Ross/BBA" : majorPool === "non_bba" ? "Non-BBA" : "All"} (${poolCandidates.length})`
+                    : `Apply Cutoff to ${majorPool === "bba" ? "Ross/BBA" : majorPool === "non_bba" ? "Non-BBA" : "All"} (${poolCandidates.length})`}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1604,6 +2331,102 @@ function RoundReviewTab({
                   <span className="px-3 py-1 bg-amber-50 border border-amber-200 rounded-full text-xs font-bold text-[#7A0C0C]">
                     {selectedCandidate.status}
                   </span>
+                </div>
+
+                {/* Major & BBA Classification Card */}
+                <div className="p-4 bg-stone-50 rounded-xl border border-stone-200 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-stone-700 flex items-center gap-1.5">
+                      <GraduationCap size={14} className="text-[#7A0C0C]" />
+                      Major Pool Classification
+                    </span>
+                    <span
+                      className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
+                        selectedCandidate.isBba
+                          ? "bg-blue-50 text-blue-800 border-blue-200"
+                          : "bg-purple-50 text-purple-800 border-purple-200"
+                      }`}
+                    >
+                      {selectedCandidate.isBba ? "Ross / BBA Pool" : "Non-BBA Pool"}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                    <div>
+                      <span className="text-[10px] text-stone-400 uppercase font-bold block">Major</span>
+                      <span className="font-semibold text-stone-800">
+                        {selectedCandidate.answers?.major || "Not specified"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-stone-400 uppercase font-bold block">Ross Student?</span>
+                      <span className="font-semibold text-stone-800">
+                        {selectedCandidate.answers?.isRoss || (selectedCandidate.isBba ? "Yes" : "No")}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-stone-200/80 flex items-center justify-between">
+                    <span className="text-[11px] text-stone-500">
+                      Ranked in {selectedCandidate.isBba ? "Ross/BBA" : "Non-BBA"} interview rounds
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleBba(selectedCandidate.submissionId, !selectedCandidate.isBba)}
+                      className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-lg bg-white border border-stone-200 hover:border-stone-400 text-stone-700 shadow-2xs transition cursor-pointer"
+                    >
+                      Switch to {selectedCandidate.isBba ? "Non-BBA Pool" : "Ross / BBA Pool"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Highlight Tier Selector in Drawer */}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-stone-600">Highlight Tier</span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleSetHighlight(selectedCandidate.submissionId, "green")}
+                      className={`px-2.5 py-1 rounded-full text-xs font-bold border transition cursor-pointer ${
+                        selectedCandidate.highlight === "green"
+                          ? "bg-emerald-600 text-white border-emerald-700 shadow-xs"
+                          : "bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100"
+                      }`}
+                    >
+                      🟢 Green
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSetHighlight(selectedCandidate.submissionId, "yellow")}
+                      className={`px-2.5 py-1 rounded-full text-xs font-bold border transition cursor-pointer ${
+                        selectedCandidate.highlight === "yellow"
+                          ? "bg-amber-600 text-white border-amber-700 shadow-xs"
+                          : "bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100"
+                      }`}
+                    >
+                      🟡 Yellow
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSetHighlight(selectedCandidate.submissionId, "red")}
+                      className={`px-2.5 py-1 rounded-full text-xs font-bold border transition cursor-pointer ${
+                        selectedCandidate.highlight === "red"
+                          ? "bg-rose-600 text-white border-rose-700 shadow-xs"
+                          : "bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100"
+                      }`}
+                    >
+                      🔴 Red
+                    </button>
+                    {selectedCandidate.highlight && (
+                      <button
+                        type="button"
+                        onClick={() => handleSetHighlight(selectedCandidate.submissionId, null)}
+                        className="text-[11px] text-stone-400 hover:text-stone-700 underline ml-1 cursor-pointer"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Score Overview Cards */}

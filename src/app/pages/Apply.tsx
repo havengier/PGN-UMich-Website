@@ -733,6 +733,7 @@ const SAMPLE_APPLICANTS = [
     email: "jordant.test@umich.edu",
     phone: "(734) 555-0192",
     year: "Sophomore",
+    isRoss: "Yes",
     major: "Business Administration & Computer Science",
     minor: "Economics",
     gpa: "3.84",
@@ -747,6 +748,7 @@ const SAMPLE_APPLICANTS = [
     email: "mayal.test@umich.edu",
     phone: "(734) 555-0145",
     year: "Freshman",
+    isRoss: "No",
     major: "Industrial & Operations Engineering",
     minor: "Mathematics",
     gpa: "3.91",
@@ -761,6 +763,7 @@ const SAMPLE_APPLICANTS = [
     email: "marcusw.test@umich.edu",
     phone: "(734) 555-0188",
     year: "Junior",
+    isRoss: "No",
     major: "Economics & Data Science",
     minor: "User Experience Design",
     gpa: "3.76",
@@ -775,6 +778,7 @@ const SAMPLE_APPLICANTS = [
     email: "aaliyahb.test@umich.edu",
     phone: "(734) 555-0163",
     year: "Sophomore",
+    isRoss: "Yes",
     major: "Business Administration",
     minor: "International Studies",
     gpa: "3.89",
@@ -879,6 +883,7 @@ function ApplyContent() {
     updated["email"] = candidate.email;
     updated["phone"] = candidate.phone;
     updated["year"] = candidate.year;
+    updated["isRoss"] = candidate.isRoss;
     updated["major"] = candidate.major;
     updated["minor"] = candidate.minor;
     updated["gpa"] = candidate.gpa;
