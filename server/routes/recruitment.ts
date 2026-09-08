@@ -1851,9 +1851,9 @@ recruitmentRouter.post("/upload", requireAuth, async (req: AuthRequest, res: Res
     const base64Clean = fileData.replace(/^data:([A-Za-z-+\/]+);base64,/, "");
     const buffer = Buffer.from(base64Clean, "base64");
 
-    // Strictly enforce 1MB limit for photos and 10MB for documents
-    if (isImage && buffer.length > 1 * 1024 * 1024) {
-      res.status(400).json({ error: "Photo exceeds the maximum allowed size of 1MB." });
+    // Strictly enforce 2MB limit for photos and 10MB for documents
+    if (isImage && buffer.length > 2 * 1024 * 1024) {
+      res.status(400).json({ error: "Photo exceeds the maximum allowed size of 2MB." });
       return;
     }
 

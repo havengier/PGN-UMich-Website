@@ -3174,7 +3174,7 @@ function ApplicationBuilderTab({
                       <option value="textarea">Long Text</option>
                       <option value="select">Dropdown</option>
                       <option value="file">File Upload (Resume / DOCX)</option>
-                      <option value="photo">Photo Upload (Image max 1MB)</option>
+                      <option value="photo">Photo Upload (Image max 2MB)</option>
                       <option value="email">Email</option>
                       <option value="tel">Phone</option>
                     </select>
@@ -3211,7 +3211,7 @@ function ApplicationBuilderTab({
                   {f.type === "photo" && (
                     <div className="flex items-center gap-2 px-3 py-2 bg-amber-50/80 border border-amber-200/80 rounded-lg text-[11px] text-amber-900">
                       <Sparkles size={13} className="text-[#7A0C0C] flex-shrink-0" />
-                      <span>Applicants will be prompted to upload an image photo (.jpg, .png, .webp) with a strictly enforced <strong>1MB max limit</strong>.</span>
+                      <span>Applicants will be prompted to upload an image photo (.jpg, .png, .webp) with a strictly enforced <strong>2MB max limit</strong>.</span>
                     </div>
                   )}
 

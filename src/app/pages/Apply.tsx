@@ -367,11 +367,11 @@ function DynamicPhotoUpload({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Strictly enforce 1MB max upload size
-    const MAX_PHOTO_SIZE = 1 * 1024 * 1024; // 1 MB
+    // Strictly enforce 2MB max upload size
+    const MAX_PHOTO_SIZE = 2 * 1024 * 1024; // 2 MB
     if (file.size > MAX_PHOTO_SIZE) {
       const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
-      setUploadError(`Photo exceeds the 1MB limit (${sizeMB}MB). Please choose an image under 1MB.`);
+      setUploadError(`Photo exceeds the 2MB limit (${sizeMB}MB). Please choose an image under 2MB.`);
       return;
     }
 
@@ -460,10 +460,10 @@ function DynamicPhotoUpload({
             <ImageIcon size={22} className="text-gray-400 group-hover:text-[#7A0C0C] transition-colors" />
           </div>
           <span className="text-xs font-semibold text-gray-800 group-hover:text-[#7A0C0C] transition-colors text-center">
-            {uploading ? "Uploading photo…" : "Click to select a photo (Max 1MB)"}
+            {uploading ? "Uploading photo…" : "Click to select a photo (Max 2MB)"}
           </span>
           <span className="text-[11px] text-gray-400 mt-1 text-center">
-            PNG, JPG, or WEBP • Maximum file size 1MB
+            PNG, JPG, or WEBP • Maximum file size 2MB
           </span>
           <input
             type="file"
