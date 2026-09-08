@@ -1000,6 +1000,10 @@ function ApplyContent() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  // Draft auto-saving state
+  const [draftRestored, setDraftRestored] = useState(false);
+  const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
+
   // Admin testing states
   const [adminTestMode, setAdminTestMode] = useState(false);
   const [adminPreviewCandidateView, setAdminPreviewCandidateView] = useState(false);
@@ -1045,7 +1049,32 @@ function ApplyContent() {
             if (parts[0]) defaults["firstName"] = parts[0];
             if (parts.length > 1) defaults["lastName"] = parts.slice(1).join(" ");
           }
-          setFormData((prev) => ({ ...defaults, ...prev }));
+
+          // Check if there is an existing saved draft in localStorage
+          let savedDraft: Record<string, any> = {};
+          const storageDraftKey = `pgn_app_draft_${cycleData.cycle.id}_${(user?.email || "anonymous").toLowerCase()}`;
+          try {
+            const stored = localStorage.getItem(storageDraftKey);
+            if (stored) {
+              const parsed = JSON.parse(stored);
+              if (parsed && typeof parsed === "object") {
+                savedDraft = parsed;
+                const hasCustomData = Object.entries(savedDraft).some(([k, v]) => {
+                  if (k === "email" || k === "firstName" || k === "lastName") return false;
+                  return v !== undefined && v !== null && String(v).trim() !== "";
+                });
+                if (hasCustomData) {
+                  setDraftRestored(true);
+                  const now = new Date();
+                  setLastSavedTime(now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
+                }
+              }
+            }
+          } catch (e) {
+            console.error("Failed to load draft from localStorage:", e);
+          }
+
+          setFormData((prev) => ({ ...defaults, ...savedDraft, ...prev }));
         }
       } catch (err) {
         console.error("Failed to initialize recruitment portal:", err);
@@ -1055,6 +1084,51 @@ function ApplyContent() {
     }
     init();
   }, [user]);
+
+  const draftKey = cycle && user?.email ? `pgn_app_draft_${cycle.id}_${user.email.toLowerCase()}` : null;
+
+  // Auto-save draft changes to localStorage whenever formData updates
+  useEffect(() => {
+    if (!draftKey || loading || submission) return;
+    const hasData = Object.entries(formData).some(([k, v]) => {
+      if (k === "email" || k === "firstName" || k === "lastName") return false;
+      return v !== undefined && v !== null && String(v).trim() !== "";
+    });
+
+    if (hasData) {
+      try {
+        localStorage.setItem(draftKey, JSON.stringify(formData));
+        const now = new Date();
+        setLastSavedTime(now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
+      } catch (e) {
+        console.error("Failed to auto-save application draft:", e);
+      }
+    }
+  }, [formData, draftKey, loading, submission]);
+
+  function handleClearDraft() {
+    if (!draftKey) return;
+    if (!confirm("Are you sure you want to discard your saved draft? All unsaved responses will be reset.")) return;
+    try {
+      localStorage.removeItem(draftKey);
+    } catch {}
+    setDraftRestored(false);
+    setLastSavedTime(null);
+
+    const defaults: Record<string, string> = {};
+    (form?.questions || []).forEach((sec: ConfigSection) => {
+      (sec.fields || []).forEach((f: ConfigField) => {
+        defaults[f.id] = "";
+      });
+    });
+    if (user?.email) defaults["email"] = user.email;
+    if (user?.name) {
+      const parts = user.name.trim().split(/\s+/);
+      if (parts[0]) defaults["firstName"] = parts[0];
+      if (parts.length > 1) defaults["lastName"] = parts.slice(1).join(" ");
+    }
+    setFormData(defaults);
+  }
 
   function getValue(id: string): string {
     return formData[id] ?? "";
@@ -1109,6 +1183,13 @@ function ApplyContent() {
   }
 
   function handleStartNewTestApplication() {
+    if (draftKey) {
+      try {
+        localStorage.removeItem(draftKey);
+      } catch {}
+    }
+    setDraftRestored(false);
+    setLastSavedTime(null);
     setAdminTestMode(true);
     setLastSubmittedTest(null);
     setSubmitError(null);
@@ -1169,6 +1250,15 @@ function ApplyContent() {
         spread: 70,
         origin: { y: 0.6 },
       });
+
+      // Clear saved draft on successful submission
+      if (draftKey) {
+        try {
+          localStorage.removeItem(draftKey);
+        } catch {}
+      }
+      setDraftRestored(false);
+      setLastSavedTime(null);
 
       if (user?.isAdmin) {
         setLastSubmittedTest({
@@ -1456,16 +1546,44 @@ function ApplyContent() {
                       {cycle.name} Application
                     </h2>
                   </div>
-                  {form?.closes_at && (
-                    <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-50 border border-amber-200/70 text-xs text-amber-900 font-medium">
-                      <Clock size={13} className="text-[#7A0C0C]" />
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    {/* Auto-save Draft Status Pill */}
+                    {lastSavedTime && (
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200/80 text-xs text-emerald-800 font-medium">
+                        <Check size={13} className="text-emerald-600" />
+                        <span>Draft saved ({lastSavedTime})</span>
+                      </div>
+                    )}
+                    {form?.closes_at && (
+                      <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-50 border border-amber-200/70 text-xs text-amber-900 font-medium">
+                        <Clock size={13} className="text-[#7A0C0C]" />
+                        <span>
+                          Deadline: {new Date(form.closes_at).toLocaleDateString()} at{" "}
+                          {new Date(form.closes_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Draft Restored Banner */}
+                {draftRestored && (
+                  <div className="mt-6 p-4 rounded-2xl bg-amber-50/90 border border-amber-200/90 text-amber-900 text-xs flex items-center justify-between gap-3 shadow-xs">
+                    <div className="flex items-center gap-2.5">
+                      <Sparkles size={16} className="text-[#7A0C0C] shrink-0" />
                       <span>
-                        Deadline: {new Date(form.closes_at).toLocaleDateString()} at{" "}
-                        {new Date(form.closes_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                        <strong>Draft restored:</strong> Your previously entered responses were automatically recovered from your last visit.
                       </span>
                     </div>
-                  )}
-                </div>
+                    <button
+                      type="button"
+                      onClick={handleClearDraft}
+                      className="text-xs font-semibold text-[#7A0C0C] hover:underline shrink-0 cursor-pointer"
+                    >
+                      Discard Draft
+                    </button>
+                  </div>
+                )}
 
                 <p className="text-stone-600 text-sm py-6 leading-relaxed">
                   Please complete all required sections thoroughly. Once submitted, your application is
@@ -1549,6 +1667,7 @@ function ApplyContent() {
 
                   <div className="pt-6 border-t border-stone-100 flex flex-col sm:flex-row items-center justify-between gap-4">
                     <p className="text-xs text-stone-400">
+                      {lastSavedTime ? `Draft saved automatically at ${lastSavedTime}. ` : "Progress automatically saves as you type. "}
                       By submitting, you certify that all information provided is accurate and original.
                     </p>
                     <button
