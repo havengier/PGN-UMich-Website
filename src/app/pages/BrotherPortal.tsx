@@ -596,7 +596,7 @@ function BrotherPortalInner() {
                                   <a href={displayValue} target="_blank" rel="noopener noreferrer" className="block w-fit group">
                                     <img
                                       src={displayValue}
-                                      alt={cleanLabel}
+                                      alt={prompt}
                                       className="max-h-56 rounded-xl border border-stone-200 object-cover shadow-xs group-hover:opacity-90 transition-opacity"
                                     />
                                   </a>
