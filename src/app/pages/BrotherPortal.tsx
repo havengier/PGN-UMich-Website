@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Users, CheckCircle2, Clock, FileText, ExternalLink, 
@@ -25,6 +25,7 @@ type AssignedSubmission = {
   responses?: Record<string, any>;
   assigned_at?: string;
   assigned_by?: string;
+  assigned_brothers?: string[];
   question_labels?: Record<string, string>;
   current_round?: "application" | "round1" | "round2";
   current_round_name?: string;
@@ -146,23 +147,69 @@ function BrotherPortalInner() {
     }
   };
 
-  // Filtered submissions
-  const filtered = submissions.filter((s: any) => {
-    const q = search.toLowerCase();
-    const name = (s.full_name || s.applicant_name || "").toLowerCase();
-    const email = (s.email || s.applicant_email || "").toLowerCase();
-    const major = (s.major || s.answers?.major || "").toLowerCase();
-    const matchesSearch = !q || name.includes(q) || email.includes(q) || major.includes(q);
-    
-    const hasScore = Boolean(s.existingScore || s.my_score);
-    if (!matchesSearch) return false;
-    if (filterMode === "pending") return !hasScore;
-    if (filterMode === "reviewed") return hasScore;
-    return true;
-  });
+  const userEmail = (user?.email || "").toLowerCase();
+  const isCandidateAssignedToMe = (sub: any) =>
+    Array.isArray(sub.assigned_brothers) &&
+    sub.assigned_brothers.some((e: string) => (e || "").toLowerCase() === userEmail);
 
-  const totalAssigned = submissions.length;
-  const totalReviewed = submissions.filter((s: any) => Boolean(s.existingScore || s.my_score)).length;
+  const assignedToMeCount = useMemo(() => {
+    return submissions.filter(isCandidateAssignedToMe).length;
+  }, [submissions, userEmail]);
+
+  // If the user is an admin, let them toggle between their own assignments and all candidates
+  const [adminScope, setAdminScope] = useState<"assigned_to_me" | "all">("all");
+  const [hasInitializedScope, setHasInitializedScope] = useState(false);
+
+  useEffect(() => {
+    if (!hasInitializedScope && submissions.length > 0 && user?.isAdmin) {
+      if (assignedToMeCount > 0) {
+        setAdminScope("assigned_to_me");
+      } else {
+        setAdminScope("all");
+      }
+      setHasInitializedScope(true);
+    }
+  }, [submissions, user?.isAdmin, hasInitializedScope, assignedToMeCount]);
+
+  // Base list depending on scope
+  const scopedSubmissions = useMemo(() => {
+    if (user?.isAdmin && adminScope === "assigned_to_me") {
+      return submissions.filter(isCandidateAssignedToMe);
+    }
+    return submissions;
+  }, [submissions, user?.isAdmin, adminScope, userEmail]);
+
+  // Filtered submissions (search + status)
+  const filtered = useMemo(() => {
+    return scopedSubmissions.filter((s: any) => {
+      const q = search.toLowerCase();
+      const name = (s.full_name || s.applicant_name || "").toLowerCase();
+      const email = (s.email || s.applicant_email || "").toLowerCase();
+      const major = (s.major || s.answers?.major || "").toLowerCase();
+      const matchesSearch = !q || name.includes(q) || email.includes(q) || major.includes(q);
+      
+      const hasScore = Boolean(s.existingScore || s.my_score);
+      if (!matchesSearch) return false;
+      if (filterMode === "pending") return !hasScore;
+      if (filterMode === "reviewed") return hasScore;
+      return true;
+    });
+  }, [scopedSubmissions, search, filterMode]);
+
+  // Auto-sync selected candidate when scope or filters change
+  useEffect(() => {
+    if (filtered.length > 0) {
+      const stillInList = selectedSub && filtered.some((s) => s.id === selectedSub.id);
+      if (!stillInList) {
+        setSelectedSub(filtered[0]);
+      }
+    } else {
+      setSelectedSub(null);
+    }
+  }, [adminScope, filterMode, search]);
+
+  const totalAssigned = scopedSubmissions.length;
+  const totalReviewed = scopedSubmissions.filter((s: any) => Boolean(s.existingScore || s.my_score)).length;
   const totalPending = totalAssigned - totalReviewed;
 
   return (
@@ -182,7 +229,7 @@ function BrotherPortalInner() {
                 Candidate Review & Deliberations
               </h1>
               <p className="text-white/70 text-sm mt-2 max-w-xl font-sans leading-relaxed">
-                Welcome, <span className="text-white font-medium">{user?.name}</span>. Review the applications assigned to you for this cycle. Your scores and notes feed directly into the general deliberations pool.
+                Welcome, <span className="text-white font-medium">{user?.name}</span>. {user?.isAdmin ? "As an administrator, you can toggle between your direct assignments and all applicants." : "Review the applications assigned to you for this cycle."} Your scores and notes feed directly into deliberations.
               </p>
             </div>
 
@@ -190,7 +237,9 @@ function BrotherPortalInner() {
             <div className="flex items-center gap-4 bg-white/5 border border-white/10 p-3.5 rounded-2xl backdrop-blur-xs">
               <div className="text-center px-3 py-1">
                 <div className="text-2xl font-bold text-white font-sans">{totalAssigned}</div>
-                <div className="text-[11px] text-white/50 uppercase font-medium">Assigned</div>
+                <div className="text-[11px] text-white/50 uppercase font-medium">
+                  {user?.isAdmin && adminScope === "all" ? "In Cycle" : "Assigned"}
+                </div>
               </div>
               <div className="w-[1px] h-8 bg-white/15" />
               <div className="text-center px-3 py-1">
@@ -214,6 +263,52 @@ function BrotherPortalInner() {
             
             {/* Search & Filter Bar */}
             <div className="bg-white p-4 rounded-2xl border border-stone-200/80 shadow-xs space-y-3">
+              {/* Admin Scope Toggle (Only shown to Admins) */}
+              {user?.isAdmin && (
+                <div className="flex items-center gap-1.5 p-1 bg-stone-100 rounded-xl border border-stone-200/80">
+                  <button
+                    type="button"
+                    onClick={() => setAdminScope("assigned_to_me")}
+                    className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
+                      adminScope === "assigned_to_me"
+                        ? "bg-white text-[#7A0C0C] shadow-2xs border border-stone-200"
+                        : "text-stone-600 hover:text-stone-900"
+                    }`}
+                  >
+                    <span>Assigned to Me</span>
+                    <span
+                      className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                        adminScope === "assigned_to_me"
+                          ? "bg-[#7A0C0C]/10 text-[#7A0C0C]"
+                          : "bg-stone-200 text-stone-600"
+                      }`}
+                    >
+                      {assignedToMeCount}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdminScope("all")}
+                    className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
+                      adminScope === "all"
+                        ? "bg-[#7A0C0C] text-white shadow-2xs"
+                        : "text-stone-600 hover:text-stone-900"
+                    }`}
+                  >
+                    <span>All Candidates (Admin)</span>
+                    <span
+                      className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                        adminScope === "all"
+                          ? "bg-white/20 text-white"
+                          : "bg-stone-200 text-stone-600"
+                      }`}
+                    >
+                      {submissions.length}
+                    </span>
+                  </button>
+                </div>
+              )}
+
               <div className="relative">
                 <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
                 <input
@@ -233,7 +328,7 @@ function BrotherPortalInner() {
                       filterMode === "all" ? "bg-[#7A0C0C] text-white" : "bg-stone-100 text-stone-600 hover:bg-stone-200"
                     }`}
                   >
-                    All ({submissions.length})
+                    All ({scopedSubmissions.length})
                   </button>
                   <button
                     onClick={() => setFilterMode("pending")}
@@ -278,14 +373,34 @@ function BrotherPortalInner() {
                 </button>
               </div>
             ) : filtered.length === 0 ? (
-              <div className="bg-white rounded-2xl border border-dashed border-stone-300 p-10 text-center">
+              <div className="bg-white rounded-2xl border border-dashed border-stone-300 p-8 text-center">
                 <Users size={36} className="mx-auto mb-3 text-stone-300" />
-                <h3 className="text-base font-medium text-stone-700">No candidates found</h3>
+                <h3 className="text-base font-medium text-stone-700">
+                  {user?.isAdmin && adminScope === "assigned_to_me" && assignedToMeCount === 0
+                    ? "No candidates assigned to you yet"
+                    : "No candidates found"}
+                </h3>
                 <p className="text-xs text-stone-400 mt-1 max-w-xs mx-auto">
-                  {submissions.length === 0
-                    ? "You currently have no applications assigned to review. When an admin assigns candidates to your @umich.edu email, they will appear here."
-                    : "No candidates match your current search and filter criteria."}
+                  {user?.isAdmin && adminScope === "assigned_to_me" && assignedToMeCount === 0 ? (
+                    <>
+                      You currently have no applications specifically assigned to your email. You can switch to{" "}
+                      <strong className="text-stone-700">All Candidates (Admin)</strong> to view and evaluate any candidate across the cycle.
+                    </>
+                  ) : scopedSubmissions.length === 0 ? (
+                    "You currently have no applications assigned to review. When an admin assigns candidates to your @umich.edu email, they will appear here."
+                  ) : (
+                    "No candidates match your current search and filter criteria."
+                  )}
                 </p>
+                {user?.isAdmin && adminScope === "assigned_to_me" && assignedToMeCount === 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setAdminScope("all")}
+                    className="mt-3.5 px-3.5 py-1.5 bg-[#7A0C0C] text-white text-xs font-semibold rounded-lg hover:bg-[#5A0808] transition shadow-2xs"
+                  >
+                    View All Candidates ({submissions.length})
+                  </button>
+                )}
               </div>
             ) : (
               <div className="space-y-2.5">
@@ -297,6 +412,7 @@ function BrotherPortalInner() {
                   const displayEmail = sub.email || sub.applicant_email || "";
                   const displayMajor = sub.major || sub.answers?.major || "Undeclared";
                   const displayGrad = sub.grad_term || sub.answers?.grad_term;
+                  const isAssigned = isCandidateAssignedToMe(sub);
                   return (
                     <div
                       key={sub.id}
@@ -318,13 +434,33 @@ function BrotherPortalInner() {
                           <p className={`text-[11px] truncate mt-0.5 ${isSelected ? "text-stone-400" : "text-stone-400"}`}>
                             {displayEmail}
                           </p>
-                          {sub.current_round_name && (
-                            <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-md mt-1 ${
-                              isSelected ? "bg-white/10 text-stone-200" : "bg-stone-100 text-stone-600"
-                            }`}>
-                              {sub.current_round_name}
-                            </span>
-                          )}
+                          <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                            {sub.current_round_name && (
+                              <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-md ${
+                                isSelected ? "bg-white/10 text-stone-200" : "bg-stone-100 text-stone-600"
+                              }`}>
+                                {sub.current_round_name}
+                              </span>
+                            )}
+                            {user?.isAdmin && isAssigned && (
+                              <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                                isSelected
+                                  ? "bg-amber-400/20 text-amber-300 border border-amber-400/30"
+                                  : "bg-amber-50 text-amber-900 border border-amber-200"
+                              }`}>
+                                Assigned to You
+                              </span>
+                            )}
+                            {user?.isAdmin && adminScope === "all" && !isAssigned && (
+                              <span className={`inline-block text-[10px] px-2 py-0.5 rounded-md ${
+                                isSelected ? "bg-white/5 text-stone-400" : "bg-stone-100 text-stone-500"
+                              }`}>
+                                {Array.isArray(sub.assigned_brothers) && sub.assigned_brothers.length > 0
+                                  ? `${sub.assigned_brothers.length} assigned`
+                                  : "Unassigned"}
+                              </span>
+                            )}
+                          </div>
                         </div>
 
                         <div className="flex flex-col items-end gap-1.5 shrink-0">
@@ -619,6 +755,14 @@ function BrotherPortalInner() {
                                 <span>{selectedSub.email}</span>
                                 {selectedSub.phone && <span>• {selectedSub.phone}</span>}
                                 {selectedSub.pronouns && <span>• ({selectedSub.pronouns})</span>}
+                                {user?.isAdmin && (
+                                  <span className="font-medium text-stone-600">
+                                    • Assigned:{" "}
+                                    {selectedSub.assigned_brothers && selectedSub.assigned_brothers.length > 0
+                                      ? selectedSub.assigned_brothers.map((e: string) => e.split("@")[0]).join(", ")
+                                      : "None"}
+                                  </span>
+                                )}
                               </div>
                             </div>
                           </div>
