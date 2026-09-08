@@ -39,7 +39,7 @@ import { LoginGate } from "@/app/components/LoginGate";
 import { useAuth } from "@/app/context/AuthContext";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-type FieldType = "text" | "email" | "tel" | "textarea" | "select" | "file";
+type FieldType = "text" | "email" | "tel" | "textarea" | "select" | "file" | "photo";
 
 interface ConfigField {
   id: string;
@@ -2539,12 +2539,31 @@ function RoundReviewTab({
                 {Object.entries(selectedCandidate.answers).map(([key, val]) => {
                   if (!val || typeof val !== "string") return null;
                   const isUrl = val.startsWith("http://") || val.startsWith("https://") || val.startsWith("/uploads/");
+                  const isImage = isUrl && /\.(jpe?g|png|webp|gif|avif)$/i.test(val);
                   return (
                     <div key={key} className="p-3 bg-stone-50/70 rounded-xl border border-stone-100">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-[#7A0C0C] block mb-1">
                         {key}
                       </span>
-                      {isUrl ? (
+                      {isImage ? (
+                        <div className="space-y-2 mt-1">
+                          <a href={val} target="_blank" rel="noopener noreferrer" className="block w-fit group">
+                            <img
+                              src={val}
+                              alt={key}
+                              className="max-h-48 rounded-lg border border-stone-200 object-cover shadow-xs group-hover:opacity-90 transition-opacity"
+                            />
+                          </a>
+                          <a
+                            href={val}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[#7A0C0C] font-semibold underline inline-flex items-center gap-1 text-[11px]"
+                          >
+                            View Full Photo <ExternalLink size={12} />
+                          </a>
+                        </div>
+                      ) : isUrl ? (
                         <a
                           href={val}
                           target="_blank"
@@ -3153,7 +3172,8 @@ function ApplicationBuilderTab({
                       <option value="text">Short Text</option>
                       <option value="textarea">Long Text</option>
                       <option value="select">Dropdown</option>
-                      <option value="file">File Upload</option>
+                      <option value="file">File Upload (Resume / DOCX)</option>
+                      <option value="photo">Photo Upload (Image max 1MB)</option>
                       <option value="email">Email</option>
                       <option value="tel">Phone</option>
                     </select>
@@ -3179,6 +3199,14 @@ function ApplicationBuilderTab({
                       </button>
                     )}
                   </div>
+
+                  {/* Photo Helper Hint */}
+                  {f.type === "photo" && (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-amber-50/80 border border-amber-200/80 rounded-lg text-[11px] text-amber-900">
+                      <Sparkles size={13} className="text-[#7A0C0C] flex-shrink-0" />
+                      <span>Applicants will be prompted to upload an image photo (.jpg, .png, .webp) with a strictly enforced <strong>1MB max limit</strong>.</span>
+                    </div>
+                  )}
 
                   {/* Dropdown Options or Hint */}
                   {f.type === "select" && (

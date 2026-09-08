@@ -1822,8 +1822,13 @@ recruitmentRouter.post("/upload", requireAuth, async (req: AuthRequest, res: Res
     }
 
     const ext = path.extname(filename).toLowerCase();
-    if (![".pdf", ".docx", ".doc"].includes(ext)) {
-      res.status(400).json({ error: "Only PDF and DOCX files are allowed." });
+    const isDoc = [".pdf", ".docx", ".doc"].includes(ext);
+    const isImage = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif"].includes(ext);
+
+    if (!isDoc && !isImage) {
+      res.status(400).json({
+        error: "Unsupported file format. Allowed formats: PDF, DOCX, JPG, PNG, WEBP.",
+      });
       return;
     }
 
@@ -1831,12 +1836,19 @@ recruitmentRouter.post("/upload", requireAuth, async (req: AuthRequest, res: Res
     const base64Clean = fileData.replace(/^data:([A-Za-z-+\/]+);base64,/, "");
     const buffer = Buffer.from(base64Clean, "base64");
 
-    if (buffer.length > 10 * 1024 * 1024) {
-      res.status(400).json({ error: "File exceeds maximum size of 10MB." });
+    // Strictly enforce 1MB limit for photos and 10MB for documents
+    if (isImage && buffer.length > 1 * 1024 * 1024) {
+      res.status(400).json({ error: "Photo exceeds the maximum allowed size of 1MB." });
       return;
     }
 
-    const safeName = `resume_${Date.now()}_${Math.random().toString(36).slice(2, 8)}${ext}`;
+    if (isDoc && buffer.length > 10 * 1024 * 1024) {
+      res.status(400).json({ error: "Document exceeds the maximum allowed size of 10MB." });
+      return;
+    }
+
+    const prefix = isImage ? "photo" : "resume";
+    const safeName = `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}${ext}`;
     const targetPath = path.join(UPLOADS_DIR, safeName);
     fs.writeFileSync(targetPath, buffer);
     const fileUrl = `/uploads/${safeName}`;

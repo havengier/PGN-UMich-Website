@@ -21,13 +21,14 @@ import {
   LogOut,
   Plus,
   ShieldAlert,
+  Image as ImageIcon,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { LoginGate } from "@/app/components/LoginGate";
 import { useAuth } from "@/app/context/AuthContext";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-type FieldType = "text" | "email" | "tel" | "textarea" | "select" | "file";
+type FieldType = "text" | "email" | "tel" | "textarea" | "select" | "file" | "photo";
 
 interface ConfigField {
   id: string;
@@ -291,6 +292,141 @@ function DynamicFileInput({
       )}
 
       {uploadError && <p className="text-xs text-red-600 mt-1">{uploadError}</p>}
+    </div>
+  );
+}
+
+function DynamicPhotoUpload({
+  field,
+  value,
+  onChange,
+}: {
+  field: ConfigField;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  async function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Strictly enforce 1MB max upload size
+    const MAX_PHOTO_SIZE = 1 * 1024 * 1024; // 1 MB
+    if (file.size > MAX_PHOTO_SIZE) {
+      const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+      setUploadError(`Photo exceeds the 1MB limit (${sizeMB}MB). Please choose an image under 1MB.`);
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      setUploadError("Please upload a valid image file (JPG, PNG, or WEBP).");
+      return;
+    }
+
+    setUploading(true);
+    setUploadError(null);
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const fileData = reader.result as string;
+        const res = await fetch("/api/recruitment/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ filename: file.name, fileData }),
+        });
+        const data = await res.json();
+        if (res.ok && data.fileUrl) {
+          onChange(data.fileUrl);
+        } else {
+          setUploadError(data.error || "Failed to upload photo.");
+        }
+      } catch {
+        setUploadError("Upload network error. Please try again.");
+      } finally {
+        setUploading(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-sm font-semibold text-gray-700" style={{ fontFamily: "'Inter', sans-serif" }}>
+        {field.label}
+        {field.required && <span className="text-[#7A0C0C] ml-0.5">*</span>}
+      </label>
+      {field.hint && (
+        <p className="text-xs text-gray-500 -mt-0.5" style={{ fontFamily: "'Inter', sans-serif" }}>
+          {field.hint}
+        </p>
+      )}
+
+      {value ? (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-amber-50/70 border border-amber-200/80 rounded-2xl gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-16 h-16 rounded-xl overflow-hidden border border-amber-300/80 bg-white shadow-xs flex-shrink-0">
+              <img src={value} alt="Uploaded preview" className="w-full h-full object-cover" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-bold text-[#7A0C0C] bg-[#7A0C0C]/10 px-2 py-0.5 rounded uppercase tracking-wider">
+                  Photo Uploaded
+                </span>
+              </div>
+              <p className="text-xs font-semibold text-gray-800 mt-1 truncate max-w-[200px] sm:max-w-xs">
+                {value.split("/").pop()}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <a
+              href={value}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-bold text-[#7A0C0C] hover:underline inline-flex items-center gap-1"
+            >
+              View Full Size <ExternalLink size={12} />
+            </a>
+            <button
+              type="button"
+              onClick={() => onChange("")}
+              className="text-xs text-gray-400 hover:text-red-600 transition-colors cursor-pointer"
+            >
+              Remove / Replace
+            </button>
+          </div>
+        </div>
+      ) : (
+        <label className="border-2 border-dashed border-gray-300 hover:border-[#7A0C0C]/50 rounded-2xl p-6 flex flex-col items-center justify-center cursor-pointer bg-white hover:bg-stone-50/50 transition-all group">
+          <div className="w-12 h-12 rounded-full bg-stone-100 group-hover:bg-[#7A0C0C]/10 flex items-center justify-center mb-2.5 transition-colors">
+            <ImageIcon size={22} className="text-gray-400 group-hover:text-[#7A0C0C] transition-colors" />
+          </div>
+          <span className="text-xs font-semibold text-gray-800 group-hover:text-[#7A0C0C] transition-colors text-center">
+            {uploading ? "Uploading photo…" : "Click to select a photo (Max 1MB)"}
+          </span>
+          <span className="text-[11px] text-gray-400 mt-1 text-center">
+            PNG, JPG, or WEBP • Maximum file size 1MB
+          </span>
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/jpg,image/webp"
+            required={field.required && !value}
+            disabled={uploading}
+            onChange={handlePhotoChange}
+            className="hidden"
+          />
+        </label>
+      )}
+
+      {uploadError && (
+        <div className="flex items-center gap-1.5 text-xs text-red-600 mt-1">
+          <AlertCircle size={14} className="flex-shrink-0" />
+          <span>{uploadError}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -1285,6 +1421,16 @@ function ApplyContent() {
                           if (field.type === "file") {
                             return (
                               <DynamicFileInput
+                                key={field.id}
+                                field={field}
+                                value={getValue(field.id)}
+                                onChange={(val) => setValue(field.id, val)}
+                              />
+                            );
+                          }
+                          if (field.type === "photo") {
+                            return (
+                              <DynamicPhotoUpload
                                 key={field.id}
                                 field={field}
                                 value={getValue(field.id)}

@@ -516,15 +516,41 @@ function BrotherPortalInner() {
                             .replace(/^./, (str) => str.toUpperCase());
 
                           const displayValue = typeof value === "object" ? JSON.stringify(value, null, 2) : String(value);
+                          const isImageUrl =
+                            typeof displayValue === "string" &&
+                            (displayValue.startsWith("/uploads/") ||
+                              displayValue.startsWith("http://") ||
+                              displayValue.startsWith("https://")) &&
+                            /\.(jpe?g|png|webp|gif|avif)$/i.test(displayValue);
 
                           return (
                             <div key={key} className="bg-stone-50/60 p-4 rounded-xl border border-stone-200/60 space-y-1.5">
                               <span className="text-xs font-semibold text-stone-700 block">
                                 {cleanLabel}
                               </span>
-                              <p className="text-sm text-stone-800 whitespace-pre-wrap leading-relaxed font-sans">
-                                {displayValue || <span className="text-stone-400 italic">No answer provided</span>}
-                              </p>
+                              {isImageUrl ? (
+                                <div className="space-y-2 pt-1">
+                                  <a href={displayValue} target="_blank" rel="noopener noreferrer" className="block w-fit group">
+                                    <img
+                                      src={displayValue}
+                                      alt={cleanLabel}
+                                      className="max-h-56 rounded-xl border border-stone-200 object-cover shadow-xs group-hover:opacity-90 transition-opacity"
+                                    />
+                                  </a>
+                                  <a
+                                    href={displayValue}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[#7A0C0C] font-semibold underline inline-flex items-center gap-1 text-xs"
+                                  >
+                                    View Full Photo <ExternalLink size={12} />
+                                  </a>
+                                </div>
+                              ) : (
+                                <p className="text-sm text-stone-800 whitespace-pre-wrap leading-relaxed font-sans">
+                                  {displayValue || <span className="text-stone-400 italic">No answer provided</span>}
+                                </p>
+                              )}
                             </div>
                           );
                         })}
