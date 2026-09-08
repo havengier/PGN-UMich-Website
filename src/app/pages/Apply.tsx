@@ -39,6 +39,7 @@ interface ConfigField {
   options?: string[];
   required: boolean;
   core?: boolean;
+  word_limit?: number;
 }
 
 interface ConfigSection {
@@ -119,6 +120,11 @@ function DynamicSelect({
   );
 }
 
+function getWordCount(text: string): number {
+  if (!text || typeof text !== "string") return 0;
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
 function DynamicTextarea({
   field,
   value,
@@ -128,12 +134,27 @@ function DynamicTextarea({
   value: string;
   onChange: (v: string) => void;
 }) {
+  const wordCount = field.word_limit ? getWordCount(value) : 0;
+  const isOverLimit = Boolean(field.word_limit && wordCount > field.word_limit);
+
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={field.id} className="text-sm font-semibold text-gray-700" style={{ fontFamily: "'Inter', sans-serif" }}>
-        {field.label}
-        {field.required && <span className="text-[#7A0C0C] ml-0.5">*</span>}
-      </label>
+      <div className="flex items-center justify-between">
+        <label htmlFor={field.id} className="text-sm font-semibold text-gray-700" style={{ fontFamily: "'Inter', sans-serif" }}>
+          {field.label}
+          {field.required && <span className="text-[#7A0C0C] ml-0.5">*</span>}
+        </label>
+        {field.word_limit ? (
+          <span
+            className={`text-xs font-medium tabular-nums transition-colors ${
+              isOverLimit ? "text-red-600 font-bold" : "text-gray-400"
+            }`}
+            style={{ fontFamily: "'Inter', sans-serif" }}
+          >
+            {wordCount} / {field.word_limit} words
+          </span>
+        ) : null}
+      </div>
       {field.hint && (
         <p className="text-xs text-gray-500 -mt-0.5" style={{ fontFamily: "'Inter', sans-serif" }}>
           {field.hint}
@@ -146,9 +167,18 @@ function DynamicTextarea({
         placeholder={field.placeholder}
         required={field.required}
         rows={5}
-        className="border border-gray-200 rounded-lg px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#7A0C0C]/30 focus:border-[#7A0C0C] transition-colors resize-none"
+        className={`border rounded-lg px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 transition-colors resize-none ${
+          isOverLimit
+            ? "border-red-400 focus:ring-red-200 focus:border-red-500 bg-red-50/20"
+            : "border-gray-200 focus:ring-[#7A0C0C]/30 focus:border-[#7A0C0C]"
+        }`}
         style={{ fontFamily: "'Inter', sans-serif" }}
       />
+      {isOverLimit && (
+        <p className="text-xs text-red-600 font-medium">
+          Response exceeds maximum limit of {field.word_limit} words ({wordCount} words entered).
+        </p>
+      )}
     </div>
   );
 }
@@ -162,12 +192,28 @@ function DynamicInput({
   value: string;
   onChange: (v: string) => void;
 }) {
+  const isTextType = field.type === "text";
+  const wordCount = Boolean(field.word_limit && isTextType) ? getWordCount(value) : 0;
+  const isOverLimit = Boolean(field.word_limit && isTextType && wordCount > field.word_limit!);
+
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={field.id} className="text-sm font-semibold text-gray-700" style={{ fontFamily: "'Inter', sans-serif" }}>
-        {field.label}
-        {field.required && <span className="text-[#7A0C0C] ml-0.5">*</span>}
-      </label>
+      <div className="flex items-center justify-between">
+        <label htmlFor={field.id} className="text-sm font-semibold text-gray-700" style={{ fontFamily: "'Inter', sans-serif" }}>
+          {field.label}
+          {field.required && <span className="text-[#7A0C0C] ml-0.5">*</span>}
+        </label>
+        {field.word_limit && isTextType ? (
+          <span
+            className={`text-xs font-medium tabular-nums transition-colors ${
+              isOverLimit ? "text-red-600 font-bold" : "text-gray-400"
+            }`}
+            style={{ fontFamily: "'Inter', sans-serif" }}
+          >
+            {wordCount} / {field.word_limit} words
+          </span>
+        ) : null}
+      </div>
       {field.hint && (
         <p className="text-xs text-gray-500 -mt-0.5" style={{ fontFamily: "'Inter', sans-serif" }}>
           {field.hint}
@@ -180,9 +226,18 @@ function DynamicInput({
         onChange={(e) => onChange(e.target.value)}
         placeholder={field.placeholder}
         required={field.required}
-        className="border border-gray-200 rounded-lg px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#7A0C0C]/30 focus:border-[#7A0C0C] transition-colors"
+        className={`border rounded-lg px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 transition-colors ${
+          isOverLimit
+            ? "border-red-400 focus:ring-red-200 focus:border-red-500 bg-red-50/20"
+            : "border-gray-200 focus:ring-[#7A0C0C]/30 focus:border-[#7A0C0C]"
+        }`}
         style={{ fontFamily: "'Inter', sans-serif" }}
       />
+      {isOverLimit && (
+        <p className="text-xs text-red-600 font-medium">
+          Response exceeds maximum limit of {field.word_limit} words ({wordCount} words entered).
+        </p>
+      )}
     </div>
   );
 }
@@ -1068,6 +1123,25 @@ function ApplyContent() {
     setSubmitting(true);
     setSubmitError(null);
 
+    // Validate word limits on all text & textarea fields
+    if (form?.questions) {
+      for (const section of form.questions) {
+        for (const field of section.fields || []) {
+          if ((field.type === "text" || field.type === "textarea") && field.word_limit && field.word_limit > 0) {
+            const val = formData[field.id];
+            if (typeof val === "string" && val.trim()) {
+              const count = getWordCount(val);
+              if (count > field.word_limit) {
+                setSubmitError(`"${field.label}" exceeds maximum limit of ${field.word_limit} words (${count} words entered).`);
+                setSubmitting(false);
+                return;
+              }
+            }
+          }
+        }
+      }
+    }
+
     const payload = {
       cycleId: cycle.id,
       answers: {
@@ -1119,6 +1193,20 @@ function ApplyContent() {
       setSubmitting(false);
     }
   }
+
+  const hasWordLimitViolations = Boolean(
+    form?.questions?.some((section) =>
+      section.fields?.some((field) => {
+        if ((field.type === "text" || field.type === "textarea") && field.word_limit && field.word_limit > 0) {
+          const val = formData[field.id];
+          if (typeof val === "string" && val.trim()) {
+            return getWordCount(val) > field.word_limit;
+          }
+        }
+        return false;
+      })
+    )
+  );
 
   const isFormFillable =
     cycle !== null &&
@@ -1464,7 +1552,7 @@ function ApplyContent() {
                     </p>
                     <button
                       type="submit"
-                      disabled={submitting}
+                      disabled={submitting || hasWordLimitViolations}
                       className="w-full sm:w-auto px-10 py-3.5 bg-[#7A0C0C] hover:bg-[#5C0A0A] text-white text-xs font-bold tracking-widest uppercase rounded-full shadow-sm hover:shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                       style={{ fontFamily: "'Inter', sans-serif" }}
                     >

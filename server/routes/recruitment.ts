@@ -1765,10 +1765,25 @@ recruitmentRouter.post("/submit", requireAuth, async (req: AuthRequest, res: Res
     const sections = Array.isArray(form.questions) ? form.questions : [];
     for (const section of sections) {
       for (const field of section.fields || []) {
+        const val = answers[field.id];
         if (field.required) {
-          const val = answers[field.id];
           if (val === undefined || val === null || String(val).trim() === "") {
             res.status(400).json({ error: `Please answer required field: ${field.label}` });
+            return;
+          }
+        }
+        if (
+          (field.type === "text" || field.type === "textarea") &&
+          field.word_limit &&
+          Number(field.word_limit) > 0 &&
+          val &&
+          typeof val === "string"
+        ) {
+          const count = val.trim().split(/\s+/).filter(Boolean).length;
+          if (count > Number(field.word_limit)) {
+            res.status(400).json({
+              error: `Response for "${field.label}" exceeds the maximum limit of ${field.word_limit} words (${count} words entered).`,
+            });
             return;
           }
         }

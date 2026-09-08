@@ -50,6 +50,7 @@ interface ConfigField {
   options?: string[];
   required: boolean;
   core?: boolean;
+  word_limit?: number;
 }
 
 interface ConfigSection {
@@ -3188,6 +3189,12 @@ function ApplicationBuilderTab({
                       Required
                     </label>
 
+                    {f.word_limit && (f.type === "text" || f.type === "textarea") ? (
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#7A0C0C] bg-[#7A0C0C]/10 px-2 py-0.5 rounded-full">
+                        Max {f.word_limit} words
+                      </span>
+                    ) : null}
+
                     {!f.core && (
                       <button
                         type="button"
@@ -3223,7 +3230,7 @@ function ApplicationBuilderTab({
                     />
                   )}
                   {(f.type === "text" || f.type === "textarea") && (
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       <input
                         type="text"
                         placeholder="Placeholder text (optional)…"
@@ -3238,6 +3245,24 @@ function ApplicationBuilderTab({
                         onChange={(e) => updateField(section.id, f.id, { hint: e.target.value })}
                         className="text-xs text-stone-600 bg-white border border-stone-200 rounded-lg px-2.5 py-1 outline-none focus:border-[#7A0C0C]"
                       />
+                      <div className="relative flex items-center">
+                        <input
+                          type="number"
+                          min="1"
+                          placeholder="Max words (optional)"
+                          value={f.word_limit !== undefined && f.word_limit !== null ? f.word_limit : ""}
+                          onChange={(e) => {
+                            const val = e.target.value.trim();
+                            updateField(section.id, f.id, {
+                              word_limit: val === "" ? undefined : Math.max(1, parseInt(val, 10) || 0),
+                            });
+                          }}
+                          className="w-full text-xs text-stone-600 bg-white border border-stone-200 rounded-lg px-2.5 py-1 pr-12 outline-none focus:border-[#7A0C0C]"
+                        />
+                        <span className="absolute right-2.5 text-[10px] uppercase font-bold tracking-wider text-stone-400 pointer-events-none">
+                          words
+                        </span>
+                      </div>
                     </div>
                   )}
                 </div>
