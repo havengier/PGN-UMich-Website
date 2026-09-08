@@ -17,6 +17,13 @@ const NAV_LINKS = [
   { label: "Admin", path: "/admin", yellow: true, adminOnly: true },
 ];
 
+function scrollToTop(smooth = false) {
+  const behavior = smooth ? "smooth" : "instant";
+  window.scrollTo({ top: 0, left: 0, behavior });
+  document.documentElement.scrollTo({ top: 0, left: 0, behavior });
+  document.body.scrollTo({ top: 0, left: 0, behavior });
+}
+
 function Nav({ scrolled }: { scrolled: boolean }) {
   const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
@@ -31,6 +38,15 @@ function Nav({ scrolled }: { scrolled: boolean }) {
     const redirectTo = window.location.pathname;
     window.location.href = `/api/auth/google?redirect=${encodeURIComponent(redirectTo)}`;
   }
+
+  const handleNavClick = (path: string) => {
+    setOpen(false);
+    if (pathname === path) {
+      scrollToTop(true);
+    } else {
+      scrollToTop(false);
+    }
+  };
 
   useEffect(() => {
     setOpen(false);
@@ -50,7 +66,7 @@ function Nav({ scrolled }: { scrolled: boolean }) {
             : "bg-white/75 backdrop-blur-sm"
         }`}
       >
-        <Link to="/" onClick={() => setOpen(false)}>
+        <Link to="/" onClick={() => handleNavClick("/")}>
           <img src={pgnLogo} alt="PGN — Creating Leaders of Tomorrow" className="h-9 w-auto" />
         </Link>
 
@@ -65,6 +81,7 @@ function Nav({ scrolled }: { scrolled: boolean }) {
               <Link
                 key={label}
                 to={path}
+                onClick={() => handleNavClick(path)}
                 className={`transition-colors whitespace-nowrap ${
                   yellow
                     ? "bg-[#1a0303] text-[#F5A623] font-semibold text-xs px-3 py-1.5 rounded-full hover:bg-[#2d0505] tracking-wide"
@@ -148,6 +165,7 @@ function Nav({ scrolled }: { scrolled: boolean }) {
                   >
                     <Link
                       to={path}
+                      onClick={() => handleNavClick(path)}
                       className={`block py-4 border-b border-gray-100 transition-colors ${
                         yellow || brotherBadge
                           ? "text-gray-800 font-normal hover:text-gray-800"
@@ -271,12 +289,27 @@ export default function Layout() {
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
+    if ("scrollRestoration" in window.history) {
+      window.history.scrollRestoration = "manual";
+    }
+  }, []);
+
+  useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
   const { pathname } = useLocation();
+
+  useEffect(() => {
+    scrollToTop(false);
+    setScrolled(false);
+    const rafId = requestAnimationFrame(() => {
+      scrollToTop(false);
+    });
+    return () => cancelAnimationFrame(rafId);
+  }, [pathname]);
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
@@ -289,6 +322,9 @@ export default function Layout() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.22, ease: "easeInOut" }}
+            onAnimationStart={() => {
+              scrollToTop(false);
+            }}
           >
             <Outlet />
           </motion.div>

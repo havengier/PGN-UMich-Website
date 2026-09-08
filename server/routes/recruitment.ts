@@ -3,8 +3,9 @@ import type { Request, Response } from "express";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import jwt from "jsonwebtoken";
 import { pool } from "../db.js";
-import { requireAuth, type AuthRequest } from "../middleware/auth.js";
+import { requireAuth, type AuthRequest, type AuthUser } from "../middleware/auth.js";
 import { requireAdmin } from "../middleware/admin.js";
 import { requireBrother } from "../middleware/brother.js";
 import { DEFAULT_APPLY_CONFIG } from "./apply-config.js";
@@ -12,6 +13,19 @@ import { DEFAULT_APPLY_CONFIG } from "./apply-config.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const LOCAL_STORE_PATH = path.resolve(__dirname, "../data/recruitment-store.json");
 const UPLOADS_DIR = path.resolve(__dirname, "../../public/uploads");
+
+function getOptionalAuthUser(req: Request): AuthUser | null {
+  const token = (req.cookies as Record<string, string>)?.auth_token;
+  if (!token) return null;
+  const secret = process.env.JWT_SECRET || (process.env.NODE_ENV !== "production" ? "dev-secret-key-12345678901234567890" : undefined);
+  if (!secret) return null;
+  try {
+    const user = jwt.verify(token, secret) as AuthUser;
+    return user?.email ? user : null;
+  } catch {
+    return null;
+  }
+}
 
 export const recruitmentRouter = Router();
 
@@ -72,6 +86,45 @@ export interface RecruitmentCycle {
   created_by: string;
 }
 
+export interface NormalizationConfig {
+  k: number;
+  minWeight: number;
+  maxWeight: number;
+  targetDistribution: {
+    "-1": number;
+    "-0.5": number;
+    "0": number;
+    "0.5": number;
+    "1": number;
+  };
+}
+
+export const DEFAULT_NORMALIZATION_CONFIG: NormalizationConfig = {
+  k: 15,
+  minWeight: 0.3,
+  maxWeight: 3.0,
+  targetDistribution: {
+    "-1": 0.05,
+    "-0.5": 0.10,
+    "0": 0.70,
+    "0.5": 0.10,
+    "1": 0.05,
+  },
+};
+
+export interface RaterCalibration {
+  raterId: string;
+  raterName: string;
+  totalRatings: number;
+  counts: Record<string, number>;
+  observedPercentages: Record<string, number>;
+  smoothedPercentages: Record<string, number>;
+  targetPercentages: Record<string, number>;
+  weights: Record<string, number>;
+  biasTendency: "easy" | "harsh" | "balanced" | "calibrating";
+  isClamped: boolean;
+}
+
 export interface CycleForm {
   id: number;
   cycle_id: number;
@@ -80,6 +133,7 @@ export interface CycleForm {
   closes_at: string | null;
   is_locked: boolean;
   status_messages: any;
+  normalization_config?: NormalizationConfig | null;
   updated_at: string;
 }
 
@@ -464,18 +518,20 @@ async function updateCycleForm(
     closes_at?: string | null;
     is_locked?: boolean;
     status_messages?: any;
+    normalization_config?: NormalizationConfig | null;
   },
 ): Promise<CycleForm | null> {
   if (useDb) {
     const res = await pool.query(
-      `INSERT INTO recruitment_cycle_forms (cycle_id, questions, opens_at, closes_at, is_locked, status_messages, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW())
+      `INSERT INTO recruitment_cycle_forms (cycle_id, questions, opens_at, closes_at, is_locked, status_messages, normalization_config, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
        ON CONFLICT (cycle_id) DO UPDATE SET
          questions = COALESCE($2, recruitment_cycle_forms.questions),
          opens_at = $3,
          closes_at = $4,
          is_locked = COALESCE($5, recruitment_cycle_forms.is_locked),
          status_messages = COALESCE($6, recruitment_cycle_forms.status_messages),
+         normalization_config = COALESCE($7, recruitment_cycle_forms.normalization_config),
          updated_at = NOW()
        RETURNING *`,
       [
@@ -485,6 +541,7 @@ async function updateCycleForm(
         patch.closes_at ?? null,
         patch.is_locked ?? null,
         patch.status_messages ? JSON.stringify(patch.status_messages) : null,
+        patch.normalization_config ? JSON.stringify(patch.normalization_config) : null,
       ],
     );
     return res.rows[0];
@@ -500,6 +557,7 @@ async function updateCycleForm(
         closes_at: patch.closes_at ?? null,
         is_locked: patch.is_locked ?? false,
         status_messages: patch.status_messages ?? DEFAULT_STATUS_MESSAGES,
+        normalization_config: patch.normalization_config ?? DEFAULT_NORMALIZATION_CONFIG,
         updated_at: new Date().toISOString(),
       };
       store.forms.push(form);
@@ -509,6 +567,7 @@ async function updateCycleForm(
       if (patch.closes_at !== undefined) form.closes_at = patch.closes_at;
       if (patch.is_locked !== undefined) form.is_locked = patch.is_locked;
       if (patch.status_messages !== undefined) form.status_messages = patch.status_messages;
+      if (patch.normalization_config !== undefined) form.normalization_config = patch.normalization_config;
       form.updated_at = new Date().toISOString();
     }
     writeLocalStore(store);
@@ -557,10 +616,11 @@ async function createSubmission(data: {
     return res.rows[0];
   } else {
     const store = readLocalStore();
+    const isTestId = normEmail.includes("#test_");
     const existing = store.submissions.find(
       (s) => s.cycle_id === data.cycleId && s.applicant_user_id.toLowerCase() === normEmail,
     );
-    if (existing) {
+    if (existing && !isTestId) {
       throw new Error("Application already submitted for this cycle.");
     }
     const submission: ApplicationSubmission = {
@@ -729,7 +789,7 @@ async function getAssignedSubmissionsForBrother(
   }
 }
 
-// ── Round Data & Isolated Scoring Pools ────────────────────────────────────────
+// ── Round Data & Score Normalization Engine ────────────────────────────────────
 
 export interface CandidateRow {
   submissionId: number;
@@ -743,12 +803,213 @@ export interface CandidateRow {
   scores: Record<string, { score: number; note: string | null; ratedAt: string }>;
   referenceSum: number;
   scoredCount: number;
+  normalizedScore: number | null;
+  normalizedDetails?: Array<{
+    raterId: string;
+    raterName: string;
+    rawScore: number;
+    weight: number;
+  }>;
+}
+
+export function computeRoundNormalization(
+  ratings: Array<{ raterId: string; raterName: string; submissionId: number; score: number }>,
+  config: NormalizationConfig = DEFAULT_NORMALIZATION_CONFIG,
+): {
+  calibrationByRater: Record<string, RaterCalibration>;
+  candidateScores: Map<
+    number,
+    {
+      normalizedScore: number | null;
+      details: Array<{ raterId: string; raterName: string; rawScore: number; weight: number }>;
+    }
+  >;
+} {
+  const validScoreKeys = ["-1", "-0.5", "0", "0.5", "1"];
+  const targetDist = config.targetDistribution || DEFAULT_NORMALIZATION_CONFIG.targetDistribution;
+  const k = typeof config.k === "number" && config.k > 0 ? config.k : 15;
+  const minW = typeof config.minWeight === "number" ? config.minWeight : 0.3;
+  const maxW = typeof config.maxWeight === "number" ? config.maxWeight : 3.0;
+
+  // 1. Group ratings by rater
+  const raterRatings = new Map<string, { raterName: string; scores: number[] }>();
+  for (const r of ratings) {
+    if (!raterRatings.has(r.raterId)) {
+      raterRatings.set(r.raterId, { raterName: r.raterName, scores: [] });
+    }
+    raterRatings.get(r.raterId)!.scores.push(Number(r.score));
+  }
+
+  // 2. Compute calibration profiles per rater
+  const calibrationByRater: Record<string, RaterCalibration> = {};
+  for (const [raterId, data] of raterRatings.entries()) {
+    const totalRatings = data.scores.length;
+    const counts: Record<string, number> = { "-1": 0, "-0.5": 0, "0": 0, "0.5": 0, "1": 0 };
+    let scoreSum = 0;
+
+    for (const score of data.scores) {
+      scoreSum += score;
+      const key = (Math.round(score * 10) / 10).toString();
+      if (counts[key] !== undefined) {
+        counts[key]++;
+      } else {
+        let closestKey = "0";
+        let minDiff = Infinity;
+        for (const vk of validScoreKeys) {
+          const diff = Math.abs(Number(vk) - score);
+          if (diff < minDiff) {
+            minDiff = diff;
+            closestKey = vk;
+          }
+        }
+        counts[closestKey]++;
+      }
+    }
+
+    const observedPercentages: Record<string, number> = {};
+    const smoothedPercentages: Record<string, number> = {};
+    const targetPercentages: Record<string, number> = {};
+    const weights: Record<string, number> = {};
+    let isClamped = false;
+
+    for (const vKey of validScoreKeys) {
+      const count = counts[vKey] || 0;
+      const targetP = targetDist[vKey] ?? (vKey === "0" ? 0.70 : vKey.includes("0.5") ? 0.10 : 0.05);
+      targetPercentages[vKey] = Math.round(targetP * 10000) / 10000;
+
+      // Observed percentage
+      const obsP = totalRatings > 0 ? count / totalRatings : targetP;
+      observedPercentages[vKey] = Math.round(obsP * 10000) / 10000;
+
+      // Bayesian smoothed frequency: O_r(v) = (count + k * T(v)) / (n_r + k)
+      const smoothedP = (count + k * targetP) / (totalRatings + k);
+      smoothedPercentages[vKey] = Math.round(smoothedP * 10000) / 10000;
+
+      // Weight w(r, v) = T(v) / O_r(v) clamped to [minW, maxW]
+      let rawWeight = smoothedP > 0 ? targetP / smoothedP : 1.0;
+      if (rawWeight <= minW) {
+        weights[vKey] = minW;
+        isClamped = true;
+      } else if (rawWeight >= maxW) {
+        weights[vKey] = maxW;
+        isClamped = true;
+      } else {
+        weights[vKey] = Math.round(rawWeight * 1000) / 1000;
+      }
+    }
+
+    // Bias tendency classification
+    let biasTendency: "easy" | "harsh" | "balanced" | "calibrating" = "calibrating";
+    if (totalRatings >= 5) {
+      const meanScore = scoreSum / totalRatings;
+      if (meanScore > 0.12) {
+        biasTendency = "easy";
+      } else if (meanScore < -0.12) {
+        biasTendency = "harsh";
+      } else {
+        biasTendency = "balanced";
+      }
+    }
+
+    calibrationByRater[raterId] = {
+      raterId,
+      raterName: data.raterName,
+      totalRatings,
+      counts,
+      observedPercentages,
+      smoothedPercentages,
+      targetPercentages,
+      weights,
+      biasTendency,
+      isClamped,
+    };
+  }
+
+  // 3. Compute normalized scores per submission
+  const ratingsBySub = new Map<number, Array<{ raterId: string; raterName: string; score: number }>>();
+  for (const r of ratings) {
+    if (!ratingsBySub.has(r.submissionId)) {
+      ratingsBySub.set(r.submissionId, []);
+    }
+    ratingsBySub.get(r.submissionId)!.push({
+      raterId: r.raterId,
+      raterName: r.raterName,
+      score: Number(r.score),
+    });
+  }
+
+  const candidateScores = new Map<
+    number,
+    {
+      normalizedScore: number | null;
+      details: Array<{ raterId: string; raterName: string; rawScore: number; weight: number }>;
+    }
+  >();
+
+  for (const [submissionId, subRatings] of ratingsBySub.entries()) {
+    if (subRatings.length === 0) {
+      candidateScores.set(submissionId, { normalizedScore: null, details: [] });
+      continue;
+    }
+
+    let weightedSum = 0;
+    let weightSum = 0;
+    const details: Array<{ raterId: string; raterName: string; rawScore: number; weight: number }> = [];
+
+    for (const r of subRatings) {
+      const calib = calibrationByRater[r.raterId];
+      const scoreKey = (Math.round(r.score * 10) / 10).toString();
+      let weight = 1.0;
+      if (calib && calib.weights[scoreKey] !== undefined) {
+        weight = calib.weights[scoreKey];
+      } else {
+        let closestKey = "0";
+        let minDiff = Infinity;
+        for (const vk of validScoreKeys) {
+          const diff = Math.abs(Number(vk) - r.score);
+          if (diff < minDiff) {
+            minDiff = diff;
+            closestKey = vk;
+          }
+        }
+        weight = calib ? calib.weights[closestKey] ?? 1.0 : 1.0;
+      }
+
+      weightedSum += weight * r.score;
+      weightSum += weight;
+      details.push({
+        raterId: r.raterId,
+        raterName: r.raterName,
+        rawScore: r.score,
+        weight: Math.round(weight * 1000) / 1000,
+      });
+    }
+
+    const norm = weightSum > 0 ? Math.round((weightedSum / weightSum) * 100) / 100 : null;
+    candidateScores.set(submissionId, {
+      normalizedScore: norm,
+      details,
+    });
+  }
+
+  return {
+    calibrationByRater,
+    candidateScores,
+  };
 }
 
 async function getRoundCandidates(
   cycleId: number,
   round: "application" | "round1" | "round2",
-): Promise<{ candidates: CandidateRow[]; raters: { raterId: string; raterName: string }[] }> {
+): Promise<{
+  candidates: CandidateRow[];
+  raters: { raterId: string; raterName: string }[];
+  ratersCalibration: Record<string, RaterCalibration>;
+  normalizationConfig: NormalizationConfig;
+}> {
+  const form = await getCycleForm(cycleId);
+  const normConfig = form?.normalization_config || DEFAULT_NORMALIZATION_CONFIG;
+
   if (useDb) {
     let filterClause = "cycle_id = $1";
     if (round === "round1") {
@@ -762,7 +1023,14 @@ async function getRoundCandidates(
       [cycleId],
     );
     const submissions: ApplicationSubmission[] = subRes.rows;
-    if (submissions.length === 0) return { candidates: [], raters: [] };
+    if (submissions.length === 0) {
+      return {
+        candidates: [],
+        raters: [],
+        ratersCalibration: {},
+        normalizationConfig: normConfig,
+      };
+    }
 
     const subIds = submissions.map((s) => s.id);
 
@@ -816,9 +1084,20 @@ async function getRoundCandidates(
       raterName,
     }));
 
+    // Compute normalization for this round
+    const normResult = computeRoundNormalization(
+      scoresRes.map((r) => ({
+        raterId: r.rater_id,
+        raterName: r.rater_name,
+        submissionId: r.submission_id,
+        score: Number(r.score),
+      })),
+      normConfig,
+    );
+
     const candidates: CandidateRow[] = submissions.map((s) => {
       const rowScores = scoresBySub.get(s.id) ?? {};
-      const scoreValues = Object.values(rowScores).map((s) => s.score);
+      const scoreValues = Object.values(rowScores).map((sc) => sc.score);
       const referenceSum = scoreValues.reduce((acc, val) => acc + val, 0);
 
       let status = s.application_status as string;
@@ -830,6 +1109,8 @@ async function getRoundCandidates(
         status = s.round_2_status;
         isOverridden = s.r2_override;
       }
+
+      const candNorm = normResult.candidateScores.get(s.id);
 
       return {
         submissionId: s.id,
@@ -843,10 +1124,17 @@ async function getRoundCandidates(
         scores: rowScores,
         referenceSum: Math.round(referenceSum * 10) / 10,
         scoredCount: scoreValues.length,
+        normalizedScore: candNorm?.normalizedScore ?? null,
+        normalizedDetails: candNorm?.details ?? [],
       };
     });
 
-    return { candidates, raters };
+    return {
+      candidates,
+      raters,
+      ratersCalibration: normResult.calibrationByRater,
+      normalizationConfig: normConfig,
+    };
   } else {
     const store = readLocalStore();
     let eligible = store.submissions.filter((s) => s.cycle_id === cycleId);
@@ -858,12 +1146,23 @@ async function getRoundCandidates(
       );
     }
 
+    if (eligible.length === 0) {
+      return {
+        candidates: [],
+        raters: [],
+        ratersCalibration: {},
+        normalizationConfig: normConfig,
+      };
+    }
+
     const subIds = new Set(eligible.map((s) => s.id));
     const raterMap = new Map<string, string>();
     const scoresBySub = new Map<number, Record<string, { score: number; note: string | null; ratedAt: string }>>();
+    let allRoundScores: Array<{ rater_id: string; rater_name: string; submission_id: number; score: number }> = [];
 
     if (round === "application") {
       const scores = store.appScores.filter((sc) => subIds.has(sc.submission_id));
+      allRoundScores = scores;
       for (const sc of scores) {
         raterMap.set(sc.rater_id, sc.rater_name);
         if (!scoresBySub.has(sc.submission_id)) scoresBySub.set(sc.submission_id, {});
@@ -876,6 +1175,7 @@ async function getRoundCandidates(
     } else {
       const roundNum = round === "round1" ? 1 : 2;
       const scores = store.roundEvals.filter((sc) => subIds.has(sc.submission_id) && sc.round === roundNum);
+      allRoundScores = scores;
       for (const sc of scores) {
         raterMap.set(sc.rater_id, sc.rater_name);
         if (!scoresBySub.has(sc.submission_id)) scoresBySub.set(sc.submission_id, {});
@@ -891,6 +1191,17 @@ async function getRoundCandidates(
       raterId,
       raterName,
     }));
+
+    // Compute normalization for this round
+    const normResult = computeRoundNormalization(
+      allRoundScores.map((sc) => ({
+        raterId: sc.rater_id,
+        raterName: sc.rater_name,
+        submissionId: sc.submission_id,
+        score: sc.score,
+      })),
+      normConfig,
+    );
 
     const candidates: CandidateRow[] = eligible.map((s) => {
       const rowScores = scoresBySub.get(s.id) ?? {};
@@ -911,6 +1222,8 @@ async function getRoundCandidates(
         .filter((a) => a.submission_id === s.id)
         .map((a) => a.brother_email);
 
+      const candNorm = normResult.candidateScores.get(s.id);
+
       return {
         submissionId: s.id,
         applicantName: s.applicant_name,
@@ -923,10 +1236,17 @@ async function getRoundCandidates(
         scores: rowScores,
         referenceSum: Math.round(referenceSum * 10) / 10,
         scoredCount: scoreValues.length,
+        normalizedScore: candNorm?.normalizedScore ?? null,
+        normalizedDetails: candNorm?.details ?? [],
       };
     });
 
-    return { candidates, raters };
+    return {
+      candidates,
+      raters,
+      ratersCalibration: normResult.calibrationByRater,
+      normalizationConfig: normConfig,
+    };
   }
 }
 
@@ -1108,10 +1428,23 @@ async function bulkApplyCutoff(params: {
 
 // ── HTTP Routes ───────────────────────────────────────────────────────────────
 
-// 1. GET /api/recruitment/active-cycle  (Public)
-recruitmentRouter.get("/active-cycle", async (_req: Request, res: Response) => {
+// 1. GET /api/recruitment/active-cycle  (Public / Admin Preview)
+recruitmentRouter.get("/active-cycle", async (req: Request, res: Response) => {
   try {
-    const active = await getActiveCycle();
+    const authUser = getOptionalAuthUser(req);
+    const isAdmin = Boolean(authUser?.isAdmin);
+
+    let active = await getActiveCycle();
+    if (!active && isAdmin) {
+      // If admin and no cycle is currently open, fallback to latest cycle for testing
+      const all = await getCycles();
+      if (all.length > 0) {
+        const latest = all[0];
+        const form = await getCycleForm(latest.id);
+        if (form) active = { cycle: latest, form };
+      }
+    }
+
     if (!active) {
       const all = await getCycles();
       res.json({ active: false, cycle: null, form: null, totalCycles: all.length });
@@ -1140,7 +1473,8 @@ recruitmentRouter.get("/active-cycle", async (_req: Request, res: Response) => {
       cycle,
       form,
       computedStatus,
-      isAcceptingSubmissions: computedStatus === "open",
+      isAcceptingSubmissions: computedStatus === "open" || isAdmin,
+      isAdminBypass: isAdmin,
     });
   } catch (err) {
     console.error("Error fetching active cycle:", err);
@@ -1151,6 +1485,7 @@ recruitmentRouter.get("/active-cycle", async (_req: Request, res: Response) => {
 // 2. GET /api/recruitment/my-submission  (Requires @umich.edu auth)
 recruitmentRouter.get("/my-submission", requireAuth, async (req: AuthRequest, res: Response) => {
   const userEmail = req.user?.email;
+  const isAdmin = Boolean(req.user?.isAdmin);
   if (!userEmail) {
     res.status(401).json({ error: "Unauthorized" });
     return;
@@ -1169,11 +1504,23 @@ recruitmentRouter.get("/my-submission", requireAuth, async (req: AuthRequest, re
       if (active) {
         cycle = active.cycle;
         form = active.form;
+      } else if (isAdmin) {
+        const all = await getCycles();
+        if (all.length > 0) {
+          cycle = all[0];
+          form = await getCycleForm(cycle.id);
+        }
       }
     }
 
     if (!cycle || !form) {
       res.json({ submitted: false, cycle: null, submission: null });
+      return;
+    }
+
+    // If an admin requests a fresh form to submit another test application
+    if (isAdmin && req.query.newTest === "true") {
+      res.json({ submitted: false, cycle, submission: null });
       return;
     }
 
@@ -1218,6 +1565,8 @@ recruitmentRouter.get("/my-submission", requireAuth, async (req: AuthRequest, re
 recruitmentRouter.post("/submit", requireAuth, async (req: AuthRequest, res: Response) => {
   const userEmail = req.user?.email;
   const userName = req.user?.name || userEmail?.split("@")[0] || "Applicant";
+  const isAdmin = Boolean(req.user?.isAdmin);
+
   if (!userEmail) {
     res.status(401).json({ error: "Unauthorized: @umich.edu Google sign-in required." });
     return;
@@ -1237,6 +1586,13 @@ recruitmentRouter.post("/submit", requireAuth, async (req: AuthRequest, res: Res
         const f = await getCycleForm(c.id);
         if (f) active = { cycle: c, form: f };
       }
+    } else if (!active && isAdmin) {
+      const all = await getCycles();
+      if (all.length > 0) {
+        const c = all[0];
+        const f = await getCycleForm(c.id);
+        if (f) active = { cycle: c, form: f };
+      }
     }
 
     if (!active) {
@@ -1246,28 +1602,37 @@ recruitmentRouter.post("/submit", requireAuth, async (req: AuthRequest, res: Res
 
     const { cycle, form } = active;
 
-    if (cycle.status !== "open") {
-      res.status(403).json({ error: "This recruitment cycle is not accepting applications." });
-      return;
-    }
+    // Normal applicants must satisfy all cycle status and window constraints
+    if (!isAdmin) {
+      if (cycle.status !== "open") {
+        res.status(403).json({ error: "This recruitment cycle is not accepting applications." });
+        return;
+      }
 
-    if (form.is_locked) {
-      res.status(403).json({ error: "Applications are currently locked by the recruitment chairs." });
-      return;
-    }
+      if (form.is_locked) {
+        res.status(403).json({ error: "Applications are currently locked by the recruitment chairs." });
+        return;
+      }
 
-    const now = new Date();
-    if (form.opens_at && now < new Date(form.opens_at)) {
-      res.status(403).json({ error: "Applications have not yet opened." });
-      return;
-    }
-    if (form.closes_at && now > new Date(form.closes_at)) {
-      res.status(403).json({ error: "The application deadline has passed." });
-      return;
+      const now = new Date();
+      if (form.opens_at && now < new Date(form.opens_at)) {
+        res.status(403).json({ error: "Applications have not yet opened." });
+        return;
+      }
+      if (form.closes_at && now > new Date(form.closes_at)) {
+        res.status(403).json({ error: "The application deadline has passed." });
+        return;
+      }
+
+      const existing = await getSubmissionForUser(cycle.id, userEmail);
+      if (existing) {
+        res.status(409).json({ error: "You have already submitted an application for this cycle." });
+        return;
+      }
     }
 
     const existing = await getSubmissionForUser(cycle.id, userEmail);
-    if (existing) {
+    if (!isAdmin && existing) {
       res.status(409).json({ error: "You have already submitted an application for this cycle." });
       return;
     }
@@ -1287,17 +1652,31 @@ recruitmentRouter.post("/submit", requireAuth, async (req: AuthRequest, res: Res
 
     const applicantName = (answers.firstName && answers.lastName)
       ? `${answers.firstName} ${answers.lastName}`.trim()
-      : (userName || userEmail);
+      : (answers.name || userName || userEmail);
+
+    const applicantEmail = (answers.email && typeof answers.email === "string" && answers.email.includes("@"))
+      ? answers.email.trim()
+      : userEmail;
+
+    // If an admin is submitting repeat applications for testing, assign a unique test applicant identifier
+    // to satisfy PostgreSQL `CONSTRAINT uq_cycle_applicant UNIQUE (cycle_id, applicant_user_id)`
+    const applicantUserId = (isAdmin && existing)
+      ? `${userEmail.toLowerCase()}#test_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+      : userEmail;
 
     const submission = await createSubmission({
       cycleId: cycle.id,
-      applicantUserId: userEmail,
-      applicantEmail: answers.email || userEmail,
+      applicantUserId,
+      applicantEmail,
       applicantName,
       answers,
     });
 
-    res.json({ ok: true, submission });
+    res.json({
+      ok: true,
+      submission,
+      isTestSubmission: Boolean(isAdmin && existing),
+    });
   } catch (err: any) {
     console.error("Application submission failed:", err);
     res.status(500).json({ error: err.message || "Failed to submit application. Please try again." });
@@ -1422,6 +1801,26 @@ recruitmentRouter.post("/cycles", requireAdmin, async (req: AuthRequest, res: Re
 
 // PUT /api/recruitment/cycles/:id  (Admin: update cycle)
 recruitmentRouter.put("/cycles/:id", requireAdmin, async (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  const { name, status } = req.body as {
+    name?: string;
+    status?: "draft" | "open" | "closed" | "archived";
+  };
+  try {
+    const updated = await updateCycle(id, { name, status });
+    if (!updated) {
+      res.status(404).json({ error: "Cycle not found" });
+      return;
+    }
+    res.json(updated);
+  } catch (err) {
+    console.error("Error updating cycle:", err);
+    res.status(500).json({ error: "Failed to update cycle." });
+  }
+});
+
+// PATCH /api/recruitment/cycles/:id  (Admin: partial update cycle)
+recruitmentRouter.patch("/cycles/:id", requireAdmin, async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   const { name, status } = req.body as {
     name?: string;
@@ -1668,6 +2067,88 @@ recruitmentRouter.put(
     } catch (err) {
       console.error("Error overriding submission status:", err);
       res.status(500).json({ error: "Failed to override status." });
+    }
+  },
+);
+
+// GET /api/recruitment/cycles/:id/normalization-config  (Admin: fetch cycle normalization settings)
+recruitmentRouter.get(
+  "/cycles/:id/normalization-config",
+  requireAdmin,
+  async (req: Request, res: Response) => {
+    const cycleId = Number(req.params.id);
+    try {
+      const form = await getCycleForm(cycleId);
+      const config = form?.normalization_config || DEFAULT_NORMALIZATION_CONFIG;
+      res.json({ ok: true, config });
+    } catch (err) {
+      console.error("Error fetching normalization config:", err);
+      res.status(500).json({ error: "Failed to fetch normalization config." });
+    }
+  },
+);
+
+// PUT /api/recruitment/cycles/:id/normalization-config  (Admin: update cycle normalization settings)
+recruitmentRouter.put(
+  "/cycles/:id/normalization-config",
+  requireAdmin,
+  async (req: Request, res: Response) => {
+    const cycleId = Number(req.params.id);
+    const { k, minWeight, maxWeight, targetDistribution } = req.body;
+
+    if (typeof k !== "number" || k <= 0) {
+      res.status(400).json({ error: "Prior ratings count (k) must be a positive number." });
+      return;
+    }
+    if (
+      typeof minWeight !== "number" ||
+      typeof maxWeight !== "number" ||
+      minWeight <= 0 ||
+      maxWeight <= minWeight
+    ) {
+      res.status(400).json({ error: "Invalid minWeight or maxWeight boundaries." });
+      return;
+    }
+    const validScores = ["-1", "-0.5", "0", "0.5", "1"];
+    if (!targetDistribution || typeof targetDistribution !== "object") {
+      res.status(400).json({ error: "targetDistribution must be an object." });
+      return;
+    }
+    let sumDist = 0;
+    for (const v of validScores) {
+      const val = Number(targetDistribution[v]);
+      if (isNaN(val) || val < 0) {
+        res.status(400).json({ error: `Distribution for ${v} must be a non-negative number.` });
+        return;
+      }
+      sumDist += val;
+    }
+    if (Math.abs(sumDist - 1.0) > 0.02) {
+      res.status(400).json({
+        error: `Target distribution must sum to 100% (currently ${(sumDist * 100).toFixed(1)}%).`,
+      });
+      return;
+    }
+
+    try {
+      const updatedForm = await updateCycleForm(cycleId, {
+        normalization_config: {
+          k,
+          minWeight,
+          maxWeight,
+          targetDistribution: {
+            "-1": Number(targetDistribution["-1"]),
+            "-0.5": Number(targetDistribution["-0.5"]),
+            "0": Number(targetDistribution["0"]),
+            "0.5": Number(targetDistribution["0.5"]),
+            "1": Number(targetDistribution["1"]),
+          },
+        },
+      });
+      res.json({ ok: true, config: updatedForm?.normalization_config });
+    } catch (err) {
+      console.error("Error updating normalization config:", err);
+      res.status(500).json({ error: "Failed to update normalization config." });
     }
   },
 );

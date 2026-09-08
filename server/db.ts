@@ -80,15 +80,20 @@ export async function runMigrations() {
   `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS recruitment_cycle_forms (
-      id              SERIAL PRIMARY KEY,
-      cycle_id        INT NOT NULL REFERENCES recruitment_cycles(id) ON DELETE CASCADE UNIQUE,
-      questions       JSONB NOT NULL DEFAULT '[]',
-      opens_at        TIMESTAMPTZ,
-      closes_at       TIMESTAMPTZ,
-      is_locked       BOOLEAN NOT NULL DEFAULT false,
-      status_messages JSONB DEFAULT '{}',
-      updated_at      TIMESTAMPTZ DEFAULT NOW()
+      id                   SERIAL PRIMARY KEY,
+      cycle_id             INT NOT NULL REFERENCES recruitment_cycles(id) ON DELETE CASCADE UNIQUE,
+      questions            JSONB NOT NULL DEFAULT '[]',
+      opens_at             TIMESTAMPTZ,
+      closes_at            TIMESTAMPTZ,
+      is_locked            BOOLEAN NOT NULL DEFAULT false,
+      status_messages      JSONB DEFAULT '{}',
+      normalization_config JSONB DEFAULT NULL,
+      updated_at           TIMESTAMPTZ DEFAULT NOW()
     )
+  `);
+  await pool.query(`
+    ALTER TABLE recruitment_cycle_forms
+      ADD COLUMN IF NOT EXISTS normalization_config JSONB DEFAULT NULL
   `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS application_submissions (

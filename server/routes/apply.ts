@@ -48,7 +48,7 @@ applyRouter.post("/apply", requireAuth, async (req: AuthRequest, res: Response) 
     const configRow = await pool.query("SELECT value FROM site_content WHERE key = 'apply.config'");
     if (configRow.rows.length > 0) {
       const parsedConfig = JSON.parse(configRow.rows[0].value);
-      if (parsedConfig.isOpen === false) {
+      if (parsedConfig.isOpen === false && !req.user?.isAdmin) {
         res.status(403).json({ error: "Applications are currently closed. Application opening soon." });
         return;
       }

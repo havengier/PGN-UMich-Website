@@ -26,6 +26,12 @@ import {
   X,
   AlertTriangle,
   UserPlus,
+  Scale,
+  BarChart2,
+  Info,
+  ArrowUpDown,
+  TrendingUp,
+  TrendingDown,
 } from "lucide-react";
 import { LoginGate } from "@/app/components/LoginGate";
 import { useAuth } from "@/app/context/AuthContext";
@@ -50,6 +56,39 @@ interface ConfigSection {
   fields: ConfigField[];
 }
 
+export interface NormalizationConfig {
+  k: number;
+  minWeight: number;
+  maxWeight: number;
+  targetDistribution: Record<string, number>;
+}
+
+export interface RaterCalibration {
+  raterId: string;
+  raterName: string;
+  totalRatings: number;
+  counts: Record<string, number>;
+  observedPercentages: Record<string, number>;
+  smoothedPercentages: Record<string, number>;
+  targetPercentages: Record<string, number>;
+  weights: Record<string, number>;
+  biasTendency: "easy" | "harsh" | "balanced" | "calibrating";
+  isClamped: boolean;
+}
+
+export const DEFAULT_NORMALIZATION_CONFIG: NormalizationConfig = {
+  k: 15,
+  minWeight: 0.3,
+  maxWeight: 3.0,
+  targetDistribution: {
+    "-1": 0.05,
+    "-0.5": 0.10,
+    "0": 0.70,
+    "0.5": 0.10,
+    "1": 0.05,
+  },
+};
+
 interface CycleForm {
   id: number;
   cycle_id: number;
@@ -58,6 +97,7 @@ interface CycleForm {
   closes_at: string | null;
   is_locked: boolean;
   status_messages?: Record<string, Record<string, { title: string; body: string }>>;
+  normalization_config?: NormalizationConfig | null;
   updated_at: string;
 }
 
@@ -82,6 +122,13 @@ interface CandidateRow {
   referenceSum: number;
   scoredCount: number;
   assignedBrothers?: string[];
+  normalizedScore: number | null;
+  normalizedDetails?: Array<{
+    raterId: string;
+    raterName: string;
+    rawScore: number;
+    weight: number;
+  }>;
 }
 
 const SCORE_OPTIONS = [-1, -0.5, 0, 0.5, 1];
@@ -662,13 +709,21 @@ function RoundReviewTab({
 }) {
   const [candidates, setCandidates] = useState<CandidateRow[]>([]);
   const [raters, setRaters] = useState<{ raterId: string; raterName: string }[]>([]);
+  const [ratersCalibration, setRatersCalibration] = useState<Record<string, RaterCalibration>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
+  // Sorting state
+  const [sortColumn, setSortColumn] = useState<"normalized" | "sum" | "name" | "status">("normalized");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+
+  // Rater Calibration modal state
+  const [showCalibrationModal, setShowCalibrationModal] = useState(false);
+
   // Cutoff tool modal state
   const [showCutoffModal, setShowCutoffModal] = useState(false);
-  const [cutoffColumn, setCutoffColumn] = useState<string>("sum");
+  const [cutoffColumn, setCutoffColumn] = useState<string>("normalized");
   const [cutoffThreshold, setCutoffThreshold] = useState<number>(0);
   const [applyingCutoff, setApplyingCutoff] = useState(false);
 
@@ -701,6 +756,7 @@ function RoundReviewTab({
       if (data && Array.isArray(data.candidates)) {
         setCandidates(data.candidates);
         setRaters(data.raters || []);
+        setRatersCalibration(data.ratersCalibration || {});
       }
     } catch (err) {
       console.error("Failed to load round candidates:", err);
@@ -826,7 +882,9 @@ function RoundReviewTab({
 
     candidates.forEach((c) => {
       let val = 0;
-      if (cutoffColumn === "sum") {
+      if (cutoffColumn === "normalized") {
+        val = c.normalizedScore !== null ? c.normalizedScore : -999;
+      } else if (cutoffColumn === "sum") {
         val = c.referenceSum;
       } else {
         val = c.scores[cutoffColumn]?.score ?? 0;
@@ -878,6 +936,7 @@ function RoundReviewTab({
       "Submitted At",
       ...raterHeaders,
       "Reference Sum",
+      "Normalized Score",
       "Status",
       "Manually Overridden",
     ];
@@ -896,6 +955,7 @@ function RoundReviewTab({
         new Date(c.submittedAt).toLocaleDateString(),
         ...raterScores,
         c.referenceSum,
+        c.normalizedScore !== null ? c.normalizedScore : "",
         c.status,
         c.isOverridden ? "Yes" : "No",
       ];
@@ -912,16 +972,35 @@ function RoundReviewTab({
     document.body.removeChild(link);
   }
 
-  // Filter candidates
+  // Filter & Sort candidates
   const filteredCandidates = useMemo(() => {
-    return candidates.filter((c) => {
+    const list = candidates.filter((c) => {
       const matchesSearch =
         c.applicantName.toLowerCase().includes(search.toLowerCase()) ||
         c.applicantEmail.toLowerCase().includes(search.toLowerCase());
       const matchesStatus = statusFilter === "all" || c.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
-  }, [candidates, search, statusFilter]);
+
+    list.sort((a, b) => {
+      let comparison = 0;
+      if (sortColumn === "normalized") {
+        if (a.normalizedScore === null && b.normalizedScore === null) comparison = 0;
+        else if (a.normalizedScore === null) comparison = -1;
+        else if (b.normalizedScore === null) comparison = 1;
+        else comparison = a.normalizedScore - b.normalizedScore;
+      } else if (sortColumn === "sum") {
+        comparison = a.referenceSum - b.referenceSum;
+      } else if (sortColumn === "name") {
+        comparison = a.applicantName.localeCompare(b.applicantName);
+      } else if (sortColumn === "status") {
+        comparison = a.status.localeCompare(b.status);
+      }
+      return sortDirection === "asc" ? comparison : -comparison;
+    });
+
+    return list;
+  }, [candidates, search, statusFilter, sortColumn, sortDirection]);
 
   return (
     <div className="space-y-6">
@@ -934,21 +1013,31 @@ function RoundReviewTab({
 
         <div className="flex flex-wrap items-center gap-2.5">
           <button
-            onClick={() => setShowCutoffModal(true)}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-stone-950 text-xs font-bold tracking-wider uppercase rounded-xl transition-all shadow-xs"
+            onClick={() => setShowCalibrationModal(true)}
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-stone-900 hover:bg-black text-white text-xs font-bold tracking-wider uppercase rounded-xl transition-all shadow-xs cursor-pointer"
+          >
+            <Scale size={14} className="text-[#F5A623]" /> Rater Calibration ({Object.keys(ratersCalibration).length})
+          </button>
+          <button
+            onClick={() => {
+              setCutoffColumn("normalized");
+              setCutoffThreshold(0);
+              setShowCutoffModal(true);
+            }}
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-stone-950 text-xs font-bold tracking-wider uppercase rounded-xl transition-all shadow-xs cursor-pointer"
           >
             <Sliders size={14} /> Set Cutoff Tool
           </button>
           <button
             onClick={handleExportCsv}
             disabled={candidates.length === 0}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-bold tracking-wider uppercase rounded-xl transition-all border border-stone-200 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-bold tracking-wider uppercase rounded-xl transition-all border border-stone-200 disabled:opacity-50 cursor-pointer"
           >
             <Download size={14} /> Export CSV
           </button>
           <button
             onClick={loadData}
-            className="p-2 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-xl transition-colors"
+            className="p-2 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-xl transition-colors cursor-pointer"
             title="Refresh list"
           >
             <RefreshCw size={15} />
@@ -1003,7 +1092,26 @@ function RoundReviewTab({
             <table className="w-full text-left text-xs text-stone-700">
               <thead className="bg-stone-50/80 border-b border-stone-200 text-stone-500 font-bold uppercase tracking-wider text-[10px]">
                 <tr>
-                  <th className="px-5 py-3.5">Candidate</th>
+                  <th
+                    onClick={() => {
+                      if (sortColumn === "name") {
+                        setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+                      } else {
+                        setSortColumn("name");
+                        setSortDirection("asc");
+                      }
+                    }}
+                    className="px-5 py-3.5 cursor-pointer hover:bg-stone-100 transition-colors select-none group"
+                    title="Click to sort by candidate name"
+                  >
+                    <div className="inline-flex items-center gap-1">
+                      <span>Candidate</span>
+                      <ArrowUpDown
+                        size={11}
+                        className={`text-stone-400 ${sortColumn === "name" ? "text-stone-800 font-bold" : ""}`}
+                      />
+                    </div>
+                  </th>
                   {round === "application" && (
                     <th className="px-4 py-3.5 whitespace-nowrap">Assigned Brothers</th>
                   )}
@@ -1017,7 +1125,51 @@ function RoundReviewTab({
                   <th className="px-4 py-3.5 whitespace-nowrap text-center bg-amber-50/50 text-[#7A0C0C]">
                     Your Score
                   </th>
-                  <th className="px-4 py-3.5 whitespace-nowrap text-center">Reference Sum</th>
+                  {/* Normalized Score (Calibrated with Bayesian Prior) */}
+                  <th
+                    onClick={() => {
+                      if (sortColumn === "normalized") {
+                        setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+                      } else {
+                        setSortColumn("normalized");
+                        setSortDirection("desc");
+                      }
+                    }}
+                    className="px-4 py-3.5 whitespace-nowrap text-center cursor-pointer hover:bg-amber-100/60 transition-colors select-none group bg-amber-50/20"
+                    title="Calibrated Normalized Score (Bayesian smoothed, k=15). Click to sort."
+                  >
+                    <div className="inline-flex items-center justify-center gap-1.5">
+                      <span className="text-amber-950 font-extrabold">Normalized Score</span>
+                      <Sparkles size={11} className="text-[#F5A623]" />
+                      <ArrowUpDown
+                        size={11}
+                        className={`text-stone-400 group-hover:text-stone-700 ${
+                          sortColumn === "normalized" ? "text-amber-700 font-bold" : ""
+                        }`}
+                      />
+                    </div>
+                  </th>
+                  {/* Reference Sum (Non-averaged, purely raw additive reference) */}
+                  <th
+                    onClick={() => {
+                      if (sortColumn === "sum") {
+                        setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+                      } else {
+                        setSortColumn("sum");
+                        setSortDirection("desc");
+                      }
+                    }}
+                    className="px-4 py-3.5 whitespace-nowrap text-center cursor-pointer hover:bg-stone-100 transition-colors select-none group"
+                    title="Click to sort by reference sum"
+                  >
+                    <div className="inline-flex items-center justify-center gap-1">
+                      <span>Reference Sum</span>
+                      <ArrowUpDown
+                        size={11}
+                        className={`text-stone-400 ${sortColumn === "sum" ? "text-stone-800 font-bold" : ""}`}
+                      />
+                    </div>
+                  </th>
                   <th className="px-5 py-3.5 whitespace-nowrap">Round Status</th>
                   <th className="px-4 py-3.5 text-right">Actions</th>
                 </tr>
@@ -1029,7 +1181,6 @@ function RoundReviewTab({
 
                   return (
                     <tr key={c.submissionId} className="hover:bg-stone-50/70 transition-colors">
-                      {/* Candidate Column */}
                       <td className="px-5 py-4">
                         <button
                           type="button"
@@ -1085,7 +1236,7 @@ function RoundReviewTab({
                         </td>
                       )}
 
-                      {/* Other Raters' individual scores */}
+                      {/* Other Raters' individual raw scores */}
                       {raters.map((r) => {
                         const scoreData = c.scores[r.raterId];
                         return (
@@ -1120,7 +1271,7 @@ function RoundReviewTab({
                                 key={val}
                                 type="button"
                                 onClick={() => handleRate(c.submissionId, val, myScoreObj?.note ?? undefined)}
-                                className={`w-7 h-7 rounded-lg text-[10px] font-bold transition-all ${
+                                className={`w-7 h-7 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
                                   isSelected
                                     ? "bg-[#7A0C0C] text-white shadow-xs scale-105"
                                     : "bg-white border border-stone-200 text-stone-600 hover:border-[#7A0C0C]/50"
@@ -1141,13 +1292,74 @@ function RoundReviewTab({
                               })
                             }
                             title="Add/Edit rater note"
-                            className={`p-1.5 rounded-lg transition-colors ${
+                            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                               myScoreObj?.note ? "text-amber-600 bg-amber-100" : "text-stone-300 hover:text-stone-600"
                             }`}
                           >
                             <MessageSquare size={13} />
                           </button>
                         </div>
+                      </td>
+
+                      {/* Normalized Score (Calibrated) with Hover Breakdown */}
+                      <td className="px-4 py-4 text-center whitespace-nowrap bg-amber-50/10">
+                        {c.normalizedScore === null ? (
+                          <span className="text-stone-300 font-mono text-xs">—</span>
+                        ) : (
+                          <div className="relative group/norm inline-block">
+                            <span
+                              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold font-mono tracking-tight cursor-help transition-all shadow-xs ${
+                                c.normalizedScore > 0
+                                  ? "bg-emerald-50 text-emerald-800 border border-emerald-300/80 group-hover/norm:border-emerald-500"
+                                  : c.normalizedScore === 0
+                                  ? "bg-stone-100 text-stone-700 border border-stone-300 group-hover/norm:border-stone-500"
+                                  : "bg-rose-50 text-rose-800 border border-rose-300/80 group-hover/norm:border-rose-500"
+                              }`}
+                            >
+                              {c.normalizedScore > 0 ? `+${c.normalizedScore.toFixed(2)}` : c.normalizedScore.toFixed(2)}
+                            </span>
+
+                            {/* Tooltip on hover */}
+                            <div className="absolute z-30 bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover/norm:block w-64 p-3 bg-stone-900 text-white rounded-xl shadow-xl text-left pointer-events-none text-[11px] animate-in fade-in zoom-in-95 duration-150">
+                              <div className="flex items-center justify-between border-b border-stone-700 pb-1.5 mb-2">
+                                <span className="font-bold text-[#F5A623] flex items-center gap-1 text-[10px] uppercase tracking-wider">
+                                  <Sparkles size={10} /> Calibration Breakdown
+                                </span>
+                                <span className="text-[10px] text-stone-400 font-mono">
+                                  Norm: {c.normalizedScore > 0 ? `+${c.normalizedScore.toFixed(2)}` : c.normalizedScore.toFixed(2)}
+                                </span>
+                              </div>
+                              <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                                {(c.normalizedDetails || []).map((d, idx) => (
+                                  <div key={idx} className="flex items-center justify-between text-stone-300">
+                                    <span className="truncate max-w-[120px] font-medium">
+                                      {d.raterName || d.raterId.split("@")[0]}:
+                                    </span>
+                                    <span className="font-mono text-white text-[10px]">
+                                      raw{" "}
+                                      <strong
+                                        className={
+                                          d.rawScore > 0
+                                            ? "text-emerald-400"
+                                            : d.rawScore < 0
+                                            ? "text-rose-400"
+                                            : "text-stone-300"
+                                        }
+                                      >
+                                        {d.rawScore > 0 ? `+${d.rawScore}` : d.rawScore}
+                                      </strong>{" "}
+                                      <span className="text-stone-400">× {d.weight.toFixed(2)}x</span>
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="mt-2 pt-1.5 border-t border-stone-800 text-[9px] text-stone-400 flex items-center justify-between">
+                                <span>Formula: Σ(wt × score) / Σ(wt)</span>
+                                <span>k=15 prior</span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </td>
 
                       {/* Reference Sum (Non-averaged, purely sortable reference) */}
@@ -1193,7 +1405,7 @@ function RoundReviewTab({
                         <button
                           type="button"
                           onClick={() => setSelectedCandidate(c)}
-                          className="text-xs text-stone-500 hover:text-[#7A0C0C] font-semibold inline-flex items-center gap-1"
+                          className="text-xs text-stone-500 hover:text-[#7A0C0C] font-semibold inline-flex items-center gap-1 cursor-pointer"
                         >
                           <Eye size={13} /> View
                         </button>
@@ -1207,17 +1419,21 @@ function RoundReviewTab({
         </div>
       )}
 
-      {/* ── Modal: Set Cutoff Tool ── */}
+      {/* ── Cutoff Tool Modal ── */}
       {showCutoffModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-xl border border-stone-200">
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-stone-200 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between pb-4 border-b border-stone-100">
               <div className="flex items-center gap-2">
-                <Sliders size={18} className="text-[#7A0C0C]" />
-                <h3 className="text-base font-bold text-stone-900">Set Cutoff & Bulk Decide</h3>
+                <Sliders size={16} className="text-[#7A0C0C]" />
+                <h3 className="font-bold text-stone-900 text-base">Bulk Cutoff Decision Tool</h3>
               </div>
-              <button onClick={() => setShowCutoffModal(false)} className="text-stone-400 hover:text-stone-700">
-                <X size={18} />
+              <button
+                type="button"
+                onClick={() => setShowCutoffModal(false)}
+                className="p-1 text-stone-400 hover:text-stone-700 rounded-lg hover:bg-stone-100"
+              >
+                <X size={16} />
               </button>
             </div>
 
@@ -1233,9 +1449,16 @@ function RoundReviewTab({
                   <label className="font-bold text-stone-700 block mb-1">Filter Column</label>
                   <select
                     value={cutoffColumn}
-                    onChange={(e) => setCutoffColumn(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setCutoffColumn(val);
+                      if (val === "normalized") {
+                        setCutoffThreshold(0);
+                      }
+                    }}
                     className="w-full border border-stone-200 rounded-xl px-3 py-2 outline-none focus:border-[#7A0C0C]"
                   >
+                    <option value="normalized">✨ Normalized Score (Calibrated)</option>
                     <option value="sum">Reference Sum (Σ Scores)</option>
                     {raters.map((r) => (
                       <option key={r.raterId} value={r.raterId}>
@@ -1249,7 +1472,7 @@ function RoundReviewTab({
                   <label className="font-bold text-stone-700 block mb-1">Cutoff Threshold (&gt;= Value)</label>
                   <input
                     type="number"
-                    step="0.5"
+                    step={cutoffColumn === "normalized" ? "0.05" : "0.5"}
                     value={cutoffThreshold}
                     onChange={(e) => setCutoffThreshold(Number(e.target.value))}
                     className="w-full border border-stone-200 rounded-xl px-3 py-2 outline-none focus:border-[#7A0C0C]"
@@ -1281,16 +1504,42 @@ function RoundReviewTab({
                   {cutoffPreview.above.map((c) => (
                     <div key={c.submissionId} className="py-1 flex justify-between text-emerald-900">
                       <span>{c.applicantName}</span>
-                      <span className="font-semibold">
-                        Score: {cutoffColumn === "sum" ? c.referenceSum : c.scores[cutoffColumn]?.score ?? 0}
+                      <span className="font-semibold font-mono">
+                        Score:{" "}
+                        {cutoffColumn === "normalized"
+                          ? c.normalizedScore !== null
+                            ? c.normalizedScore > 0
+                              ? `+${c.normalizedScore.toFixed(2)}`
+                              : c.normalizedScore.toFixed(2)
+                            : "Unscored"
+                          : cutoffColumn === "sum"
+                          ? c.referenceSum > 0
+                            ? `+${c.referenceSum}`
+                            : c.referenceSum
+                          : c.scores[cutoffColumn]?.score !== undefined
+                          ? c.scores[cutoffColumn].score
+                          : "—"}
                       </span>
                     </div>
                   ))}
                   {cutoffPreview.below.map((c) => (
                     <div key={c.submissionId} className="py-1 flex justify-between text-stone-500">
                       <span>{c.applicantName}</span>
-                      <span className="font-semibold">
-                        Score: {cutoffColumn === "sum" ? c.referenceSum : c.scores[cutoffColumn]?.score ?? 0}
+                      <span className="font-semibold font-mono">
+                        Score:{" "}
+                        {cutoffColumn === "normalized"
+                          ? c.normalizedScore !== null
+                            ? c.normalizedScore > 0
+                              ? `+${c.normalizedScore.toFixed(2)}`
+                              : c.normalizedScore.toFixed(2)
+                            : "Unscored"
+                          : cutoffColumn === "sum"
+                          ? c.referenceSum > 0
+                            ? `+${c.referenceSum}`
+                            : c.referenceSum
+                          : c.scores[cutoffColumn]?.score !== undefined
+                          ? c.scores[cutoffColumn].score
+                          : "—"}
                       </span>
                     </div>
                   ))}
@@ -1302,7 +1551,7 @@ function RoundReviewTab({
               <button
                 type="button"
                 onClick={() => setShowCutoffModal(false)}
-                className="px-4 py-2 text-xs font-semibold text-stone-600 hover:bg-stone-100 rounded-lg"
+                className="px-4 py-2 text-xs font-semibold text-stone-600 hover:bg-stone-100 rounded-lg cursor-pointer"
               >
                 Cancel
               </button>
@@ -1310,7 +1559,7 @@ function RoundReviewTab({
                 type="button"
                 onClick={handleConfirmCutoff}
                 disabled={applyingCutoff || candidates.length === 0}
-                className="px-5 py-2 text-xs font-bold tracking-wider uppercase bg-[#7A0C0C] hover:bg-[#5C0A0A] text-white rounded-lg disabled:opacity-50"
+                className="px-5 py-2 text-xs font-bold tracking-wider uppercase bg-[#7A0C0C] hover:bg-[#5C0A0A] text-white rounded-lg disabled:opacity-50 cursor-pointer"
               >
                 {applyingCutoff ? "Applying…" : "Apply Cutoff & Update"}
               </button>
@@ -1318,6 +1567,14 @@ function RoundReviewTab({
           </div>
         </div>
       )}
+
+      {/* ── Rater Calibration Modal ── */}
+      <RaterCalibrationModal
+        isOpen={showCalibrationModal}
+        onClose={() => setShowCalibrationModal(false)}
+        roundTitle={roundTitle}
+        ratersCalibration={ratersCalibration}
+      />
 
       {/* ── Slide-Over Drawer: Candidate Full Details ── */}
       {selectedCandidate && (
@@ -1334,7 +1591,7 @@ function RoundReviewTab({
                 </div>
                 <button
                   onClick={() => setSelectedCandidate(null)}
-                  className="p-1.5 text-stone-400 hover:text-stone-700 rounded-lg hover:bg-stone-100"
+                  className="p-1.5 text-stone-400 hover:text-stone-700 rounded-lg hover:bg-stone-100 cursor-pointer"
                 >
                   <X size={18} />
                 </button>
@@ -1349,19 +1606,65 @@ function RoundReviewTab({
                   </span>
                 </div>
 
+                {/* Score Overview Cards */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3.5 bg-amber-50/60 rounded-xl border border-amber-200 text-center">
+                    <span className="text-[10px] uppercase font-bold text-amber-900 block flex items-center justify-center gap-1">
+                      <Sparkles size={11} className="text-[#F5A623]" /> Normalized Score
+                    </span>
+                    <span className="text-xl font-bold text-amber-950 font-mono mt-0.5 block">
+                      {selectedCandidate.normalizedScore !== null
+                        ? selectedCandidate.normalizedScore > 0
+                          ? `+${selectedCandidate.normalizedScore.toFixed(2)}`
+                          : selectedCandidate.normalizedScore.toFixed(2)
+                        : "—"}
+                    </span>
+                    <span className="text-[9px] text-stone-400 block mt-0.5">Bayesian calibrated (k=15)</span>
+                  </div>
+
+                  <div className="p-3.5 bg-stone-50 rounded-xl border border-stone-200 text-center">
+                    <span className="text-[10px] uppercase font-bold text-stone-500 block">Reference Sum</span>
+                    <span className="text-xl font-bold text-stone-800 mt-0.5 block">
+                      {selectedCandidate.referenceSum > 0
+                        ? `+${selectedCandidate.referenceSum}`
+                        : selectedCandidate.referenceSum}
+                    </span>
+                    <span className="text-[9px] text-stone-400 block mt-0.5">
+                      {selectedCandidate.scoredCount} brothers rated
+                    </span>
+                  </div>
+                </div>
+
+                {/* Individual Scores & Weighting Breakdown */}
                 <div className="p-4 bg-stone-50 rounded-xl border border-stone-100">
                   <span className="text-xs font-bold text-stone-700 block mb-2">
-                    {roundTitle} — Individual Scores
+                    {roundTitle} — Individual Scores & Weights
                   </span>
                   <div className="space-y-1.5">
                     {raters.map((r) => {
                       const sc = selectedCandidate.scores[r.raterId];
+                      const detail = (selectedCandidate.normalizedDetails || []).find(
+                        (d) => d.raterId === r.raterId,
+                      );
                       return (
                         <div key={r.raterId} className="flex items-center justify-between text-xs">
                           <span className="text-stone-600">{r.raterName}</span>
-                          <span className="font-semibold text-stone-900">
-                            {sc ? (sc.score > 0 ? `+${sc.score}` : sc.score) : "Not scored"}
-                            {sc?.note && <span className="text-stone-400 text-[10px] ml-1.5">({sc.note})</span>}
+                          <span className="font-semibold text-stone-900 font-mono flex items-center gap-2">
+                            {sc ? (
+                              <>
+                                <span className={sc.score > 0 ? "text-emerald-700" : sc.score < 0 ? "text-rose-700" : "text-stone-700"}>
+                                  {sc.score > 0 ? `+${sc.score}` : sc.score}
+                                </span>
+                                {detail && (
+                                  <span className="text-[10px] font-normal text-stone-400">
+                                    (wt {detail.weight.toFixed(2)}x)
+                                  </span>
+                                )}
+                              </>
+                            ) : (
+                              <span className="text-stone-300 font-normal">Not scored</span>
+                            )}
+                            {sc?.note && <span className="text-stone-400 text-[10px] ml-1.5 font-sans">({sc.note})</span>}
                           </span>
                         </div>
                       );
@@ -1602,6 +1905,203 @@ function RoundReviewTab({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Rater Calibration Modal Component ─────────────────────────────────────────
+
+function RaterCalibrationModal({
+  isOpen,
+  onClose,
+  roundTitle,
+  ratersCalibration,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  roundTitle: string;
+  ratersCalibration: Record<string, RaterCalibration>;
+}) {
+  if (!isOpen) return null;
+
+  const ratersList = Object.values(ratersCalibration);
+  const scoreKeys = ["-1", "-0.5", "0", "0.5", "1"];
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+      <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-stone-200 animate-in fade-in zoom-in-95 duration-150 my-auto">
+        {/* Header */}
+        <div className="p-6 border-b border-stone-100 flex items-start justify-between bg-stone-50/50 rounded-t-2xl">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-[#7A0C0C] bg-[#7A0C0C]/10 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <Scale size={11} /> Rater Calibration & Bias Engine
+              </span>
+              <span className="text-xs text-stone-400">•</span>
+              <span className="text-xs font-semibold text-stone-600">{roundTitle}</span>
+            </div>
+            <h3 className="text-lg font-bold text-stone-900">
+              Brother Grading Tendencies & Weight Calibration
+            </h3>
+            <p className="text-xs text-stone-500 mt-1 max-w-2xl leading-relaxed">
+              Every rater's scoring history in this round is smoothed with <strong>k = 15</strong> prior phantom ratings following the chapter target distribution. Raters who give high marks too freely are downweighted, while raters who reserve them for rare standouts receive full or heightened weight.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 text-stone-400 hover:text-stone-700 rounded-lg hover:bg-stone-100 transition cursor-pointer"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Target Distribution Reference Banner */}
+        <div className="px-6 py-3.5 bg-amber-50/50 border-b border-amber-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-bold text-amber-900 text-[11px] uppercase tracking-wider">Chapter Target Distribution:</span>
+            <div className="flex items-center gap-1.5 font-mono">
+              <span className="px-2 py-0.5 rounded bg-white border border-amber-200 text-stone-700 text-[11px]">-1.0: 5%</span>
+              <span className="px-2 py-0.5 rounded bg-white border border-amber-200 text-stone-700 text-[11px]">-0.5: 10%</span>
+              <span className="px-2 py-0.5 rounded bg-white border border-amber-200 text-stone-800 font-bold text-[11px]">0.0: 70%</span>
+              <span className="px-2 py-0.5 rounded bg-white border border-amber-200 text-stone-700 text-[11px]">+0.5: 10%</span>
+              <span className="px-2 py-0.5 rounded bg-white border border-amber-200 text-stone-700 text-[11px]">+1.0: 5%</span>
+            </div>
+          </div>
+          <span className="text-[11px] text-amber-800 font-medium">
+            Active Raters in Round: <strong>{ratersList.length}</strong>
+          </span>
+        </div>
+
+        {/* Content Body */}
+        <div className="p-6 overflow-y-auto flex-1 space-y-6">
+          {ratersList.length === 0 ? (
+            <div className="p-12 text-center border-2 border-dashed border-stone-200 rounded-2xl bg-stone-50/50">
+              <Scale size={28} className="mx-auto text-stone-300 mb-3" />
+              <h4 className="text-sm font-bold text-stone-700">No Rater Activity Yet in This Round</h4>
+              <p className="text-xs text-stone-400 mt-1 max-w-md mx-auto">
+                Once brothers submit score evaluations for candidates in this round, individual calibration profiles, grading bias tendencies, and multiplier weights will appear here automatically.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {ratersList.map((calib) => {
+                return (
+                  <div
+                    key={calib.raterId}
+                    className="p-5 bg-white rounded-2xl border border-stone-200/90 shadow-xs hover:border-stone-300 transition-all space-y-3.5"
+                  >
+                    {/* Rater Profile Header */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-stone-100">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-stone-900 text-sm">{calib.raterName}</h4>
+                          <span className="text-xs text-stone-400">({calib.raterId})</span>
+                        </div>
+                        <span className="text-[11px] text-stone-500">
+                          Total Candidates Evaluated: <strong className="text-stone-800">{calib.totalRatings}</strong>
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {/* Bias Badge */}
+                        {calib.biasTendency === "easy" && (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                            <TrendingUp size={12} className="text-emerald-600" /> Easy Grader (Leans Positive)
+                          </span>
+                        )}
+                        {calib.biasTendency === "harsh" && (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-rose-50 text-rose-800 border border-rose-200">
+                            <TrendingDown size={12} className="text-rose-600" /> Harsh Grader (Leans Negative)
+                          </span>
+                        )}
+                        {calib.biasTendency === "balanced" && (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-sky-50 text-sky-800 border border-sky-200">
+                            <CheckCircle size={12} className="text-sky-600" /> Balanced (Tracks Chapter Target)
+                          </span>
+                        )}
+                        {calib.biasTendency === "calibrating" && (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
+                            <Sparkles size={12} className="text-amber-600" /> Calibrating (&lt; 5 ratings)
+                          </span>
+                        )}
+
+                        {calib.isClamped && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-stone-100 text-stone-700 border border-stone-200">
+                            Caps Applied [0.3x – 3.0x]
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Breakdown Table */}
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs text-left">
+                        <thead>
+                          <tr className="text-[10px] font-bold uppercase tracking-wider text-stone-400 border-b border-stone-100 pb-1">
+                            <th className="py-1 px-2">Score Value</th>
+                            <th className="py-1 px-2 text-center">Count Given</th>
+                            <th className="py-1 px-2 text-center">Observed %</th>
+                            <th className="py-1 px-2 text-center">Smoothed % (k=15)</th>
+                            <th className="py-1 px-2 text-center">Chapter Target</th>
+                            <th className="py-1 px-2 text-right">Applied Weight Multiplier</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-stone-50 font-mono">
+                          {scoreKeys.map((v) => {
+                            const count = calib.counts[v] || 0;
+                            const obsP = (calib.observedPercentages[v] * 100).toFixed(1);
+                            const smoothP = (calib.smoothedPercentages[v] * 100).toFixed(1);
+                            const targetP = (calib.targetPercentages[v] * 100).toFixed(0);
+                            const wt = calib.weights[v];
+
+                            return (
+                              <tr key={v} className="hover:bg-stone-50/50 transition-colors">
+                                <td className="py-1.5 px-2 font-bold text-stone-800">
+                                  {Number(v) > 0 ? `+${v}` : v}
+                                </td>
+                                <td className="py-1.5 px-2 text-center text-stone-600">{count}</td>
+                                <td className="py-1.5 px-2 text-center text-stone-600">{obsP}%</td>
+                                <td className="py-1.5 px-2 text-center text-stone-700 font-semibold">{smoothP}%</td>
+                                <td className="py-1.5 px-2 text-center text-stone-400">{targetP}%</td>
+                                <td className="py-1.5 px-2 text-right">
+                                  <span
+                                    className={`inline-block px-2 py-0.5 rounded text-[11px] font-bold ${
+                                      wt < 0.8
+                                        ? "bg-amber-100 text-amber-900 border border-amber-200"
+                                        : wt > 1.2
+                                        ? "bg-emerald-100 text-emerald-900 border border-emerald-200"
+                                        : "bg-stone-100 text-stone-700 border border-stone-200"
+                                    }`}
+                                  >
+                                    {wt.toFixed(2)}x
+                                    {wt <= 0.3 && " (min cap)"}
+                                    {wt >= 3.0 && " (max cap)"}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 border-t border-stone-100 bg-stone-50/50 rounded-b-2xl flex items-center justify-between text-xs text-stone-500">
+          <span>Weights update in real time with every score submitted.</span>
+          <button
+            onClick={onClose}
+            className="px-5 py-2 bg-stone-900 hover:bg-black text-white text-xs font-bold tracking-wider uppercase rounded-xl transition shadow-xs cursor-pointer"
+          >
+            Close
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2084,10 +2584,56 @@ function CycleSettingsTab({
   const [updating, setUpdating] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
+  // Normalization settings state
+  const [normK, setNormK] = useState(15);
+  const [minWeight, setMinWeight] = useState(0.3);
+  const [maxWeight, setMaxWeight] = useState(3.0);
+  const [targetDist, setTargetDist] = useState<Record<string, number>>({
+    "-1": 5,
+    "-0.5": 10,
+    "0": 70,
+    "0.5": 10,
+    "1": 5,
+  });
+  const [normLoading, setNormLoading] = useState(false);
+  const [normSaving, setNormSaving] = useState(false);
+  const [normMsg, setNormMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+
   useEffect(() => {
     setName(cycle.name);
     setStatus(cycle.status);
   }, [cycle]);
+
+  useEffect(() => {
+    async function loadNormConfig() {
+      setNormLoading(true);
+      try {
+        const res = await fetch(`/api/recruitment/cycles/${cycle.id}/normalization-config`);
+        const data = await res.json();
+        if (data && data.config) {
+          setNormK(data.config.k ?? 15);
+          setMinWeight(data.config.minWeight ?? 0.3);
+          setMaxWeight(data.config.maxWeight ?? 3.0);
+          if (data.config.targetDistribution) {
+            setTargetDist({
+              "-1": Math.round((data.config.targetDistribution["-1"] ?? 0.05) * 100),
+              "-0.5": Math.round((data.config.targetDistribution["-0.5"] ?? 0.10) * 100),
+              "0": Math.round((data.config.targetDistribution["0"] ?? 0.70) * 100),
+              "0.5": Math.round((data.config.targetDistribution["0.5"] ?? 0.10) * 100),
+              "1": Math.round((data.config.targetDistribution["1"] ?? 0.05) * 100),
+            });
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load normalization config:", err);
+      } finally {
+        setNormLoading(false);
+      }
+    }
+    loadNormConfig();
+  }, [cycle.id]);
+
+  const targetSum = Object.values(targetDist).reduce((a, b) => a + b, 0);
 
   async function handleSaveSettings(e: React.FormEvent) {
     e.preventDefault();
@@ -2101,6 +2647,56 @@ function CycleSettingsTab({
     } finally {
       setUpdating(false);
     }
+  }
+
+  async function handleSaveNorm(e: React.FormEvent) {
+    e.preventDefault();
+    if (Math.abs(targetSum - 100) > 1) {
+      setNormMsg({ type: "err", text: `Target distribution must sum to 100% (currently ${targetSum}%).` });
+      return;
+    }
+    setNormSaving(true);
+    setNormMsg(null);
+    try {
+      const payload = {
+        k: Number(normK),
+        minWeight: Number(minWeight),
+        maxWeight: Number(maxWeight),
+        targetDistribution: {
+          "-1": targetDist["-1"] / 100,
+          "-0.5": targetDist["-0.5"] / 100,
+          "0": targetDist["0"] / 100,
+          "0.5": targetDist["0.5"] / 100,
+          "1": targetDist["1"] / 100,
+        },
+      };
+      const res = await fetch(`/api/recruitment/cycles/${cycle.id}/normalization-config`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to save normalization settings");
+      setNormMsg({ type: "ok", text: "Normalization settings saved successfully." });
+    } catch (err: any) {
+      setNormMsg({ type: "err", text: err.message || "Failed to save settings." });
+    } finally {
+      setNormSaving(false);
+    }
+  }
+
+  function handleResetNormDefaults() {
+    setNormK(15);
+    setMinWeight(0.3);
+    setMaxWeight(3.0);
+    setTargetDist({
+      "-1": 5,
+      "-0.5": 10,
+      "0": 70,
+      "0.5": 10,
+      "1": 5,
+    });
+    setNormMsg({ type: "ok", text: "Reset to default chapter parameters. Click save to commit." });
   }
 
   return (
@@ -2145,11 +2741,148 @@ function CycleSettingsTab({
           <button
             type="submit"
             disabled={updating}
-            className="px-6 py-2.5 bg-[#7A0C0C] hover:bg-[#5C0A0A] text-white text-xs font-bold tracking-wider uppercase rounded-xl transition-all shadow-xs disabled:opacity-50"
+            className="px-6 py-2.5 bg-[#7A0C0C] hover:bg-[#5C0A0A] text-white text-xs font-bold tracking-wider uppercase rounded-xl transition-all shadow-xs disabled:opacity-50 cursor-pointer"
           >
             {updating ? "Saving…" : "Save Cycle Settings"}
           </button>
         </form>
+      </div>
+
+      {/* ── Score Normalization & Calibration Settings ── */}
+      <div className="bg-white rounded-2xl p-6 border border-stone-200/80 shadow-xs space-y-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-1.5 mb-1">
+              <Sparkles size={15} className="text-[#F5A623]" />
+              <h3 className="text-base font-bold text-stone-900">Score Normalization Engine Settings</h3>
+            </div>
+            <p className="text-xs text-stone-500 leading-relaxed">
+              Calibrates brother grading biases against the chapter distribution. Adjust prior ratings strength (k), multiplier clamping caps, and expected score percentages.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleResetNormDefaults}
+            className="text-[11px] text-stone-500 hover:text-[#7A0C0C] font-semibold underline shrink-0 cursor-pointer"
+          >
+            Reset Defaults
+          </button>
+        </div>
+
+        {normLoading ? (
+          <div className="py-6 flex justify-center">
+            <div className="w-5 h-5 rounded-full border-2 border-[#7A0C0C] border-t-transparent animate-spin" />
+          </div>
+        ) : (
+          <form onSubmit={handleSaveNorm} className="space-y-5 text-xs">
+            {/* Parameters Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="font-semibold text-stone-700 block mb-1">
+                  Prior Ratings Strength (<span className="font-mono">k</span>)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="100"
+                  step="1"
+                  value={normK}
+                  onChange={(e) => setNormK(Number(e.target.value))}
+                  className="w-full text-xs font-mono font-semibold text-stone-900 border border-stone-200 rounded-xl px-3 py-2 outline-none focus:border-[#7A0C0C]"
+                />
+                <span className="text-[10px] text-stone-400 block mt-1">Default 15 phantom ratings</span>
+              </div>
+
+              <div>
+                <label className="font-semibold text-stone-700 block mb-1">Min Weight Cap</label>
+                <input
+                  type="number"
+                  min="0.1"
+                  max="1.0"
+                  step="0.05"
+                  value={minWeight}
+                  onChange={(e) => setMinWeight(Number(e.target.value))}
+                  className="w-full text-xs font-mono font-semibold text-stone-900 border border-stone-200 rounded-xl px-3 py-2 outline-none focus:border-[#7A0C0C]"
+                />
+                <span className="text-[10px] text-stone-400 block mt-1">Default 0.30x minimum</span>
+              </div>
+
+              <div>
+                <label className="font-semibold text-stone-700 block mb-1">Max Weight Cap</label>
+                <input
+                  type="number"
+                  min="1.0"
+                  max="10.0"
+                  step="0.1"
+                  value={maxWeight}
+                  onChange={(e) => setMaxWeight(Number(e.target.value))}
+                  className="w-full text-xs font-mono font-semibold text-stone-900 border border-stone-200 rounded-xl px-3 py-2 outline-none focus:border-[#7A0C0C]"
+                />
+                <span className="text-[10px] text-stone-400 block mt-1">Default 3.00x maximum</span>
+              </div>
+            </div>
+
+            {/* Target Distribution Percentages */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="font-semibold text-stone-700 block">
+                  Target Score Distribution (%)
+                </label>
+                <span
+                  className={`text-[11px] font-bold ${
+                    Math.abs(targetSum - 100) <= 1 ? "text-emerald-700" : "text-red-600"
+                  }`}
+                >
+                  Total: {targetSum}% {Math.abs(targetSum - 100) > 1 && "(Must equal 100%)"}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-5 gap-2 font-mono">
+                {(["-1", "-0.5", "0", "0.5", "1"] as const).map((v) => (
+                  <div key={v} className="p-2.5 bg-stone-50 rounded-xl border border-stone-200 text-center">
+                    <span className="text-[11px] font-bold text-stone-800 block mb-1">
+                      {Number(v) > 0 ? `+${v}` : v}
+                    </span>
+                    <div className="flex items-center justify-center">
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="1"
+                        value={targetDist[v] ?? 0}
+                        onChange={(e) =>
+                          setTargetDist((prev) => ({ ...prev, [v]: Number(e.target.value) }))
+                        }
+                        className="w-12 text-center text-xs font-bold text-stone-900 bg-white border border-stone-200 rounded-lg py-1 outline-none focus:border-[#7A0C0C]"
+                      />
+                      <span className="text-stone-500 text-[10px] ml-0.5">%</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {normMsg && (
+              <p
+                className={`text-xs font-semibold flex items-center gap-1.5 ${
+                  normMsg.type === "ok" ? "text-emerald-600" : "text-red-600"
+                }`}
+              >
+                {normMsg.type === "ok" ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
+                {normMsg.text}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={normSaving || Math.abs(targetSum - 100) > 1}
+              className="px-6 py-2.5 bg-[#7A0C0C] hover:bg-[#5C0A0A] text-white text-xs font-bold tracking-wider uppercase rounded-xl transition-all shadow-xs disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+            >
+              <Save size={13} />
+              {normSaving ? "Saving Calibration Settings…" : "Save Normalization Settings"}
+            </button>
+          </form>
+        )}
       </div>
 
       {/* Danger Zone: Delete Cycle */}

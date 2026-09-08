@@ -19,6 +19,8 @@ import {
   ExternalLink,
   ChevronUp,
   LogOut,
+  Plus,
+  ShieldAlert,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { LoginGate } from "@/app/components/LoginGate";
@@ -723,6 +725,66 @@ function ApplicantStatusScreen({
   );
 }
 
+// ── Sample Candidates for Rapid Admin Testing ─────────────────────────────────
+const SAMPLE_APPLICANTS = [
+  {
+    firstName: "Jordan",
+    lastName: "Taylor",
+    email: "jordant.test@umich.edu",
+    phone: "(734) 555-0192",
+    year: "Sophomore",
+    major: "Business Administration & Computer Science",
+    minor: "Economics",
+    gpa: "3.84",
+    whyPGN: "I am looking for a driven, diverse professional community that bridges technology and finance. PGN's emphasis on genuine brotherhood and leadership development aligns perfectly with my career goals in venture capital and fintech.",
+    strengths: "Strategic problem-solving, financial modeling, team collaboration under tight deadlines, and public speaking.",
+    involvement: "Michigan Ross Capital Fund (Analyst), Wolverine Sports Analytics Club, Intramural Soccer captain.",
+    questions: "What mentorship opportunities exist between current members and alumni working on the West Coast?",
+  },
+  {
+    firstName: "Maya",
+    lastName: "Lin",
+    email: "mayal.test@umich.edu",
+    phone: "(734) 555-0145",
+    year: "Freshman",
+    major: "Industrial & Operations Engineering",
+    minor: "Mathematics",
+    gpa: "3.91",
+    whyPGN: "Phi Gamma Nu represents the ideal intersection of high professional standards and genuine community. The conversations I had with brothers at Coffee Chats showed me a culture of mutual support and relentless curiosity.",
+    strengths: "Quantitative analysis, process optimization, Python, empathetic leadership, and cross-functional communication.",
+    involvement: "Society of Women Engineers, Michigan Consulting Group (Junior Consultant), Habitat for Humanity volunteer.",
+    questions: "How does the professional development curriculum adapt for students interested in supply chain vs finance?",
+  },
+  {
+    firstName: "Marcus",
+    lastName: "Washington",
+    email: "marcusw.test@umich.edu",
+    phone: "(734) 555-0188",
+    year: "Junior",
+    major: "Economics & Data Science",
+    minor: "User Experience Design",
+    gpa: "3.76",
+    whyPGN: "I want to surround myself with ambitious peers who challenge me to grow beyond the classroom. The diversity of majors within PGN creates unique opportunities to learn from different perspectives and prepare for tech consulting.",
+    strengths: "Data visualization (Tableau, SQL), project management, creative ideation, and workshop facilitation.",
+    involvement: "Data Science Association (VP of Marketing), TAMID Group Consulting Track, Michigan Daily copy editor.",
+    questions: "Are there inter-chapter national networking events or alumni summits held each year?",
+  },
+  {
+    firstName: "Aaliyah",
+    lastName: "Brooks",
+    email: "aaliyahb.test@umich.edu",
+    phone: "(734) 555-0163",
+    year: "Sophomore",
+    major: "Business Administration",
+    minor: "International Studies",
+    gpa: "3.89",
+    whyPGN: "After attending the PGN info session, I was struck by how invested the members were in each other's personal growth, not just resume building. I want to contribute to this vibrant culture and build lifelong friendships.",
+    strengths: "Brand strategy, cross-cultural collaboration, interpersonal communications, and event planning.",
+    involvement: "Black Business Undergraduate Society (BBUS), Michigan Business Women, Admissions student ambassador.",
+    questions: "What philanthropy and community service initiatives is the chapter most proud of this year?",
+  },
+];
+
 // ── Main Apply Content ────────────────────────────────────────────────────────
 
 function ApplyContent() {
@@ -742,6 +804,12 @@ function ApplyContent() {
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Admin testing states
+  const [adminTestMode, setAdminTestMode] = useState(false);
+  const [adminPreviewCandidateView, setAdminPreviewCandidateView] = useState(false);
+  const [lastSubmittedTest, setLastSubmittedTest] = useState<{ id: number; name: string } | null>(null);
+  const [sampleIdx, setSampleIdx] = useState(0);
 
   // Load active cycle and check submission state
   useEffect(() => {
@@ -801,6 +869,57 @@ function ApplyContent() {
     setFormData((prev) => ({ ...prev, [id]: value }));
   }
 
+  function handleAutofillTestData() {
+    const candidate = SAMPLE_APPLICANTS[sampleIdx % SAMPLE_APPLICANTS.length];
+    setSampleIdx((prev) => prev + 1);
+
+    const updated = { ...formData };
+    updated["firstName"] = candidate.firstName;
+    updated["lastName"] = candidate.lastName;
+    updated["email"] = candidate.email;
+    updated["phone"] = candidate.phone;
+    updated["year"] = candidate.year;
+    updated["major"] = candidate.major;
+    updated["minor"] = candidate.minor;
+    updated["gpa"] = candidate.gpa;
+    updated["whyPGN"] = candidate.whyPGN;
+    updated["strengths"] = candidate.strengths;
+    updated["involvement"] = candidate.involvement;
+    updated["questions"] = candidate.questions;
+
+    // Fill any extra configured form fields that are empty
+    (form?.questions || []).forEach((sec) => {
+      (sec.fields || []).forEach((f) => {
+        if (!updated[f.id] || String(updated[f.id]).trim() === "") {
+          if (f.type === "select" && f.options && f.options.length > 0) {
+            updated[f.id] = f.options[0];
+          } else if (f.type === "tel") {
+            updated[f.id] = candidate.phone;
+          } else if (f.type === "email") {
+            updated[f.id] = candidate.email;
+          } else if (f.type === "textarea") {
+            updated[f.id] = candidate.whyPGN;
+          } else if (f.type === "file") {
+            updated[f.id] = "/uploads/sample_resume.pdf";
+          } else {
+            updated[f.id] = f.id.toLowerCase().includes("gpa") ? candidate.gpa : "Sample test response";
+          }
+        }
+      });
+    });
+
+    setFormData(updated);
+    setSubmitError(null);
+  }
+
+  function handleStartNewTestApplication() {
+    setAdminTestMode(true);
+    setLastSubmittedTest(null);
+    setSubmitError(null);
+    handleAutofillTestData();
+    window.scrollTo({ top: 360, behavior: "smooth" });
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!cycle) return;
@@ -812,7 +931,7 @@ function ApplyContent() {
       cycleId: cycle.id,
       answers: {
         ...formData,
-        email: user?.email || formData.email,
+        email: formData.email || user?.email,
       },
     };
 
@@ -829,16 +948,30 @@ function ApplyContent() {
         return;
       }
 
-      // Re-fetch submission state immediately to show status screen
-      const subRes = await fetch(`/api/recruitment/my-submission?cycleId=${cycle.id}`);
-      const subData = await subRes.json();
-      if (subData.submitted && subData.submission) {
-        setSubmission(subData.submission);
-        setStage(subData.stage);
-        setStatusKey(subData.statusKey);
-        if (subData.message) setStatusMessage(subData.message);
+      confetti({
+        particleCount: 60,
+        spread: 70,
+        origin: { y: 0.6 },
+      });
+
+      if (user?.isAdmin) {
+        setLastSubmittedTest({
+          id: data.submission?.id || Date.now(),
+          name: data.submission?.applicant_name || (formData.firstName ? `${formData.firstName} ${formData.lastName}` : "Test Applicant"),
+        });
+        setAdminTestMode(true);
+      } else {
+        // Normal applicant: Re-fetch submission state to show status screen
+        const subRes = await fetch(`/api/recruitment/my-submission?cycleId=${cycle.id}`);
+        const subData = await subRes.json();
+        if (subData.submitted && subData.submission) {
+          setSubmission(subData.submission);
+          setStage(subData.stage);
+          setStatusKey(subData.statusKey);
+          if (subData.message) setStatusMessage(subData.message);
+        }
       }
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      window.scrollTo({ top: 360, behavior: "smooth" });
     } catch {
       setSubmitError("Network error submitting application. Please try again.");
     } finally {
@@ -910,24 +1043,72 @@ function ApplyContent() {
           ) : !cycle ? (
             /* 1. No Active Cycle */
             <NoActiveCycleScreen />
-          ) : submission ? (
+          ) : submission && !adminTestMode ? (
             /* 2. Applicant Has Already Submitted -> Status Screen */
-            <ApplicantStatusScreen
-              cycleName={cycle.name}
-              stage={stage}
-              statusKey={statusKey}
-              statusMessage={statusMessage}
-              submission={submission}
-              onSignOut={logout}
-            />
-          ) : !isFormFillable ? (
+            <div className="space-y-6">
+              {user?.isAdmin && (
+                <div className="bg-amber-50 border border-amber-300/80 rounded-2xl p-5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-10 h-10 rounded-xl bg-[#7A0C0C] text-white flex items-center justify-center shrink-0 shadow-sm">
+                      <Sparkles size={20} />
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold uppercase tracking-wider text-[#7A0C0C] block">
+                        Admin Testing Mode Active
+                      </span>
+                      <p className="text-xs text-stone-700 mt-0.5">
+                        You have submitted test application(s). You can submit as many more test applications as desired to test grading, normalization, and deliberations.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                    <Link
+                      to="/admin/apply"
+                      className="px-3.5 py-2 text-xs font-semibold text-stone-700 bg-white hover:bg-stone-100 border border-stone-200 rounded-xl transition-colors inline-flex items-center gap-1.5 shadow-sm"
+                    >
+                      <Users size={14} /> View Deliberations
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={handleStartNewTestApplication}
+                      className="px-4 py-2 bg-[#7A0C0C] hover:bg-[#5C0A0A] text-white text-xs font-bold rounded-xl shadow-sm transition-colors inline-flex items-center gap-1.5"
+                    >
+                      <Plus size={14} /> Submit Another Test Application
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <ApplicantStatusScreen
+                cycleName={cycle.name}
+                stage={stage}
+                statusKey={statusKey}
+                statusMessage={statusMessage}
+                submission={submission}
+                onSignOut={logout}
+              />
+            </div>
+          ) : (!isFormFillable && !user?.isAdmin) || (adminPreviewCandidateView && !isFormFillable) ? (
             /* 3. Cycle is Locked or Outside Schedule Window */
-            <LockedOrScheduledScreen
-              cycleName={cycle.name}
-              opensAt={form?.opens_at ?? null}
-              closesAt={form?.closes_at ?? null}
-              isLocked={form?.is_locked ?? false}
-            />
+            <div className="space-y-4">
+              {user?.isAdmin && (
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setAdminPreviewCandidateView(false)}
+                    className="px-4 py-2 bg-[#7A0C0C] text-white text-xs font-bold rounded-xl shadow-sm hover:bg-[#5C0A0A] transition-colors inline-flex items-center gap-1.5"
+                  >
+                    ← Exit Candidate Preview & Open Application (Admin Test Mode)
+                  </button>
+                </div>
+              )}
+              <LockedOrScheduledScreen
+                cycleName={cycle.name}
+                opensAt={form?.opens_at ?? null}
+                closesAt={form?.closes_at ?? null}
+                isLocked={form?.is_locked ?? false}
+              />
+            </div>
           ) : (
             /* 4. Active Dynamic Application Form */
             <motion.div
@@ -935,6 +1116,103 @@ function ApplyContent() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.55 }}
             >
+              {/* Admin Testing Mode Banner */}
+              {user?.isAdmin && (
+                <div className="bg-amber-50 border border-amber-300 rounded-2xl p-5 mb-8 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-sm">
+                      <ShieldAlert size={20} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-bold uppercase tracking-wider text-amber-900">
+                          Admin Testing Mode Active
+                        </span>
+                        {!isFormFillable && (
+                          <span className="text-[10px] bg-amber-200 text-amber-900 font-semibold px-2 py-0.5 rounded-full">
+                            Status: {form?.is_locked ? "Locked" : computedStatus === "scheduled" ? "Scheduled" : "Closed"}
+                          </span>
+                        )}
+                        {submission && (
+                          <span className="text-[10px] bg-stone-200 text-stone-800 font-semibold px-2 py-0.5 rounded-full">
+                            Multi-Submission Enabled
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-amber-800 mt-0.5">
+                        {!isFormFillable
+                          ? "Applications are closed to regular candidates, but testing bypass is enabled for administrators."
+                          : "You can submit as many test applications as needed for testing."}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap shrink-0">
+                    <button
+                      type="button"
+                      onClick={handleAutofillTestData}
+                      className="px-3 py-2 bg-amber-200 hover:bg-amber-300 text-amber-950 text-xs font-semibold rounded-xl transition-colors inline-flex items-center gap-1.5 shadow-sm"
+                      title="Fill all required fields with realistic candidate test data"
+                    >
+                      ⚡ Auto-Fill Test Data
+                    </button>
+                    {!isFormFillable && (
+                      <button
+                        type="button"
+                        onClick={() => setAdminPreviewCandidateView(true)}
+                        className="px-3 py-2 bg-white hover:bg-stone-100 text-stone-700 border border-stone-200 text-xs font-medium rounded-xl transition-colors"
+                      >
+                        Preview Candidate View
+                      </button>
+                    )}
+                    {submission && (
+                      <button
+                        type="button"
+                        onClick={() => setAdminTestMode(false)}
+                        className="px-3 py-2 bg-white hover:bg-stone-100 text-stone-700 border border-stone-200 text-xs font-medium rounded-xl transition-colors"
+                      >
+                        Back to My Status Screen
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Test Submitted Success Banner */}
+              {lastSubmittedTest && (
+                <div className="bg-emerald-50 border border-emerald-300 rounded-2xl p-5 mb-8 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                      <CheckCircle size={20} />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-emerald-950 uppercase tracking-wider">
+                        Test Application #{lastSubmittedTest.id} Submitted Successfully!
+                      </h4>
+                      <p className="text-xs text-emerald-800 mt-0.5">
+                        Candidate <strong>{lastSubmittedTest.name}</strong> is now live in the deliberation table. You can prepare and submit another test application below.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLastSubmittedTest(null);
+                        handleAutofillTestData();
+                      }}
+                      className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm inline-flex items-center gap-1.5"
+                    >
+                      <Plus size={14} /> Prepare Another Test
+                    </button>
+                    <Link
+                      to="/admin/apply"
+                      className="px-3.5 py-2 bg-white hover:bg-stone-100 text-emerald-900 border border-emerald-200 text-xs font-semibold rounded-xl transition-colors inline-flex items-center gap-1.5 shadow-sm"
+                    >
+                      <ExternalLink size={14} /> Open Admin Deliberations
+                    </Link>
+                  </div>
+                </div>
+              )}
               <div className="bg-white rounded-3xl shadow-sm border border-stone-200/80 p-8 sm:p-12 mb-10">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-8 border-b border-stone-100">
                   <div>
