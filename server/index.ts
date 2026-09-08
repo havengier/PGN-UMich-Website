@@ -63,7 +63,7 @@ app.use("/api/apply-config", applyConfigRouter);
 app.use("/api/recruitment", recruitmentRouter);
 
 // Serve uploaded files
-const uploadsPath = path.resolve(__dirname, "../public/uploads");
+const uploadsPath = process.env.UPLOADS_DIR || (process.env.NODE_ENV === "production" ? "/data/uploads" : path.resolve(__dirname, "../public/uploads"));
 fs.mkdirSync(uploadsPath, { recursive: true });
 app.use(
   "/uploads",
