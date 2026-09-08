@@ -1,8 +1,18 @@
 import { useState, useEffect } from "react";
 import { motion } from "motion/react";
-import { Calendar, MapPin, Clock, Sparkles } from "lucide-react";
+import { Calendar, MapPin, Clock, Sparkles, Mail, Check, Copy, Linkedin, ArrowRight } from "lucide-react";
 import pgnLogo from "@/imports/pgn_logo_1__1_.png";
 import { useContent } from "@/app/hooks/useContent";
+
+export type RushChair = {
+  name: string;
+  role: string;
+  major: string;
+  minor?: string;
+  pledge_class?: string;
+  photo_url?: string;
+  linkedin_url?: string;
+};
 
 export type RecruitmentEvent = {
   id: string;
@@ -186,6 +196,80 @@ function EventCard({ event, index }: { event: RecruitmentEvent; index: number })
   );
 }
 
+function RushChairCard({ chair, index }: { chair: RushChair; index: number }) {
+  const initials =
+    chair.name
+      .split(/\s+/)
+      .map((w) => w[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase() || "RC";
+
+  return (
+    <motion.div
+      className="group relative rounded-2xl overflow-hidden bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-[#F5A623]/40 transition-all duration-300 p-6 flex flex-col justify-between backdrop-blur-sm shadow-xl hover:-translate-y-1"
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, amount: 0.2 }}
+      transition={{ duration: 0.5, delay: index * 0.1, ease: "easeOut" }}
+    >
+      <div className="absolute -top-12 -right-12 w-28 h-28 bg-[#F5A623]/10 rounded-full blur-2xl group-hover:bg-[#F5A623]/20 transition-colors pointer-events-none" />
+
+      <div>
+        {/* Avatar & LinkedIn */}
+        <div className="flex items-start justify-between mb-4">
+          <div className="w-20 h-20 rounded-full ring-2 ring-[#F5A623]/60 ring-offset-2 ring-offset-[#1a0303] overflow-hidden bg-gradient-to-br from-amber-800 via-amber-700 to-stone-800 flex items-center justify-center shadow-lg transition-transform duration-300 group-hover:scale-105">
+            {chair.photo_url ? (
+              <img src={chair.photo_url} alt={chair.name} className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-white font-semibold text-lg" style={{ fontFamily: "'Inter', sans-serif" }}>
+                {initials}
+              </span>
+            )}
+          </div>
+
+          {chair.linkedin_url && (
+            <a
+              href={chair.linkedin_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`${chair.name}'s LinkedIn`}
+              className="w-9 h-9 rounded-full bg-white/5 hover:bg-[#0077b5] text-white/60 hover:text-white border border-white/10 hover:border-transparent flex items-center justify-center transition-all duration-200"
+            >
+              <Linkedin size={16} />
+            </a>
+          )}
+        </div>
+
+        {/* Name */}
+        <h4
+          className="text-white font-bold text-lg md:text-xl leading-tight mb-1 group-hover:text-[#F5A623] transition-colors"
+          style={{ fontFamily: "'Inter', sans-serif" }}
+        >
+          {chair.name}
+        </h4>
+
+        {/* Role badge */}
+        <div className="inline-block px-2.5 py-0.5 rounded-full bg-[#F5A623]/15 border border-[#F5A623]/30 text-[#F5A623] text-[11px] font-semibold tracking-wider uppercase mb-3">
+          {chair.role}
+        </div>
+
+        {/* Academic Details */}
+        <div className="text-white/70 text-xs md:text-sm leading-relaxed" style={{ fontFamily: "'Inter', sans-serif" }}>
+          <p className="font-medium text-white/90">{chair.major}</p>
+          {chair.minor && <p className="text-white/50 text-xs mt-0.5">{chair.minor}</p>}
+          {chair.pledge_class && (
+            <p className="text-[#F5A623]/80 text-xs font-semibold mt-1.5 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#F5A623]" />
+              {chair.pledge_class.toLowerCase().includes("class") ? chair.pledge_class : `${chair.pledge_class} Class`}
+            </p>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
 export default function Recruitment() {
   const { get } = useContent("recruitment");
 
@@ -204,6 +288,44 @@ export default function Recruitment() {
 
   const eventsSubtitle = get("recruitment.events.subtitle", "Recruitment Schedule");
   const eventsHeading = get("recruitment.events.heading", "Upcoming Events");
+
+  // Rush Chairs Content
+  const [copiedEmail, setCopiedEmail] = useState(false);
+  const rushChairsSubtitle = get("recruitment.rush_chairs.subtitle", "Meet the Team");
+  const rushChairsHeading = get("recruitment.rush_chairs.heading", "Rush Chairs");
+
+  const chair1: RushChair = {
+    name: get("recruitment.rush_chairs.chair1_name", "Amy Zhang"),
+    role: get("recruitment.rush_chairs.chair1_role", "Director of Recruitment"),
+    major: get("recruitment.rush_chairs.chair1_major", "Business Administration"),
+    minor: get("recruitment.rush_chairs.chair1_minor", ""),
+    pledge_class: get("recruitment.rush_chairs.chair1_pledge_class", "Upsilon Class"),
+    photo_url: get("recruitment.rush_chairs.chair1_photo_url", ""),
+    linkedin_url: get("recruitment.rush_chairs.chair1_linkedin_url", "https://www.linkedin.com/"),
+  };
+
+  const chair2: RushChair = {
+    name: get("recruitment.rush_chairs.chair2_name", "Claire Guo"),
+    role: get("recruitment.rush_chairs.chair2_role", "VP Membership"),
+    major: get("recruitment.rush_chairs.chair2_major", "Business Administration"),
+    minor: get("recruitment.rush_chairs.chair2_minor", "Minor in Sustainability"),
+    pledge_class: get("recruitment.rush_chairs.chair2_pledge_class", "Upsilon Class"),
+    photo_url: get("recruitment.rush_chairs.chair2_photo_url", ""),
+    linkedin_url: get("recruitment.rush_chairs.chair2_linkedin_url", "https://www.linkedin.com/"),
+  };
+
+  const rushContactTitle = get("recruitment.rush_chairs.contact_title", "Have Questions About Recruitment?");
+  const contactEmail = get("recruitment.rush_chairs.contact_email", "pgnmichigan@gmail.com");
+  const rushContactBody = get(
+    "recruitment.rush_chairs.contact_body",
+    "Have questions about the recruitment process, eligibility, or events? Feel free to reach out to our rush chairs or refer any questions to pgnmichigan@gmail.com.",
+  );
+
+  const handleCopyEmail = () => {
+    navigator.clipboard.writeText(contactEmail);
+    setCopiedEmail(true);
+    setTimeout(() => setCopiedEmail(false), 2000);
+  };
 
   // Parse events from site_content or fallback to DEFAULT_EVENTS
   let eventsList: RecruitmentEvent[] = DEFAULT_EVENTS;
@@ -347,6 +469,125 @@ export default function Recruitment() {
               )}
             </motion.div>
           )}
+        </div>
+      </section>
+
+      {/* ── Rush Chairs & Inquiries Section ─────────────────────────────── */}
+      <section className="relative py-16 md:py-24 px-6 md:px-16 border-t border-white/10 bg-gradient-to-b from-[#1a0303] via-[#170202] to-[#140202]">
+        <div className="max-w-6xl mx-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-center">
+            {/* Left Column: 2 Member Cards */}
+            <div className="lg:col-span-7 flex flex-col">
+              <div className="mb-6">
+                <motion.p
+                  className="text-[#F5A623] text-xs font-bold tracking-[0.25em] uppercase mb-2"
+                  style={{ fontFamily: "'Inter', sans-serif" }}
+                  initial={{ opacity: 0, y: 10 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, amount: 0.3 }}
+                  transition={{ duration: 0.5 }}
+                >
+                  {rushChairsSubtitle}
+                </motion.p>
+                <motion.h3
+                  className="text-2xl md:text-3xl font-normal text-white"
+                  style={{ fontFamily: "'Playfair Display', serif" }}
+                  initial={{ opacity: 0, y: 15 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, amount: 0.3 }}
+                  transition={{ duration: 0.5, delay: 0.1 }}
+                >
+                  {rushChairsHeading}
+                </motion.h3>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <RushChairCard chair={chair1} index={0} />
+                <RushChairCard chair={chair2} index={1} />
+              </div>
+            </div>
+
+            {/* Right Column: Inquiries & Referral Copy */}
+            <motion.div
+              className="lg:col-span-5 flex flex-col justify-center"
+              initial={{ opacity: 0, x: 25 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true, amount: 0.3 }}
+              transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
+            >
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#F5A623]/10 border border-[#F5A623]/30 text-[#F5A623] text-xs font-semibold tracking-wider uppercase w-fit mb-4">
+                <Mail size={13} className="text-[#F5A623]" />
+                <span>Questions & Support</span>
+              </div>
+
+              <h3
+                className="text-2xl md:text-4xl font-normal text-white mb-4 leading-tight"
+                style={{ fontFamily: "'Playfair Display', serif" }}
+              >
+                {rushContactTitle}
+              </h3>
+
+              <p
+                className="text-white/70 text-sm md:text-base leading-relaxed mb-6"
+                style={{ fontFamily: "'Inter', sans-serif" }}
+              >
+                {rushContactBody}
+              </p>
+
+              {/* Interactive Email Referral Block */}
+              <div className="p-5 rounded-2xl bg-white/[0.04] border border-white/10 backdrop-blur-sm space-y-4 shadow-xl">
+                <div className="text-xs uppercase tracking-wider text-white/50 font-semibold">
+                  Official Recruitment Inquiries
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                  <a
+                    href={`mailto:${contactEmail}`}
+                    className="flex-1 flex items-center gap-3 px-4 py-3 rounded-xl bg-black/40 border border-white/10 hover:border-[#F5A623]/50 text-white font-medium text-sm md:text-base tracking-wide transition-all group/email truncate"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-[#F5A623]/15 flex items-center justify-center text-[#F5A623] flex-shrink-0 group-hover/email:scale-105 transition-transform">
+                      <Mail size={16} />
+                    </div>
+                    <span className="truncate group-hover/email:text-[#F5A623] transition-colors">
+                      {contactEmail}
+                    </span>
+                  </a>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleCopyEmail}
+                      className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-4 py-3 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-semibold transition-all cursor-pointer border border-white/10"
+                    >
+                      {copiedEmail ? (
+                        <>
+                          <Check size={14} className="text-emerald-400" />
+                          <span className="text-emerald-400">Copied!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy size={14} className="text-white/70" />
+                          <span>Copy</span>
+                        </>
+                      )}
+                    </button>
+
+                    <a
+                      href={`mailto:${contactEmail}`}
+                      className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-4 py-3 rounded-xl bg-[#F5A623] text-[#1a0303] hover:bg-[#e59b20] text-xs font-bold uppercase tracking-wider transition-all shadow-md hover:shadow-lg"
+                    >
+                      <span>Email Us</span>
+                      <ArrowRight size={13} />
+                    </a>
+                  </div>
+                </div>
+
+                <p className="text-[12px] text-white/40 leading-normal">
+                  Please refer any questions regarding rush dates, interview process, eligibility, or general brotherhood inquiries directly to this address.
+                </p>
+              </div>
+            </motion.div>
+          </div>
         </div>
       </section>
 

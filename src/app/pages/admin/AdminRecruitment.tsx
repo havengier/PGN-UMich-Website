@@ -61,6 +61,26 @@ const DEFAULTS = {
   "recruitment.events.subtitle": "Recruitment Schedule",
   "recruitment.events.heading": "Upcoming Events",
   "recruitment.events": JSON.stringify(DEFAULT_EVENTS),
+  "recruitment.rush_chairs.subtitle": "Meet the Team",
+  "recruitment.rush_chairs.heading": "Rush Chairs",
+  "recruitment.rush_chairs.chair1_name": "Amy Zhang",
+  "recruitment.rush_chairs.chair1_role": "Director of Recruitment",
+  "recruitment.rush_chairs.chair1_major": "Business Administration",
+  "recruitment.rush_chairs.chair1_minor": "",
+  "recruitment.rush_chairs.chair1_pledge_class": "Upsilon Class",
+  "recruitment.rush_chairs.chair1_photo_url": "",
+  "recruitment.rush_chairs.chair1_linkedin_url": "https://www.linkedin.com/",
+  "recruitment.rush_chairs.chair2_name": "Claire Guo",
+  "recruitment.rush_chairs.chair2_role": "VP Membership",
+  "recruitment.rush_chairs.chair2_major": "Business Administration",
+  "recruitment.rush_chairs.chair2_minor": "Minor in Sustainability",
+  "recruitment.rush_chairs.chair2_pledge_class": "Upsilon Class",
+  "recruitment.rush_chairs.chair2_photo_url": "",
+  "recruitment.rush_chairs.chair2_linkedin_url": "https://www.linkedin.com/",
+  "recruitment.rush_chairs.contact_title": "Have Questions About Recruitment?",
+  "recruitment.rush_chairs.contact_email": "pgnmichigan@gmail.com",
+  "recruitment.rush_chairs.contact_body":
+    "Have questions about the recruitment process, eligibility, or events? Feel free to reach out to our rush chairs or refer any questions to pgnmichigan@gmail.com.",
 };
 
 type Fields = typeof DEFAULTS;
@@ -218,6 +238,185 @@ function AdminRecruitmentContent() {
               Preview link ↗
             </a>
           )}
+        </Section>
+
+        {/* ── Rush Chairs Section ── */}
+        <Section title="Rush Chairs & Inquiries">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pb-4 border-b border-gray-100">
+            <Field label="Subtitle label">
+              <input
+                type="text"
+                value={fields["recruitment.rush_chairs.subtitle"]}
+                onChange={set("recruitment.rush_chairs.subtitle")}
+                className={inputCls}
+              />
+            </Field>
+            <Field label="Section heading">
+              <input
+                type="text"
+                value={fields["recruitment.rush_chairs.heading"]}
+                onChange={set("recruitment.rush_chairs.heading")}
+                className={inputCls}
+              />
+            </Field>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+            {/* Chair 1 */}
+            <div className="border border-gray-200 rounded-xl p-4 bg-stone-50/50 space-y-3">
+              <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Rush Chair 1</h4>
+              <Field label="Name">
+                <input
+                  type="text"
+                  value={fields["recruitment.rush_chairs.chair1_name"]}
+                  onChange={set("recruitment.rush_chairs.chair1_name")}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Role">
+                <input
+                  type="text"
+                  value={fields["recruitment.rush_chairs.chair1_role"]}
+                  onChange={set("recruitment.rush_chairs.chair1_role")}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Major">
+                <input
+                  type="text"
+                  value={fields["recruitment.rush_chairs.chair1_major"]}
+                  onChange={set("recruitment.rush_chairs.chair1_major")}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Minor (optional)">
+                <input
+                  type="text"
+                  value={fields["recruitment.rush_chairs.chair1_minor"]}
+                  onChange={set("recruitment.rush_chairs.chair1_minor")}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Pledge Class">
+                <input
+                  type="text"
+                  value={fields["recruitment.rush_chairs.chair1_pledge_class"]}
+                  onChange={set("recruitment.rush_chairs.chair1_pledge_class")}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Photo URL">
+                <input
+                  type="url"
+                  placeholder="https://… (optional)"
+                  value={fields["recruitment.rush_chairs.chair1_photo_url"]}
+                  onChange={set("recruitment.rush_chairs.chair1_photo_url")}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="LinkedIn URL">
+                <input
+                  type="url"
+                  placeholder="https://linkedin.com/in/…"
+                  value={fields["recruitment.rush_chairs.chair1_linkedin_url"]}
+                  onChange={set("recruitment.rush_chairs.chair1_linkedin_url")}
+                  className={inputCls}
+                />
+              </Field>
+            </div>
+
+            {/* Chair 2 */}
+            <div className="border border-gray-200 rounded-xl p-4 bg-stone-50/50 space-y-3">
+              <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Rush Chair 2</h4>
+              <Field label="Name">
+                <input
+                  type="text"
+                  value={fields["recruitment.rush_chairs.chair2_name"]}
+                  onChange={set("recruitment.rush_chairs.chair2_name")}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Role">
+                <input
+                  type="text"
+                  value={fields["recruitment.rush_chairs.chair2_role"]}
+                  onChange={set("recruitment.rush_chairs.chair2_role")}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Major">
+                <input
+                  type="text"
+                  value={fields["recruitment.rush_chairs.chair2_major"]}
+                  onChange={set("recruitment.rush_chairs.chair2_major")}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Minor (optional)">
+                <input
+                  type="text"
+                  value={fields["recruitment.rush_chairs.chair2_minor"]}
+                  onChange={set("recruitment.rush_chairs.chair2_minor")}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Pledge Class">
+                <input
+                  type="text"
+                  value={fields["recruitment.rush_chairs.chair2_pledge_class"]}
+                  onChange={set("recruitment.rush_chairs.chair2_pledge_class")}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Photo URL">
+                <input
+                  type="url"
+                  placeholder="https://… (optional)"
+                  value={fields["recruitment.rush_chairs.chair2_photo_url"]}
+                  onChange={set("recruitment.rush_chairs.chair2_photo_url")}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="LinkedIn URL">
+                <input
+                  type="url"
+                  placeholder="https://linkedin.com/in/…"
+                  value={fields["recruitment.rush_chairs.chair2_linkedin_url"]}
+                  onChange={set("recruitment.rush_chairs.chair2_linkedin_url")}
+                  className={inputCls}
+                />
+              </Field>
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-gray-100 space-y-3">
+            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Inquiries Box</h4>
+            <Field label="Inquiries Heading">
+              <input
+                type="text"
+                value={fields["recruitment.rush_chairs.contact_title"]}
+                onChange={set("recruitment.rush_chairs.contact_title")}
+                className={inputCls}
+              />
+            </Field>
+            <Field label="Referral / Questions Email Address">
+              <input
+                type="email"
+                value={fields["recruitment.rush_chairs.contact_email"]}
+                onChange={set("recruitment.rush_chairs.contact_email")}
+                placeholder="pgnmichigan@gmail.com"
+                className={inputCls}
+              />
+            </Field>
+            <Field label="Body / Referral Description">
+              <textarea
+                value={fields["recruitment.rush_chairs.contact_body"]}
+                onChange={set("recruitment.rush_chairs.contact_body")}
+                rows={3}
+                className={textareaCls}
+              />
+            </Field>
+          </div>
         </Section>
 
         {/* ── Upcoming Events Section ── */}
