@@ -691,7 +691,7 @@ function ApplicantStatusScreen({
       failed: submission.round_1_status === "not_selected",
     },
     {
-      label: "3. Final Deliberation & Bid",
+      label: "3. Final Deliberation",
       active: stage === "round2",
       done: isBidOffered,
       passed: isBidOffered,
