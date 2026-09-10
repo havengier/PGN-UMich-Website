@@ -48,32 +48,66 @@ export function resolveApplicantPhoto(
     const keyLower = key.toLowerCase();
     const combined = `${label} ${keyLower}`.trim();
 
+    // 1. Artifacts, creative works, and non-profile introductions:
+    // E.g.: "Provide a personal artifact to help introduce yourself to your future PGN Brothers.
+    // It can be a photo, short story, poem, portfolio, song, or anything else you would like."
+    // These are creative or personal artifacts, NOT the candidate's professional profile picture.
+    const isArtifact =
+      /artifact|portfolio|poem|song|story|creative|artwork|drawing|screenshot|audio|music/i.test(combined) ||
+      (/introduce\s*yourself/i.test(combined) && /artifact|photo|story|poem|song|portfolio/i.test(combined));
+
+    // 2. Explicit professional indicators:
+    const isProfessional = /professional|formal|business|official/i.test(combined);
+
+    // 3. Headshot / portrait / profile picture indicators:
     const hasHeadshot = /head\s*shot/i.test(combined);
-    const isPersonal = /personal|meaningful|favorite|casual|fun|hobby|about\s*you|yourself|story/i.test(combined);
-    const isProfessional = /professional|formal|business|profile|official/i.test(combined);
-    const hasPhotoWord = /photo|picture|portrait|image/i.test(combined);
+    const hasPortrait = /portrait/i.test(combined);
+    const hasProfilePic = /profile\s*(photo|picture|pic|image)/i.test(combined);
+
+    // 4. Photo / picture words:
+    const hasPhotoWord = /photo|picture|portrait|head\s*shot|image|pic\b/i.test(combined);
+
+    // 5. Phrases explicitly requesting a photo of the applicant:
+    // Note: "picture of yourself" is a standard prompt for a headshot/profile picture, NOT an artifact.
+    const isPhotoOfSelf =
+      /(photo|picture|image|portrait|headshot)\s*(of|for)\s*(yourself|you)\b/i.test(combined) ||
+      /(upload|provide|submit)\s*(a|your)?\s*(professional\s*)?(photo|picture|image|headshot|portrait)\b/i.test(combined);
+
+    // 6. Casual / informal personal picture (e.g. "casual photo", "fun photo"):
+    const isCasualOrFun = /casual\s*(photo|picture|pic)|fun\s*(photo|picture|pic)|favorite\s*(photo|pic)|hobby/i.test(combined);
+
     const isExplicitImg =
       strVal.startsWith("data:image/") ||
       strVal.startsWith("/uploads/photo_") ||
       /\.(jpe?g|png|webp|gif|avif|bmp|svg)(\?.*)?$/i.test(strVal);
 
     let score = 0;
-    if (hasHeadshot && isProfessional) {
-      score = 120; // Explicit professional headshot
-    } else if (hasHeadshot && !isPersonal) {
-      score = 100; // Question specifically asking for headshot
-    } else if (hasHeadshot) {
-      score = 90; // Mentions headshot
-    } else if (isProfessional && (hasPhotoWord || isExplicitImg) && !isPersonal) {
-      score = 80; // Professional photo / portrait
-    } else if (/portrait/i.test(combined) && !isPersonal) {
-      score = 70; // Portrait
-    } else if (hasPhotoWord && !isPersonal) {
-      score = 50; // Generic photo/picture (not personal)
-    } else if (!isPersonal && isExplicitImg) {
-      score = 30; // Unlabeled image file
-    } else if (isPersonal && (hasPhotoWord || isExplicitImg)) {
-      score = 10; // Explicit personal picture (fallback if no headshot uploaded)
+
+    if (isArtifact) {
+      // Personal artifacts (stories, poems, creative artifacts, songs, etc.)
+      // should never be used as the applicant's profile picture avatar.
+      score = 0;
+    } else if (isProfessional && (hasHeadshot || hasProfilePic || hasPhotoWord || isPhotoOfSelf)) {
+      // Top Tier: "Please upload a professional picture of yourself", "Professional headshot", "Professional photo"
+      score = 150;
+    } else if (hasHeadshot || hasProfilePic) {
+      // Tier 2: "Headshot", "Profile picture"
+      score = 120;
+    } else if (hasPortrait) {
+      // Tier 3: "Portrait"
+      score = 100;
+    } else if (isPhotoOfSelf && !isCasualOrFun) {
+      // Tier 4: "Please upload a picture of yourself" (without the word 'professional')
+      score = 90;
+    } else if (hasPhotoWord && !isCasualOrFun) {
+      // Tier 5: Generic "Photo", "Picture"
+      score = 70;
+    } else if (isExplicitImg && !isCasualOrFun) {
+      // Tier 6: Unlabeled image file upload
+      score = 40;
+    } else if (isCasualOrFun) {
+      // Tier 7: Explicitly casual/fun picture (only fallback if no professional/headshot exists)
+      score = 10;
     } else {
       score = 5;
     }
@@ -84,7 +118,7 @@ export function resolveApplicantPhoto(
     }
   }
 
-  // Check direct keys if no explicit headshot was matched in the questions
+  // Fallback to direct keys if not picked up above with a high-confidence score
   if (!bestPhoto || bestScore < 70) {
     const directHeadshot = parsedAnswers.headshot || parsedAnswers.photo_headshot || parsedAnswers.professional_headshot;
     if (typeof directHeadshot === "string" && isCandidateImageUrl(directHeadshot)) {
@@ -92,11 +126,16 @@ export function resolveApplicantPhoto(
     }
   }
 
-  if (!bestPhoto) {
+  if (!bestPhoto || bestScore < 40) {
     const directFallback = parsedAnswers.photo || parsedAnswers.photo_url || parsedAnswers.picture;
     if (typeof directFallback === "string" && isCandidateImageUrl(directFallback)) {
       return directFallback.trim();
     }
+  }
+
+  // If the only matched item was an artifact (score <= 0), don't return it as a profile picture
+  if (bestScore <= 0) {
+    return "";
   }
 
   return bestPhoto;
