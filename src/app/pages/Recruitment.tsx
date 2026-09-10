@@ -63,11 +63,13 @@ function formatEventDate(dateStr: string): string {
     const d = new Date(dateStr);
     if (isNaN(d.getTime())) return dateStr;
     return d.toLocaleDateString("en-US", {
+      timeZone: "America/New_York",
       weekday: "short",
       month: "short",
       day: "numeric",
       hour: "numeric",
       minute: "2-digit",
+      timeZoneName: "short",
     });
   } catch {
     return dateStr;

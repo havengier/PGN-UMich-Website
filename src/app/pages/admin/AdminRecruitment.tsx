@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import { ArrowLeft, Save, CheckCircle, AlertCircle, Plus, Trash2, Calendar, MapPin, Image as ImageIcon } from "lucide-react";
 import { LoginGate } from "@/app/components/LoginGate";
+import { toEasternDateTimeLocal, fromEasternDateTimeLocal } from "@/app/utils/timezone";
 
 const NS = "recruitment";
 
@@ -482,11 +483,11 @@ function AdminRecruitmentContent() {
                     />
                   </Field>
 
-                  <Field label="Date & Time" hint="Format: YYYY-MM-DDTHH:mm or ISO date">
+                  <Field label="Date & Time (Eastern Time / ET)" hint="All dates and times are in Eastern Time (ET)">
                     <input
                       type="datetime-local"
-                      value={ev.date ? ev.date.slice(0, 16) : ""}
-                      onChange={(e) => updateEvent(i, { date: e.target.value })}
+                      value={toEasternDateTimeLocal(ev.date)}
+                      onChange={(e) => updateEvent(i, { date: fromEasternDateTimeLocal(e.target.value) || e.target.value })}
                       className={inputCls}
                     />
                   </Field>

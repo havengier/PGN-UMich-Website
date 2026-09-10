@@ -44,6 +44,12 @@ import {
 import { LoginGate } from "@/app/components/LoginGate";
 import { useAuth } from "@/app/context/AuthContext";
 import { resolveApplicantPhoto } from "@/app/utils/applicantPhoto";
+import {
+  toEasternDateTimeLocal,
+  fromEasternDateTimeLocal,
+  formatEasternDate,
+} from "@/app/utils/timezone";
+
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type FieldType = "text" | "email" | "tel" | "textarea" | "select" | "file" | "photo";
@@ -476,9 +482,9 @@ function AdminApplyPortal() {
               <span className="flex items-center gap-1.5">
                 <Calendar size={14} className="text-[#F5A623]" />
                 {form.opens_at || form.closes_at
-                  ? `Window: ${form.opens_at ? new Date(form.opens_at).toLocaleDateString() : "Immediate"} - ${
-                      form.closes_at ? new Date(form.closes_at).toLocaleDateString() : "Open"
-                    }`
+                  ? `Window: ${form.opens_at ? formatEasternDate(form.opens_at) : "Immediate"} - ${
+                      form.closes_at ? formatEasternDate(form.closes_at) : "Open"
+                    } (ET)`
                   : "No deadline set"}
               </span>
             </div>
@@ -4471,34 +4477,39 @@ function ApplicationBuilderTab({
 
         {/* Datetime Scheduler */}
         <div>
-          <h4 className="text-xs font-bold text-stone-900 uppercase tracking-wider mb-1">
-            Application Window Scheduler
-          </h4>
+          <div className="flex items-center justify-between mb-1">
+            <h4 className="text-xs font-bold text-stone-900 uppercase tracking-wider">
+              Application Window Scheduler
+            </h4>
+            <span className="text-[10px] font-semibold text-[#7A0C0C] bg-red-50 border border-red-200/80 px-2 py-0.5 rounded-full">
+              Eastern Time (ET)
+            </span>
+          </div>
           <p className="text-xs text-stone-500 mb-4">
-            Leave dates blank to keep the form open indefinitely while the cycle is open and unlocked.
+            All dates and times are set in Eastern Time (ET). Leave dates blank to keep the form open indefinitely while the cycle is open and unlocked.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-semibold text-stone-700 block mb-1">Opens At</label>
+              <label className="text-xs font-semibold text-stone-700 block mb-1">Opens At (ET)</label>
               <input
                 type="datetime-local"
-                value={form.opens_at ? form.opens_at.slice(0, 16) : ""}
+                value={toEasternDateTimeLocal(form.opens_at)}
                 onChange={(e) =>
                   setForm((prev) =>
-                    prev ? { ...prev, opens_at: e.target.value ? new Date(e.target.value).toISOString() : null } : null,
+                    prev ? { ...prev, opens_at: fromEasternDateTimeLocal(e.target.value) } : null,
                   )
                 }
                 className="w-full text-xs border border-stone-200 rounded-xl px-3 py-2 outline-none focus:border-[#7A0C0C]"
               />
             </div>
             <div>
-              <label className="text-xs font-semibold text-stone-700 block mb-1">Closes At (Deadline)</label>
+              <label className="text-xs font-semibold text-stone-700 block mb-1">Closes At / Deadline (ET)</label>
               <input
                 type="datetime-local"
-                value={form.closes_at ? form.closes_at.slice(0, 16) : ""}
+                value={toEasternDateTimeLocal(form.closes_at)}
                 onChange={(e) =>
                   setForm((prev) =>
-                    prev ? { ...prev, closes_at: e.target.value ? new Date(e.target.value).toISOString() : null } : null,
+                    prev ? { ...prev, closes_at: fromEasternDateTimeLocal(e.target.value) } : null,
                   )
                 }
                 className="w-full text-xs border border-stone-200 rounded-xl px-3 py-2 outline-none focus:border-[#7A0C0C]"

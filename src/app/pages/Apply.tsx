@@ -26,6 +26,7 @@ import {
 import confetti from "canvas-confetti";
 import { LoginGate } from "@/app/components/LoginGate";
 import { useAuth } from "@/app/context/AuthContext";
+import { formatEasternDateTime } from "@/app/utils/timezone";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type FieldType = "text" | "email" | "tel" | "textarea" | "select" | "file" | "photo";
@@ -603,13 +604,9 @@ function LockedOrScheduledScreen({
         {isLocked
           ? "Applications for this recruitment cycle are currently paused or locked by the recruitment chairs. Please check back shortly for updates."
           : isScheduled
-          ? `Applications for ${cycleName} are scheduled to open on ${new Date(
-              opensAt!,
-            ).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}.`
+          ? `Applications for ${cycleName} are scheduled to open on ${formatEasternDateTime(opensAt)}.`
           : isPassedDeadline
-          ? `The submission deadline for ${cycleName} closed on ${new Date(
-              closesAt!,
-            ).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}.`
+          ? `The submission deadline for ${cycleName} closed on ${formatEasternDateTime(closesAt)}.`
           : "Submissions for this recruitment cycle are currently closed."}
       </p>
 
@@ -1562,8 +1559,7 @@ function ApplyContent() {
                       <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-50 border border-amber-200/70 text-xs text-amber-900 font-medium">
                         <Clock size={13} className="text-[#7A0C0C]" />
                         <span>
-                          Deadline: {new Date(form.closes_at).toLocaleDateString()} at{" "}
-                          {new Date(form.closes_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                          Deadline: {formatEasternDateTime(form.closes_at)}
                         </span>
                       </div>
                     )}
