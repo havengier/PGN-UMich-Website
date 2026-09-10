@@ -38,6 +38,7 @@ import {
   GraduationCap,
   Shuffle,
   UserCheck,
+  UserX,
   Undo2,
 } from "lucide-react";
 import { LoginGate } from "@/app/components/LoginGate";
@@ -845,6 +846,7 @@ function RoundReviewTab({
   const [questionLabels, setQuestionLabels] = useState<Record<string, string>>({});
   const [selectedSubmissionIds, setSelectedSubmissionIds] = useState<Set<number>>(new Set());
   const [batchAdvancing, setBatchAdvancing] = useState(false);
+  const [batchRejecting, setBatchRejecting] = useState(false);
 
   useEffect(() => {
     setMajorPool(round === "application" ? "all" : "bba");
@@ -939,6 +941,40 @@ function RoundReviewTab({
       await loadData();
     } finally {
       setBatchAdvancing(false);
+    }
+  }
+
+  // Batch reject handler for selected candidates
+  async function handleBatchReject() {
+    if (selectedSubmissionIds.size === 0) return;
+    const ids = Array.from(selectedSubmissionIds);
+    setBatchRejecting(true);
+    setCandidates((prev) =>
+      prev.map((c) =>
+        selectedSubmissionIds.has(c.submissionId)
+          ? { ...c, status: rejectStatusKey, isOverridden: true }
+          : c,
+      ),
+    );
+    if (selectedCandidate && selectedSubmissionIds.has(selectedCandidate.submissionId)) {
+      setSelectedCandidate((prev) =>
+        prev ? { ...prev, status: rejectStatusKey, isOverridden: true } : null,
+      );
+    }
+    try {
+      const res = await fetch("/api/recruitment/submissions/batch-override-status", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ submissionIds: ids, round, status: rejectStatusKey }),
+      });
+      if (!res.ok) throw new Error("Failed to batch reject submissions");
+      setSelectedSubmissionIds(new Set());
+      await loadData();
+    } catch (err) {
+      console.error("Failed to batch reject:", err);
+      await loadData();
+    } finally {
+      setBatchRejecting(false);
     }
   }
 
@@ -1698,13 +1734,13 @@ function RoundReviewTab({
                 </span>
                 <span className="text-stone-500">•</span>
                 <span className="text-xs text-stone-300">
-                  Ready to advance to {advanceStatusLabel}
+                  Bulk decisions for current round
                 </span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <button
                   type="button"
-                  disabled={batchAdvancing}
+                  disabled={batchAdvancing || batchRejecting}
                   onClick={handleBatchAdvance}
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs transition active:scale-95 disabled:opacity-50 cursor-pointer"
                 >
@@ -1713,6 +1749,19 @@ function RoundReviewTab({
                     {batchAdvancing
                       ? "Advancing Candidates…"
                       : `Advance Selected (${selectedSubmissionIds.size}) to Next Round`}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  disabled={batchAdvancing || batchRejecting}
+                  onClick={handleBatchReject}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-rose-700 hover:bg-rose-600 text-white shadow-xs transition active:scale-95 disabled:opacity-50 cursor-pointer"
+                >
+                  <UserX size={14} />
+                  <span>
+                    {batchRejecting
+                      ? "Rejecting Candidates…"
+                      : `Reject Selected (${selectedSubmissionIds.size})`}
                   </span>
                 </button>
                 <button
@@ -1848,7 +1897,7 @@ function RoundReviewTab({
                       />
                     </div>
                   </th>
-                  <th className="px-5 py-3.5 whitespace-nowrap">Round Status & Advance</th>
+                  <th className="px-5 py-3.5 whitespace-nowrap">Round Status & Decisions</th>
                   <th className="px-4 py-3.5 text-right">Actions</th>
                 </tr>
               </thead>
@@ -2245,7 +2294,8 @@ function RoundReviewTab({
 
                       {/* Round Status & Override indicator */}
                       <td className="px-5 py-4 whitespace-nowrap">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5">
+                          {/* Manual Advance Button */}
                           {c.status === advanceStatusKey ? (
                             <button
                               type="button"
@@ -2266,11 +2316,40 @@ function RoundReviewTab({
                             <button
                               type="button"
                               onClick={() => handleOverride(c.submissionId, advanceStatusKey)}
-                              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs hover:shadow-sm transition-all cursor-pointer active:scale-95"
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs hover:shadow-sm transition-all cursor-pointer active:scale-95"
                               title={`Manually advance ${c.applicantName} to ${advanceStatusLabel}`}
                             >
                               <UserCheck size={13} />
                               <span>Advance</span>
+                            </button>
+                          )}
+
+                          {/* Manual Reject Button */}
+                          {c.status === rejectStatusKey ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleOverride(
+                                  c.submissionId,
+                                  round === "application" ? "pending_review" : "pending",
+                                )
+                              }
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-stone-100 text-stone-700 border border-stone-300 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 transition-colors cursor-pointer group shadow-2xs"
+                              title="Candidate marked as Not Selected. Click to undo."
+                            >
+                              <X size={12} className="text-stone-500 group-hover:hidden" />
+                              <span className="group-hover:hidden">Rejected ✕</span>
+                              <span className="hidden group-hover:inline text-[11px] font-bold">Undo</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleOverride(c.submissionId, rejectStatusKey)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-white text-stone-600 border border-stone-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 shadow-2xs hover:shadow-xs transition-all cursor-pointer active:scale-95"
+                              title={`Manually mark ${c.applicantName} as ${rejectStatusLabel}`}
+                            >
+                              <UserX size={12} />
+                              <span>Reject</span>
                             </button>
                           )}
 
@@ -2878,6 +2957,39 @@ function RoundReviewTab({
                       </button>
                     )}
 
+                    {/* Manual Reject / Not Selected Button */}
+                    {selectedCandidate.status === rejectStatusKey ? (
+                      <div className="inline-flex items-center gap-1.5">
+                        <span className="inline-flex items-center gap-1 px-3.5 py-2 rounded-xl text-xs font-bold bg-stone-100 text-stone-700 border border-stone-300 shadow-2xs">
+                          <X size={14} className="text-stone-500" />
+                          <span>Marked Not Selected ✕</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleOverride(
+                              selectedCandidate.submissionId,
+                              round === "application" ? "pending_review" : "pending",
+                            )
+                          }
+                          className="text-xs text-stone-400 hover:text-stone-700 underline px-1 cursor-pointer font-medium"
+                          title="Revert decision back to pending"
+                        >
+                          Undo
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleOverride(selectedCandidate.submissionId, rejectStatusKey)}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-white text-stone-700 border border-stone-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 shadow-2xs hover:shadow-xs transition active:scale-95 cursor-pointer"
+                        title={`Mark candidate as ${rejectStatusLabel}`}
+                      >
+                        <UserX size={14} />
+                        <span>{rejectStatusLabel}</span>
+                      </button>
+                    )}
+
                     {info.resumeUrl && (
                       <a
                         href={info.resumeUrl}
@@ -3014,6 +3126,33 @@ function RoundReviewTab({
                           >
                             <UserCheck size={14} />
                             <span>{advanceStatusLabel}</span>
+                          </button>
+                        )}
+
+                        {selectedCandidate.status === rejectStatusKey ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleOverride(
+                                selectedCandidate.submissionId,
+                                round === "application" ? "pending_review" : "pending",
+                              )
+                            }
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-stone-100 text-stone-700 border border-stone-300 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 transition cursor-pointer group shadow-2xs"
+                            title="Candidate marked as Not Selected. Click to undo."
+                          >
+                            <X size={13} className="text-stone-500 group-hover:hidden" />
+                            <span className="group-hover:hidden font-medium">Rejected ✕</span>
+                            <span className="hidden group-hover:inline text-[11px] font-bold">Undo Reject</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleOverride(selectedCandidate.submissionId, rejectStatusKey)}
+                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-white text-stone-700 border border-stone-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 shadow-2xs hover:shadow-xs transition cursor-pointer active:scale-95"
+                          >
+                            <UserX size={14} />
+                            <span>{rejectStatusLabel}</span>
                           </button>
                         )}
 
