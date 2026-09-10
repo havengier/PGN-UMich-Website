@@ -1175,6 +1175,24 @@ async function getAssignedSubmissionsForBrother(
       const resolved = resolveApplicantFields(answers, question_labels);
       const is_bba = isApplicantBba({ ...s, answers }, question_labels);
 
+      // In Brother Portal, candidate headshots are strictly hidden to ensure unbiased evaluation
+      const headshotUrl = resolved.photo_url || "";
+      const brotherPortalResponses: Record<string, any> = {};
+      for (const [k, v] of Object.entries(answers)) {
+        const prompt = (question_labels[k] || k).toLowerCase();
+        const strVal = typeof v === "string" ? v.trim() : "";
+        const isHeadshot =
+          (headshotUrl && strVal === headshotUrl) ||
+          ((/professional.*(picture|photo|headshot|portrait)/i.test(prompt) ||
+            /head\s*shot/i.test(prompt) ||
+            /(picture|photo)\s*of\s*yourself/i.test(prompt) ||
+            /^(headshot|photo_headshot|professional_headshot)$/i.test(k.toLowerCase())) &&
+           !/artifact|portfolio|poem|song|story|creative/i.test(prompt));
+        if (!isHeadshot) {
+          brotherPortalResponses[k] = v;
+        }
+      }
+
       let current_round: "application" | "round1" | "round2" = "application";
       let current_round_name = "Application Round";
       let myScoreObj = s.app_score || null;
@@ -1202,9 +1220,9 @@ async function getAssignedSubmissionsForBrother(
         grad_term: resolved.grad_term,
         pronouns: resolved.pronouns,
         resume_url: resolved.resume_url,
-        photo_url: resolved.photo_url,
+        photo_url: null, // Strictly hidden in Brother Portal
         is_bba,
-        responses: answers,
+        responses: brotherPortalResponses,
         question_labels,
         current_round,
         current_round_name,
@@ -1280,6 +1298,24 @@ async function getAssignedSubmissionsForBrother(
       const resolved = resolveApplicantFields(answers, question_labels);
       const is_bba = isApplicantBba({ ...s, answers }, question_labels);
 
+      // In Brother Portal, candidate headshots are strictly hidden to ensure unbiased evaluation
+      const headshotUrl = resolved.photo_url || "";
+      const brotherPortalResponses: Record<string, any> = {};
+      for (const [k, v] of Object.entries(answers)) {
+        const prompt = (question_labels[k] || k).toLowerCase();
+        const strVal = typeof v === "string" ? v.trim() : "";
+        const isHeadshot =
+          (headshotUrl && strVal === headshotUrl) ||
+          ((/professional.*(picture|photo|headshot|portrait)/i.test(prompt) ||
+            /head\s*shot/i.test(prompt) ||
+            /(picture|photo)\s*of\s*yourself/i.test(prompt) ||
+            /^(headshot|photo_headshot|professional_headshot)$/i.test(k.toLowerCase())) &&
+           !/artifact|portfolio|poem|song|story|creative/i.test(prompt));
+        if (!isHeadshot) {
+          brotherPortalResponses[k] = v;
+        }
+      }
+
       return {
         ...s,
         full_name: s.applicant_name,
@@ -1291,9 +1327,9 @@ async function getAssignedSubmissionsForBrother(
         grad_term: resolved.grad_term,
         pronouns: resolved.pronouns,
         resume_url: resolved.resume_url,
-        photo_url: resolved.photo_url,
+        photo_url: null, // Strictly hidden in Brother Portal
         is_bba,
-        responses: answers,
+        responses: brotherPortalResponses,
         question_labels,
         current_round,
         current_round_name,

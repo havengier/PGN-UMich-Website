@@ -643,10 +643,25 @@ function BrotherPortalInner() {
                       return false;
                     };
 
-                    const candidatePhoto =
+                    // Professional headshots are strictly hidden in Brother Portal to prevent bias during review.
+                    // Personal artifacts (e.g. photos of drawings, poems, songs) remain visible.
+                    const resolvedHeadshot =
                       resolveApplicantPhoto(parsedResponses, selectedSub.question_labels || {}) ||
                       selectedSub.photo_url ||
-                      null;
+                      "";
+
+                    const visibleResponses = Object.entries(parsedResponses).filter(([key, value]: [string, any]) => {
+                      const prompt = (selectedSub.question_labels?.[key] || key).toLowerCase();
+                      const strVal = typeof value === "string" ? value.trim() : "";
+                      const isHeadshot =
+                        (resolvedHeadshot && strVal === resolvedHeadshot) ||
+                        ((/professional.*(picture|photo|headshot|portrait)/i.test(prompt) ||
+                          /head\s*shot/i.test(prompt) ||
+                          /(picture|photo)\s*of\s*yourself/i.test(prompt) ||
+                          /^(headshot|photo_headshot|professional_headshot)$/i.test(key.toLowerCase())) &&
+                         !/artifact|portfolio|poem|song|story|creative/i.test(prompt));
+                      return !isHeadshot;
+                    });
 
                     const candidateResume = selectedSub.resume_url || (() => {
                       for (const [k, v] of Object.entries(parsedResponses)) {
@@ -709,28 +724,9 @@ function BrotherPortalInner() {
                         {/* Candidate Profile Header */}
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-stone-100">
                           <div className="flex items-center gap-3.5 sm:gap-4">
-                            {candidatePhoto ? (
-                              <a
-                                href={candidatePhoto}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="group relative shrink-0"
-                                title="Click to view full-size photo"
-                              >
-                                <img
-                                  src={candidatePhoto}
-                                  alt={selectedSub.full_name}
-                                  className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl object-cover border-2 border-stone-200 shadow-xs group-hover:opacity-90 transition"
-                                />
-                                <div className="absolute inset-0 rounded-2xl bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center transition text-white">
-                                  <ExternalLink size={14} />
-                                </div>
-                              </a>
-                            ) : (
-                              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-stone-100 border border-stone-200 flex items-center justify-center text-stone-400 font-bold text-xl shrink-0 font-serif">
-                                {selectedSub.full_name?.charAt(0) || "P"}
-                              </div>
-                            )}
+                            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-stone-100 border border-stone-200 flex items-center justify-center text-stone-400 font-bold text-xl shrink-0 font-serif">
+                              {selectedSub.full_name?.charAt(0) || "P"}
+                            </div>
 
                             <div>
                               <div className="flex items-center gap-2 flex-wrap">
@@ -778,17 +774,6 @@ function BrotherPortalInner() {
                                 <ExternalLink size={12} className="text-stone-400" />
                               </a>
                             )}
-                            {candidatePhoto && (
-                              <a
-                                href={candidatePhoto}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-stone-100 text-stone-700 text-xs font-semibold hover:bg-stone-200 transition border border-stone-200 shadow-2xs"
-                              >
-                                <span>Headshot</span>
-                                <ExternalLink size={12} className="text-stone-400" />
-                              </a>
-                            )}
                           </div>
                         </div>
 
@@ -821,9 +806,9 @@ function BrotherPortalInner() {
                             Application Responses
                           </h4>
 
-                          {parsedResponses && Object.keys(parsedResponses).length > 0 ? (
+                          {visibleResponses.length > 0 ? (
                             <div className="space-y-4">
-                              {Object.entries(parsedResponses).map(([key, value]: [string, any]) => {
+                              {visibleResponses.map(([key, value]: [string, any]) => {
                                 const prompt = selectedSub.question_labels?.[key] || key
                                   .replace(/_/g, " ")
                                   .replace(/([A-Z])/g, " $1")
