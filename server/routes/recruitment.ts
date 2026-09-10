@@ -927,6 +927,108 @@ export function extractQuestionLabels(formQuestions: any[]): Record<string, stri
   return labels;
 }
 
+export function resolveApplicantPhoto(
+  answers: Record<string, any> = {},
+  questionLabels: Record<string, string> = {},
+): string {
+  let parsedAnswers: Record<string, any> = answers;
+  if (typeof answers === "string") {
+    try {
+      parsedAnswers = JSON.parse(answers);
+    } catch {
+      return "";
+    }
+  }
+
+  if (!parsedAnswers || typeof parsedAnswers !== "object") {
+    return "";
+  }
+
+  let bestPhoto = "";
+  let bestScore = -1;
+
+  for (const [key, val] of Object.entries(parsedAnswers)) {
+    if (!val) continue;
+    const strVal = typeof val === "string" ? val.trim() : "";
+    if (!strVal) continue;
+
+    const isDoc =
+      /\.(pdf|docx?|doc|txt|xlsx?|pptx?|csv)(\?.*)?$/i.test(strVal) ||
+      strVal.startsWith("/uploads/resume_");
+    if (isDoc) continue;
+
+    const isExplicitImg =
+      strVal.startsWith("data:image/") ||
+      strVal.startsWith("/uploads/photo_") ||
+      /\.(jpe?g|png|webp|gif|avif|bmp|svg)(\?.*)?$/i.test(strVal);
+
+    const isGenericUrl =
+      strVal.startsWith("http://") ||
+      strVal.startsWith("https://") ||
+      strVal.startsWith("/uploads/");
+
+    if (!isExplicitImg && !isGenericUrl) continue;
+
+    const label = (questionLabels[key] || "").toLowerCase();
+    const keyLower = key.toLowerCase();
+    const combined = `${label} ${keyLower}`.trim();
+
+    const hasHeadshot = /head\s*shot/i.test(combined);
+    const isPersonal = /personal|meaningful|favorite|casual|fun|hobby|about\s*you|yourself|story/i.test(combined);
+    const isProfessional = /professional|formal|business|profile|official/i.test(combined);
+    const hasPhotoWord = /photo|picture|portrait|image/i.test(combined);
+
+    let score = 0;
+    if (hasHeadshot && isProfessional) {
+      score = 120; // Top priority: Explicit professional headshot
+    } else if (hasHeadshot && !isPersonal) {
+      score = 100; // Question specifically asking for headshot
+    } else if (hasHeadshot) {
+      score = 90; // Mentions headshot
+    } else if (isProfessional && (hasPhotoWord || isExplicitImg) && !isPersonal) {
+      score = 80; // Professional photo / portrait
+    } else if (/portrait/i.test(combined) && !isPersonal) {
+      score = 70; // Portrait
+    } else if (hasPhotoWord && !isPersonal) {
+      score = 50; // Generic photo/picture (not marked personal)
+    } else if (!isPersonal && isExplicitImg) {
+      score = 30; // Unlabeled image file
+    } else if (isPersonal && (hasPhotoWord || isExplicitImg)) {
+      score = 10; // Explicit personal picture (fallback if no headshot uploaded)
+    } else {
+      score = 5;
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestPhoto = strVal;
+    }
+  }
+
+  // Fallback to direct keys if not picked up above
+  if (!bestPhoto || bestScore < 70) {
+    const directHeadshot =
+      parsedAnswers.headshot ||
+      parsedAnswers.photo_headshot ||
+      parsedAnswers.professional_headshot;
+    if (typeof directHeadshot === "string" && directHeadshot.trim()) {
+      return directHeadshot.trim();
+    }
+  }
+
+  if (!bestPhoto) {
+    const directFallback =
+      parsedAnswers.photo ||
+      parsedAnswers.photo_url ||
+      parsedAnswers.picture;
+    if (typeof directFallback === "string" && directFallback.trim()) {
+      return directFallback.trim();
+    }
+  }
+
+  return bestPhoto;
+}
+
 export function resolveApplicantFields(
   answers: Record<string, any> = {},
   questionLabels: Record<string, string> = {},
@@ -938,7 +1040,7 @@ export function resolveApplicantFields(
   let phone = answers.phone || answers.phone_number || "";
   let pronouns = answers.pronouns || "";
   let resume_url = answers.resume || answers.resume_url || "";
-  let photo_url = answers.photo || answers.photo_url || answers.headshot || "";
+  let photo_url = resolveApplicantPhoto(answers, questionLabels);
 
   // Scan answers with key & label fuzzy matching
   for (const [key, val] of Object.entries(answers)) {
@@ -971,17 +1073,9 @@ export function resolveApplicantFields(
         resume_url = strVal;
       }
     }
-    if (!photo_url && (/photo|headshot|picture|portrait/i.test(label) || /photo|headshot|picture/i.test(keyLower))) {
-      if (strVal.startsWith("http") || strVal.startsWith("/uploads/") || strVal.startsWith("data:image/")) {
-        photo_url = strVal;
-      }
-    }
-    // Fallback detection from uploaded paths
+    // Fallback detection from uploaded paths for resume
     if (!resume_url && (strVal.startsWith("/uploads/resume_") || (strVal.startsWith("/uploads/") && /\.(pdf|docx?)$/i.test(strVal)))) {
       resume_url = strVal;
-    }
-    if (!photo_url && (strVal.startsWith("/uploads/photo_") || (strVal.startsWith("/uploads/") && /\.(jpe?g|png|webp|gif|avif)$/i.test(strVal)))) {
-      photo_url = strVal;
     }
   }
 

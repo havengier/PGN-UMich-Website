@@ -40,6 +40,7 @@ import {
 } from "lucide-react";
 import { LoginGate } from "@/app/components/LoginGate";
 import { useAuth } from "@/app/context/AuthContext";
+import { resolveApplicantPhoto } from "@/app/utils/applicantPhoto";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type FieldType = "text" | "email" | "tel" | "textarea" | "select" | "file" | "photo";
@@ -168,7 +169,9 @@ function resolveApplicantInfo(c: CandidateRow, questionLabels: Record<string, st
     }
   }
 
-  let photoUrl = c.photoUrl || "";
+  // Headshot has top priority for candidate profile photo over personal or generic photos
+  const resolvedPhoto = resolveApplicantPhoto(answers, questionLabels);
+  let photoUrl = resolvedPhoto || c.photoUrl || "";
   let resumeUrl = c.resumeUrl || "";
   let major = c.major || "";
   let minor = c.minor || "";
@@ -184,17 +187,6 @@ function resolveApplicantInfo(c: CandidateRow, questionLabels: Record<string, st
     const label = (questionLabels[key] || "").toLowerCase();
     const keyLower = key.toLowerCase();
 
-    if (
-      !photoUrl &&
-      (/photo|headshot|picture|portrait/i.test(label) ||
-        /photo|headshot|picture/i.test(keyLower) ||
-        strVal.startsWith("/uploads/photo_") ||
-        (strVal.startsWith("data:image/") && strVal.length > 50))
-    ) {
-      if (strVal.startsWith("http") || strVal.startsWith("/uploads/") || strVal.startsWith("data:image/")) {
-        photoUrl = strVal;
-      }
-    }
     if (
       !resumeUrl &&
       (/resume|cv|curriculum/i.test(label) ||
@@ -2710,7 +2702,7 @@ function RoundReviewTab({
                         rel="noreferrer"
                         className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-stone-100 text-stone-700 text-xs font-semibold hover:bg-stone-200 transition border border-stone-200 shadow-2xs cursor-pointer"
                       >
-                        <span>Photo</span>
+                        <span>Headshot</span>
                         <ExternalLink size={12} className="text-stone-400" />
                       </a>
                     )}

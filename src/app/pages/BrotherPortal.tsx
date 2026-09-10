@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { LoginGate } from "@/app/components/LoginGate";
 import { useAuth } from "@/app/context/AuthContext";
+import { resolveApplicantPhoto } from "@/app/utils/applicantPhoto";
 
 type AssignedSubmission = {
   id: number;
@@ -642,13 +643,10 @@ function BrotherPortalInner() {
                       return false;
                     };
 
-                    const candidatePhoto = selectedSub.photo_url || (() => {
-                      for (const [k, v] of Object.entries(parsedResponses)) {
-                        const prompt = selectedSub.question_labels?.[k] || k;
-                        if (typeof v === "string" && isPhotoUrl(v, prompt, k)) return v;
-                      }
-                      return null;
-                    })();
+                    const candidatePhoto =
+                      resolveApplicantPhoto(parsedResponses, selectedSub.question_labels || {}) ||
+                      selectedSub.photo_url ||
+                      null;
 
                     const candidateResume = selectedSub.resume_url || (() => {
                       for (const [k, v] of Object.entries(parsedResponses)) {
@@ -787,7 +785,7 @@ function BrotherPortalInner() {
                                 rel="noreferrer"
                                 className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-stone-100 text-stone-700 text-xs font-semibold hover:bg-stone-200 transition border border-stone-200 shadow-2xs"
                               >
-                                <span>Photo</span>
+                                <span>Headshot</span>
                                 <ExternalLink size={12} className="text-stone-400" />
                               </a>
                             )}

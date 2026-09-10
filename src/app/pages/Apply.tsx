@@ -1171,6 +1171,14 @@ function ApplyContent() {
             updated[f.id] = candidate.whyPGN;
           } else if (f.type === "file") {
             updated[f.id] = "/uploads/sample_resume.pdf";
+          } else if (f.type === "photo") {
+            const labelLower = (f.label || "").toLowerCase();
+            const idLower = (f.id || "").toLowerCase();
+            if (/head\s*shot/i.test(labelLower + " " + idLower)) {
+              updated[f.id] = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80";
+            } else {
+              updated[f.id] = "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=600&q=80";
+            }
           } else {
             updated[f.id] = f.id.toLowerCase().includes("gpa") ? candidate.gpa : "Sample test response";
           }
