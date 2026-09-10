@@ -782,47 +782,43 @@ function ApplicantStatusScreen({
 
       {/* Hero Outcome / Status Card */}
       <div className="py-10 text-center">
-        <div
-          className={`w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-sm ${
-            isBidOffered
-              ? "bg-gradient-to-br from-amber-400 to-amber-600 text-white ring-8 ring-amber-100"
-              : isAdvanced
-              ? "bg-emerald-100 text-emerald-700 ring-8 ring-emerald-50"
-              : isPending
-              ? "bg-amber-100 text-[#7A0C0C] ring-8 ring-amber-50"
-              : "bg-stone-100 text-stone-600 ring-8 ring-stone-50"
-          }`}
-        >
-          {isBidOffered ? (
-            <Sparkles size={36} />
-          ) : isAdvanced ? (
-            <CheckCircle size={36} strokeWidth={1.75} />
-          ) : isPending ? (
-            <Clock size={36} strokeWidth={1.75} />
-          ) : (
-            <AlertCircle size={36} strokeWidth={1.75} />
-          )}
-        </div>
+        {!isBidOffered && (
+          <div
+            className={`w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-sm ${
+              isAdvanced
+                ? "bg-emerald-100 text-emerald-700 ring-8 ring-emerald-50"
+                : isPending
+                ? "bg-amber-100 text-[#7A0C0C] ring-8 ring-amber-50"
+                : "bg-stone-100 text-stone-600 ring-8 ring-stone-50"
+            }`}
+          >
+            {isAdvanced ? (
+              <CheckCircle size={36} strokeWidth={1.75} />
+            ) : isPending ? (
+              <Clock size={36} strokeWidth={1.75} />
+            ) : (
+              <AlertCircle size={36} strokeWidth={1.75} />
+            )}
+          </div>
+        )}
 
-        <span
-          className={`inline-block px-3.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider mb-4 ${
-            isBidOffered
-              ? "bg-amber-100 text-amber-900 border border-amber-300"
-              : isAdvanced
-              ? "bg-emerald-100 text-emerald-800"
+        {!isBidOffered && (
+          <span
+            className={`inline-block px-3.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider mb-4 ${
+              isAdvanced
+                ? "bg-emerald-100 text-emerald-800"
+                : isPending
+                ? "bg-amber-50 text-[#7A0C0C] border border-amber-200"
+                : "bg-stone-100 text-stone-700"
+            }`}
+          >
+            {isAdvanced
+              ? "Stage Advanced"
               : isPending
-              ? "bg-amber-50 text-[#7A0C0C] border border-amber-200"
-              : "bg-stone-100 text-stone-700"
-          }`}
-        >
-          {isBidOffered
-            ? "Official Bid Extended 🎉"
-            : isAdvanced
-            ? "Stage Advanced"
-            : isPending
-            ? "Deliberation In Progress"
-            : "Cycle Decision"}
-        </span>
+              ? "Deliberation In Progress"
+              : "Cycle Decision"}
+          </span>
+        )}
 
         <h3
           className="text-2xl sm:text-4xl font-normal text-stone-900 mb-4 tracking-tight leading-tight max-w-xl mx-auto"
