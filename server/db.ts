@@ -131,11 +131,17 @@ export async function runMigrations() {
       submission_id INT NOT NULL REFERENCES application_submissions(id) ON DELETE CASCADE,
       rater_id      VARCHAR(255) NOT NULL,
       rater_name    VARCHAR(255) NOT NULL,
-      score         NUMERIC(3, 1) NOT NULL,
+      score         NUMERIC(5, 3) NOT NULL,
+      criteria_scores JSONB DEFAULT NULL,
       note          TEXT,
       rated_at      TIMESTAMPTZ DEFAULT NOW(),
       CONSTRAINT uq_app_score_submission_rater UNIQUE (submission_id, rater_id)
     )
+  `);
+  await pool.query(`
+    ALTER TABLE application_scores
+      ALTER COLUMN score TYPE NUMERIC(5, 3),
+      ADD COLUMN IF NOT EXISTS criteria_scores JSONB DEFAULT NULL;
   `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS round_evaluations (

@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from "motion/react";
 import { 
   Users, CheckCircle2, Clock, FileText, ExternalLink, 
   Search, Award, MessageSquare, AlertCircle, ChevronRight,
-  Sparkles, Filter, RefreshCw, Download
+  Sparkles, Filter, RefreshCw, Download, Heart, Briefcase,
+  Lightbulb, BookOpen, Check
 } from "lucide-react";
 import { LoginGate } from "@/app/components/LoginGate";
 import { useAuth } from "@/app/context/AuthContext";
@@ -32,6 +33,7 @@ type AssignedSubmission = {
   current_round_name?: string;
   existingScore?: {
     score: number;
+    criteria_scores?: Record<string, number> | null;
     notes?: string;
     round_name: string;
   } | null;
@@ -45,6 +47,98 @@ const SCORE_OPTIONS = [
   { value: 1, label: "+1.0", desc: "Strong Yes", color: "bg-emerald-900/10 text-emerald-700 border-emerald-200 hover:bg-emerald-900/20 active:bg-emerald-900/30" },
 ];
 
+export const formatScoreNumber = (num: number | null | undefined): string => {
+  if (num === null || num === undefined) return "—";
+  if (num === 0) return "0.0";
+  const abs = Math.abs(num);
+  const formatted = Number.isInteger(abs) ? `${abs}.0` : `${Math.round(abs * 1000) / 1000}`;
+  return num > 0 ? `+${formatted}` : `-${formatted}`;
+};
+
+export const formatScoreVal = (val: number | null | undefined): string => {
+  if (val === null || val === undefined) return "—";
+  if (Number.isInteger(val)) return val > 0 ? `+${val}.0` : `${val}.0`;
+  const rounded = Math.round(val * 1000) / 1000;
+  return rounded > 0 ? `+${rounded}` : `${rounded}`;
+};
+
+export const getWordCount = (text: string): number => {
+  if (!text) return 0;
+  return text.trim().split(/\s+/).filter(Boolean).length;
+};
+
+export const extractFRQData = (
+  responses: Record<string, any> = {},
+  questionLabels: Record<string, string> = {},
+) => {
+  let artifactFile: { url: string; prompt: string } | null = null;
+  let frq1: { key: string; prompt: string; text: string } | null = null;
+  let frq2: { key: string; prompt: string; text: string } | null = null;
+  let frq3: { key: string; prompt: string; text: string } | null = null;
+
+  for (const [k, v] of Object.entries(responses)) {
+    const prompt = (questionLabels[k] || k).trim();
+    const promptLower = prompt.toLowerCase();
+    const keyLower = k.toLowerCase();
+    const strVal =
+      typeof v === "string"
+        ? v.trim()
+        : v && typeof v === "object"
+        ? Array.isArray(v)
+          ? v.join(", ")
+          : JSON.stringify(v)
+        : "";
+
+    // 1. Personal artifact file/upload (not the explanation)
+    if (
+      !artifactFile &&
+      (promptLower.includes("artifact") || keyLower.includes("artifact")) &&
+      !promptLower.includes("explain") &&
+      !promptLower.includes("100 word")
+    ) {
+      if (strVal) {
+        artifactFile = { url: strVal, prompt };
+      }
+    }
+
+    // 2. FRQ 1: Explain your artifact in 100 words or less
+    if (
+      !frq1 &&
+      ((promptLower.includes("artifact") &&
+        (promptLower.includes("explain") || promptLower.includes("100 word"))) ||
+        (keyLower.includes("artifact") && keyLower.includes("explain")))
+    ) {
+      frq1 = { key: k, prompt, text: strVal };
+    }
+
+    // 3. FRQ 2: Small business
+    if (
+      !frq2 &&
+      (promptLower.includes("small business") ||
+        promptLower.includes("choose an industry") ||
+        promptLower.includes("fill a gap") ||
+        keyLower.includes("small_business") ||
+        keyLower.includes("business"))
+    ) {
+      frq2 = { key: k, prompt, text: strVal };
+    }
+
+    // 4. FRQ 3: Why PGN
+    if (
+      !frq3 &&
+      (promptLower.includes("why pgn") ||
+        promptLower.includes("why do you want to join phi gamma nu") ||
+        promptLower.includes("why phi gamma nu") ||
+        keyLower.includes("whypgn") ||
+        keyLower === "why_pgn")
+    ) {
+      frq3 = { key: k, prompt, text: strVal };
+    }
+  }
+
+  return { artifactFile, frq1, frq2, frq3 };
+};
+
 function BrotherPortalInner() {
   const { user } = useAuth();
   const [submissions, setSubmissions] = useState<AssignedSubmission[]>([]);
@@ -56,9 +150,37 @@ function BrotherPortalInner() {
 
   // Scoring state for selected candidate
   const [scoreVal, setScoreVal] = useState<number | null>(null);
+  const [criteriaScores, setCriteriaScores] = useState<Record<string, number | null>>({
+    artifact_passion: null,
+    business_feasibility: null,
+    business_creativity: null,
+    why_pgn_interest: null,
+  });
   const [notesVal, setNotesVal] = useState("");
   const [savingScore, setSavingScore] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Live computed average across the 4 criteria
+  const computedAverageScore = useMemo(() => {
+    const vals = [
+      criteriaScores.artifact_passion,
+      criteriaScores.business_feasibility,
+      criteriaScores.business_creativity,
+      criteriaScores.why_pgn_interest,
+    ];
+    if (vals.some((v) => v === null || v === undefined)) return null;
+    const sum = (vals as number[]).reduce((a, b) => a + b, 0);
+    return Math.round((sum / 4) * 1000) / 1000;
+  }, [criteriaScores]);
+
+  const completedCriteriaCount = useMemo(() => {
+    return [
+      criteriaScores.artifact_passion,
+      criteriaScores.business_feasibility,
+      criteriaScores.business_creativity,
+      criteriaScores.why_pgn_interest,
+    ].filter((v) => v !== null && v !== undefined).length;
+  }, [criteriaScores]);
 
   const fetchAssigned = async () => {
     setLoading(true);
@@ -73,8 +195,17 @@ function BrotherPortalInner() {
         const updated = (data.submissions || []).find((s: AssignedSubmission) => s.id === selectedSub.id);
         if (updated) {
           setSelectedSub(updated);
-          setScoreVal(updated.existingScore ? updated.existingScore.score : null);
-          setNotesVal(updated.existingScore?.notes || "");
+          const existing = updated.existingScore;
+          setScoreVal(existing ? existing.score : null);
+          setNotesVal(existing?.notes || "");
+          if (existing?.criteria_scores) {
+            setCriteriaScores({
+              artifact_passion: existing.criteria_scores.artifact_passion ?? null,
+              business_feasibility: existing.criteria_scores.business_feasibility ?? null,
+              business_creativity: existing.criteria_scores.business_creativity ?? null,
+              why_pgn_interest: existing.criteria_scores.why_pgn_interest ?? null,
+            });
+          }
         }
       }
     } catch (err: any) {
@@ -90,13 +221,49 @@ function BrotherPortalInner() {
 
   const handleSelectCandidate = (sub: AssignedSubmission) => {
     setSelectedSub(sub);
-    setScoreVal(sub.existingScore !== undefined && sub.existingScore !== null ? sub.existingScore.score : null);
-    setNotesVal(sub.existingScore?.notes || "");
+    const existing = sub.existingScore;
+    setScoreVal(existing !== undefined && existing !== null ? existing.score : null);
+    setNotesVal(existing?.notes || "");
     setSaveSuccess(false);
+
+    if (existing?.criteria_scores) {
+      setCriteriaScores({
+        artifact_passion: existing.criteria_scores.artifact_passion ?? null,
+        business_feasibility: existing.criteria_scores.business_feasibility ?? null,
+        business_creativity: existing.criteria_scores.business_creativity ?? null,
+        why_pgn_interest: existing.criteria_scores.why_pgn_interest ?? null,
+      });
+    } else {
+      setCriteriaScores({
+        artifact_passion: null,
+        business_feasibility: null,
+        business_creativity: null,
+        why_pgn_interest: null,
+      });
+    }
   };
 
   const handleSaveScore = async () => {
-    if (!selectedSub || scoreVal === null) return;
+    if (!selectedSub) return;
+    const isAppRound = !selectedSub.current_round || selectedSub.current_round === "application";
+
+    let payloadScore: number;
+    let payloadCriteria: Record<string, number> | null = null;
+
+    if (isAppRound) {
+      if (computedAverageScore === null) return;
+      payloadScore = computedAverageScore;
+      payloadCriteria = {
+        artifact_passion: criteriaScores.artifact_passion!,
+        business_feasibility: criteriaScores.business_feasibility!,
+        business_creativity: criteriaScores.business_creativity!,
+        why_pgn_interest: criteriaScores.why_pgn_interest!,
+      };
+    } else {
+      if (scoreVal === null) return;
+      payloadScore = scoreVal;
+    }
+
     setSavingScore(true);
     setSaveSuccess(false);
     try {
@@ -107,7 +274,8 @@ function BrotherPortalInner() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           submissionId: selectedSub.id,
-          score: scoreVal,
+          score: payloadScore,
+          criteriaScores: payloadCriteria,
           notes: notesVal,
           round: targetRound,
           roundName: targetRoundName,
@@ -117,16 +285,21 @@ function BrotherPortalInner() {
       if (!res.ok) throw new Error(data.error || "Failed to save score");
       
       setSaveSuccess(true);
+      setScoreVal(payloadScore);
+
       // Update local state
+      const updatedExisting = {
+        score: payloadScore,
+        criteria_scores: payloadCriteria,
+        notes: notesVal,
+        round_name: targetRoundName,
+      };
+
       const updatedList = submissions.map((s) => {
         if (s.id === selectedSub.id) {
           return {
             ...s,
-            existingScore: {
-              score: scoreVal,
-              notes: notesVal,
-              round_name: targetRoundName,
-            },
+            existingScore: updatedExisting,
           };
         }
         return s;
@@ -134,13 +307,9 @@ function BrotherPortalInner() {
       setSubmissions(updatedList);
       setSelectedSub({
         ...selectedSub,
-        existingScore: {
-          score: scoreVal,
-          notes: notesVal,
-          round_name: targetRoundName,
-        },
+        existingScore: updatedExisting,
       });
-      setTimeout(() => setSaveSuccess(false), 3000);
+      setTimeout(() => setSaveSuccess(false), 3500);
     } catch (err: any) {
       alert("Error saving evaluation: " + err.message);
     } finally {
@@ -476,7 +645,7 @@ function BrotherPortalInner() {
                                 : "bg-stone-100 text-stone-800 border border-stone-200"
                             }`}>
                               <CheckCircle2 size={11} />
-                              {scoreObj.score > 0 ? `+${scoreObj.score}` : scoreObj.score}
+                              {formatScoreNumber(scoreObj.score)}
                             </span>
                           ) : (
                             <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full ${
@@ -504,109 +673,541 @@ function BrotherPortalInner() {
               <div className="space-y-6">
                 
                 {/* Scoring Form Card */}
-                <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-6 space-y-5">
-                  <div className="flex items-center justify-between border-b border-stone-100 pb-4">
-                    <div>
-                      <h3 className="text-base font-semibold text-stone-900">
-                        Candidate Deliberation Vote
-                      </h3>
-                      <p className="text-xs text-stone-500 mt-0.5">
-                        Assign your vote for {selectedSub.full_name}. This goes directly into the deliberations pool.
-                      </p>
-                    </div>
+                {(() => {
+                  const isAppRound = !selectedSub.current_round || selectedSub.current_round === "application";
+                  const parsedResponses: Record<string, any> = (() => {
+                    if (!selectedSub.responses) return {};
+                    if (typeof selectedSub.responses === "string") {
+                      try {
+                        const parsed = JSON.parse(selectedSub.responses);
+                        return typeof parsed === "object" && parsed !== null ? parsed : {};
+                      } catch {
+                        return {};
+                      }
+                    }
+                    return typeof selectedSub.responses === "object" ? selectedSub.responses : {};
+                  })();
 
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {selectedSub.current_round_name && (
-                        <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-amber-50 text-[#7A0C0C] border border-amber-200">
-                          {selectedSub.current_round_name}
-                        </span>
-                      )}
-                      {selectedSub.existingScore && (
-                        <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1.5">
-                          <CheckCircle2 size={12} className="text-emerald-600" />
-                          Evaluated ({selectedSub.existingScore.score > 0 ? `+${selectedSub.existingScore.score}` : selectedSub.existingScore.score})
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                  const isPhotoUrl = (str: string, promptText = "", keyText = "") => {
+                    if (!str || typeof str !== "string") return false;
+                    const s = str.trim();
+                    if (s.startsWith("data:image/")) return true;
+                    if (/\.(jpe?g|png|webp|gif|avif|bmp|svg)(\?.*)?$/i.test(s)) return true;
+                    if (s.startsWith("/uploads/photo_")) return true;
+                    if (s.startsWith("/uploads/") && /photo|headshot|picture|portrait/i.test(promptText + " " + keyText)) return true;
+                    return false;
+                  };
 
-                  {/* Score Pill Buttons */}
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-stone-600 mb-2">
-                      Deliberation Vote ({selectedSub.current_round_name || "Application Round"})
-                    </label>
-                    <div className="grid grid-cols-5 gap-2">
+                  const isDocumentUrl = (str: string) => {
+                    if (!str || typeof str !== "string") return false;
+                    const s = str.trim();
+                    if (/\.(pdf|docx?|doc|txt|xlsx?|pptx?|csv)(\?.*)?$/i.test(s)) return true;
+                    if (s.startsWith("/uploads/resume_")) return true;
+                    if (s.startsWith("/uploads/")) return true;
+                    return false;
+                  };
+
+                  const renderScorePills = (
+                    currentVal: number | null,
+                    onSelect: (val: number) => void,
+                  ) => (
+                    <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
                       {SCORE_OPTIONS.map((opt) => {
-                        const isSelected = scoreVal === opt.value;
+                        const isSelected = currentVal === opt.value;
                         return (
                           <button
                             key={opt.value}
                             type="button"
-                            onClick={() => setScoreVal(opt.value)}
-                            className={`p-3 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center ${
+                            onClick={() => onSelect(opt.value)}
+                            className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center ${
                               isSelected
                                 ? "ring-2 ring-[#7A0C0C] bg-[#7A0C0C] text-white border-[#7A0C0C] shadow-sm scale-102"
                                 : `${opt.color}`
                             }`}
                           >
-                            <span className="text-base font-bold leading-tight">{opt.label}</span>
-                            <span className={`text-[10px] mt-0.5 leading-tight ${isSelected ? "text-white/80" : "text-stone-500"}`}>
+                            <span className="text-sm sm:text-base font-bold leading-tight">{opt.label}</span>
+                            <span className={`text-[9px] sm:text-[10px] mt-0.5 leading-tight ${isSelected ? "text-white/80" : "text-stone-500"}`}>
                               {opt.desc}
                             </span>
                           </button>
                         );
                       })}
                     </div>
-                  </div>
+                  );
 
-                  {/* Notes / Deliberation Comments */}
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-stone-600 mb-2 flex items-center gap-1.5">
-                      <MessageSquare size={13} />
-                      Deliberation Notes & Thoughts (Optional)
-                    </label>
-                    <textarea
-                      rows={3}
-                      value={notesVal}
-                      onChange={(e) => setNotesVal(e.target.value)}
-                      placeholder="Share your feedback, impressions, strengths, or concerns about this applicant for the brotherhood..."
-                      className="w-full text-sm p-3.5 bg-stone-50 border border-stone-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#7A0C0C]/20 focus:border-[#7A0C0C] transition"
-                    />
-                  </div>
+                  if (isAppRound) {
+                    const { artifactFile, frq1, frq2, frq3 } = extractFRQData(
+                      parsedResponses,
+                      selectedSub.question_labels || {},
+                    );
 
-                  {/* Action Buttons */}
-                  <div className="flex items-center justify-between pt-2">
-                    {saveSuccess ? (
-                      <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg animate-in fade-in">
-                        <CheckCircle2 size={14} className="text-emerald-600" />
-                        Evaluation recorded successfully!
+                    return (
+                      <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-6 space-y-6">
+                        {/* Header */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-100 pb-4">
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h3 className="text-base font-semibold text-stone-900">
+                                Application FRQ Rubric
+                              </h3>
+                              <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-50 text-[#7A0C0C] border border-amber-200">
+                                4 Criteria Evaluation
+                              </span>
+                            </div>
+                            <p className="text-xs text-stone-500 mt-1">
+                              Evaluate all 3 FRQs across 4 distinct criteria. Your overall candidate score is the arithmetic mean of these 4 grades.
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                            <span
+                              className={`text-xs font-semibold px-3 py-1 rounded-full border flex items-center gap-1.5 ${
+                                completedCriteriaCount === 4
+                                  ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                  : "bg-amber-50 text-amber-800 border-amber-200"
+                              }`}
+                            >
+                              {completedCriteriaCount === 4 ? (
+                                <CheckCircle2 size={13} className="text-emerald-600" />
+                              ) : (
+                                <Clock size={13} className="text-amber-600" />
+                              )}
+                              {completedCriteriaCount}/4 Criteria Graded
+                            </span>
+
+                            {selectedSub.existingScore && (
+                              <span className="text-xs font-semibold px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1.5">
+                                <CheckCircle2 size={13} className="text-emerald-600" />
+                                Overall: {formatScoreNumber(selectedSub.existingScore.score)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* ── FRQ 1 Section ── */}
+                        <div className="p-4 sm:p-5 rounded-2xl bg-stone-50/70 border border-stone-200/80 space-y-4">
+                          <div className="flex items-start justify-between gap-2 border-b border-stone-200/60 pb-3">
+                            <div>
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-[#7A0C0C] bg-[#7A0C0C]/10 px-2.5 py-0.5 rounded-md">
+                                Question 1 of 3
+                              </span>
+                              <h4 className="text-sm font-bold text-stone-900 mt-1.5">
+                                Explain your artifact in 100 words or less.
+                              </h4>
+                            </div>
+                            {frq1?.text && (
+                              <span className="text-[10px] text-stone-500 font-mono bg-white px-2 py-0.5 rounded-md border border-stone-200 shrink-0">
+                                {getWordCount(frq1.text)} words
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Personal Artifact Display (if uploaded) */}
+                          {artifactFile && (
+                            <div className="bg-white p-3.5 rounded-xl border border-stone-200 space-y-2">
+                              <div className="flex items-center justify-between text-xs font-semibold text-stone-700">
+                                <span className="flex items-center gap-1.5 text-stone-700">
+                                  <Sparkles size={13} className="text-amber-500" /> Submitted Personal Artifact
+                                </span>
+                                {artifactFile.url && (
+                                  <a
+                                    href={artifactFile.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[11px] text-[#7A0C0C] hover:underline inline-flex items-center gap-1 font-semibold"
+                                  >
+                                    <ExternalLink size={11} /> Open Original Artifact
+                                  </a>
+                                )}
+                              </div>
+                              {isPhotoUrl(artifactFile.url) ? (
+                                <a href={artifactFile.url} target="_blank" rel="noopener noreferrer" className="block w-fit group">
+                                  <img
+                                    src={artifactFile.url}
+                                    alt="Personal Artifact"
+                                    className="max-h-52 rounded-xl border border-stone-200 object-cover shadow-2xs group-hover:opacity-95 transition"
+                                  />
+                                </a>
+                              ) : isDocumentUrl(artifactFile.url) ? (
+                                <a
+                                  href={artifactFile.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-2 p-3 rounded-xl bg-stone-50 border border-stone-200 text-xs font-semibold text-stone-800 hover:bg-stone-100 transition"
+                                >
+                                  <FileText size={16} className="text-[#7A0C0C]" />
+                                  <span>View Submitted Artifact Document</span>
+                                  <ExternalLink size={12} className="text-stone-400" />
+                                </a>
+                              ) : (
+                                <p className="text-xs text-stone-700 bg-stone-50 p-2.5 rounded-lg border border-stone-200">
+                                  {artifactFile.url}
+                                </p>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Candidate Explanation Text */}
+                          <div className="bg-white p-4 rounded-xl border border-stone-200 space-y-1.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400 block">
+                              Candidate Response:
+                            </span>
+                            <p className="text-xs sm:text-sm text-stone-800 whitespace-pre-wrap leading-relaxed">
+                              {frq1?.text || "No written response submitted."}
+                            </p>
+                          </div>
+
+                          {/* Criterion 1: Personal meaning / passion */}
+                          <div className="pt-1">
+                            <div className="flex items-center justify-between mb-2">
+                              <div>
+                                <label className="text-xs font-bold text-stone-800 flex items-center gap-1.5">
+                                  <Heart size={14} className="text-[#7A0C0C]" />
+                                  Criterion 1: Personal Meaning / Passion
+                                </label>
+                                <p className="text-[11px] text-stone-500 italic mt-0.5">
+                                  Please score based on passion and genuineness shown in the response
+                                </p>
+                              </div>
+                              {criteriaScores.artifact_passion !== null && (
+                                <span className="text-xs font-bold font-mono px-2.5 py-0.5 rounded-md bg-stone-100 text-stone-800 border border-stone-200">
+                                  {formatScoreNumber(criteriaScores.artifact_passion)}
+                                </span>
+                              )}
+                            </div>
+                            {renderScorePills(criteriaScores.artifact_passion, (val) =>
+                              setCriteriaScores((prev) => ({ ...prev, artifact_passion: val }))
+                            )}
+                          </div>
+                        </div>
+
+                        {/* ── FRQ 2 Section ── */}
+                        <div className="p-4 sm:p-5 rounded-2xl bg-stone-50/70 border border-stone-200/80 space-y-4">
+                          <div className="flex items-start justify-between gap-2 border-b border-stone-200/60 pb-3">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-[#7A0C0C] bg-[#7A0C0C]/10 px-2.5 py-0.5 rounded-md">
+                                  Question 2 of 3
+                                </span>
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-stone-600 bg-stone-200/70 px-2 py-0.5 rounded-md">
+                                  2 Grades
+                                </span>
+                              </div>
+                              <h4 className="text-sm font-bold text-stone-900 mt-1.5 whitespace-pre-line leading-snug">
+                                Choose an industry to start a small business in.
+                                {"\n"}A) Describe your business and its functions.
+                                {"\n"}B) Explain the reasoning behind your choice and how the business would fill a gap within your chosen industry (200 words or less).
+                              </h4>
+                            </div>
+                            {frq2?.text && (
+                              <span className="text-[10px] text-stone-500 font-mono bg-white px-2 py-0.5 rounded-md border border-stone-200 shrink-0">
+                                {getWordCount(frq2.text)} words
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Candidate Proposal Text */}
+                          <div className="bg-white p-4 rounded-xl border border-stone-200 space-y-1.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400 block">
+                              Candidate Response:
+                            </span>
+                            <p className="text-xs sm:text-sm text-stone-800 whitespace-pre-wrap leading-relaxed">
+                              {frq2?.text || "No written response submitted."}
+                            </p>
+                          </div>
+
+                          {/* Criterion 2: Demonstrated understanding of feasibility of business */}
+                          <div className="pt-2 border-t border-stone-200/70">
+                            <div className="flex items-center justify-between mb-2">
+                              <div>
+                                <label className="text-xs font-bold text-stone-800 flex items-center gap-1.5">
+                                  <Briefcase size={14} className="text-[#7A0C0C]" />
+                                  Criterion 2: Demonstrated Understanding of Business Feasibility
+                                </label>
+                                <p className="text-[11px] text-stone-500 italic mt-0.5">
+                                  Evaluate operational feasibility, realistic execution, and industry understanding
+                                </p>
+                              </div>
+                              {criteriaScores.business_feasibility !== null && (
+                                <span className="text-xs font-bold font-mono px-2.5 py-0.5 rounded-md bg-stone-100 text-stone-800 border border-stone-200">
+                                  {formatScoreNumber(criteriaScores.business_feasibility)}
+                                </span>
+                              )}
+                            </div>
+                            {renderScorePills(criteriaScores.business_feasibility, (val) =>
+                              setCriteriaScores((prev) => ({ ...prev, business_feasibility: val }))
+                            )}
+                          </div>
+
+                          {/* Criterion 3: Creativity */}
+                          <div className="pt-3 border-t border-stone-200/70">
+                            <div className="flex items-center justify-between mb-2">
+                              <div>
+                                <label className="text-xs font-bold text-stone-800 flex items-center gap-1.5">
+                                  <Lightbulb size={14} className="text-amber-600" />
+                                  Criterion 3: Creativity
+                                </label>
+                                <p className="text-[11px] text-stone-500 italic mt-0.5">
+                                  Evaluate originality, unique positioning, and inventive problem-solving
+                                </p>
+                              </div>
+                              {criteriaScores.business_creativity !== null && (
+                                <span className="text-xs font-bold font-mono px-2.5 py-0.5 rounded-md bg-stone-100 text-stone-800 border border-stone-200">
+                                  {formatScoreNumber(criteriaScores.business_creativity)}
+                                </span>
+                              )}
+                            </div>
+                            {renderScorePills(criteriaScores.business_creativity, (val) =>
+                              setCriteriaScores((prev) => ({ ...prev, business_creativity: val }))
+                            )}
+                          </div>
+                        </div>
+
+                        {/* ── FRQ 3 Section ── */}
+                        <div className="p-4 sm:p-5 rounded-2xl bg-stone-50/70 border border-stone-200/80 space-y-4">
+                          <div className="flex items-start justify-between gap-2 border-b border-stone-200/60 pb-3">
+                            <div>
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-[#7A0C0C] bg-[#7A0C0C]/10 px-2.5 py-0.5 rounded-md">
+                                Question 3 of 3
+                              </span>
+                              <h4 className="text-sm font-bold text-stone-900 mt-1.5">
+                                Why PGN?
+                              </h4>
+                            </div>
+                            {frq3?.text && (
+                              <span className="text-[10px] text-stone-500 font-mono bg-white px-2 py-0.5 rounded-md border border-stone-200 shrink-0">
+                                {getWordCount(frq3.text)} words
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Candidate Why PGN Text */}
+                          <div className="bg-white p-4 rounded-xl border border-stone-200 space-y-1.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400 block">
+                              Candidate Response:
+                            </span>
+                            <p className="text-xs sm:text-sm text-stone-800 whitespace-pre-wrap leading-relaxed">
+                              {frq3?.text || "No written response submitted."}
+                            </p>
+                          </div>
+
+                          {/* Criterion 4: Genuine interest in PGN */}
+                          <div className="pt-1">
+                            <div className="flex items-center justify-between mb-2">
+                              <div>
+                                <label className="text-xs font-bold text-stone-800 flex items-center gap-1.5">
+                                  <BookOpen size={14} className="text-[#7A0C0C]" />
+                                  Criterion 4: Genuine Interest in PGN
+                                </label>
+                                <p className="text-[11px] text-stone-500 italic mt-0.5">
+                                  Evaluate authentic motivation, cultural alignment, and dedication to joining PGN
+                                </p>
+                              </div>
+                              {criteriaScores.why_pgn_interest !== null && (
+                                <span className="text-xs font-bold font-mono px-2.5 py-0.5 rounded-md bg-stone-100 text-stone-800 border border-stone-200">
+                                  {formatScoreNumber(criteriaScores.why_pgn_interest)}
+                                </span>
+                              )}
+                            </div>
+                            {renderScorePills(criteriaScores.why_pgn_interest, (val) =>
+                              setCriteriaScores((prev) => ({ ...prev, why_pgn_interest: val }))
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Overall Computed Score Display */}
+                        <div className="p-4 sm:p-5 rounded-2xl bg-amber-50/60 border border-amber-200/90 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                          <div>
+                            <span className="text-[10px] uppercase font-bold tracking-wider text-amber-900 flex items-center gap-1.5">
+                              <Sparkles size={13} className="text-[#F5A623]" /> Live Overall Application Score
+                            </span>
+                            <p className="text-xs text-stone-700 mt-0.5 font-medium">
+                              Arithmetic mean: (Passion + Feasibility + Creativity + Interest) / 4
+                            </p>
+                            <div className="flex items-center gap-1.5 sm:gap-2 mt-1.5 text-xs text-stone-600 font-mono flex-wrap">
+                              <span className="px-1.5 py-0.5 bg-white rounded border border-amber-200">
+                                {formatScoreVal(criteriaScores.artifact_passion)}
+                              </span>
+                              <span>+</span>
+                              <span className="px-1.5 py-0.5 bg-white rounded border border-amber-200">
+                                {formatScoreVal(criteriaScores.business_feasibility)}
+                              </span>
+                              <span>+</span>
+                              <span className="px-1.5 py-0.5 bg-white rounded border border-amber-200">
+                                {formatScoreVal(criteriaScores.business_creativity)}
+                              </span>
+                              <span>+</span>
+                              <span className="px-1.5 py-0.5 bg-white rounded border border-amber-200">
+                                {formatScoreVal(criteriaScores.why_pgn_interest)}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="text-right shrink-0">
+                            {computedAverageScore !== null ? (
+                              <div className="inline-flex flex-col items-end">
+                                <span className={`text-2xl sm:text-3xl font-bold font-mono px-4 py-1.5 rounded-xl border shadow-xs ${
+                                  computedAverageScore > 0
+                                    ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                                    : computedAverageScore < 0
+                                    ? "bg-rose-50 text-rose-800 border-rose-300"
+                                    : "bg-stone-100 text-stone-800 border-stone-300"
+                                }`}>
+                                  {formatScoreNumber(computedAverageScore)}
+                                </span>
+                                <span className="text-[10px] text-stone-500 mt-1 font-semibold uppercase tracking-wider">
+                                  Computed Overall Grade
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="inline-flex flex-col items-end">
+                                <span className="text-xs font-semibold text-amber-900 px-3.5 py-2 bg-white/90 rounded-xl border border-amber-200 shadow-2xs">
+                                  {4 - completedCriteriaCount} remaining to grade
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Notes / Deliberation Comments */}
+                        <div>
+                          <label className="block text-xs font-bold uppercase tracking-wider text-stone-600 mb-2 flex items-center gap-1.5">
+                            <MessageSquare size={13} />
+                            Deliberation Notes & Thoughts (Optional)
+                          </label>
+                          <textarea
+                            rows={3}
+                            value={notesVal}
+                            onChange={(e) => setNotesVal(e.target.value)}
+                            placeholder="Share your feedback, impressions, strengths, or concerns about this applicant for the brotherhood..."
+                            className="w-full text-sm p-3.5 bg-stone-50 border border-stone-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#7A0C0C]/20 focus:border-[#7A0C0C] transition"
+                          />
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex items-center justify-between pt-2">
+                          {saveSuccess ? (
+                            <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg animate-in fade-in">
+                              <CheckCircle2 size={14} className="text-emerald-600" />
+                              Evaluation recorded successfully!
+                            </div>
+                          ) : (
+                            <span className="text-xs text-stone-500">
+                              {computedAverageScore === null
+                                ? `Please select grades for all 4 criteria (${completedCriteriaCount}/4 graded)`
+                                : "Ready to submit evaluation"}
+                            </span>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={handleSaveScore}
+                            disabled={computedAverageScore === null || savingScore}
+                            className="px-6 py-2.5 rounded-xl bg-[#7A0C0C] text-white text-sm font-semibold hover:bg-[#5C0A0A] disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm flex items-center gap-2 cursor-pointer"
+                          >
+                            {savingScore ? (
+                              <>
+                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                <span>Saving...</span>
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle2 size={16} />
+                                <span>Save Evaluation</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
                       </div>
-                    ) : (
-                      <span className="text-xs text-stone-400">
-                        {scoreVal === null ? "Select a vote above to submit" : "Ready to submit evaluation"}
-                      </span>
-                    )}
+                    );
+                  }
 
-                    <button
-                      type="button"
-                      onClick={handleSaveScore}
-                      disabled={scoreVal === null || savingScore}
-                      className="px-6 py-2.5 rounded-xl bg-[#7A0C0C] text-white text-sm font-semibold hover:bg-[#5C0A0A] disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm flex items-center gap-2 cursor-pointer"
-                    >
-                      {savingScore ? (
-                        <>
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          <span>Saving...</span>
-                        </>
-                      ) : (
-                        <>
-                          <CheckCircle2 size={16} />
-                          <span>Save Evaluation</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
+                  // Standard Interview Round Single Vote Selector
+                  return (
+                    <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-6 space-y-5">
+                      <div className="flex items-center justify-between border-b border-stone-100 pb-4">
+                        <div>
+                          <h3 className="text-base font-semibold text-stone-900">
+                            Candidate Deliberation Vote
+                          </h3>
+                          <p className="text-xs text-stone-500 mt-0.5">
+                            Assign your vote for {selectedSub.full_name}. This goes directly into the deliberations pool.
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {selectedSub.current_round_name && (
+                            <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-amber-50 text-[#7A0C0C] border border-amber-200">
+                              {selectedSub.current_round_name}
+                            </span>
+                          )}
+                          {selectedSub.existingScore && (
+                            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1.5">
+                              <CheckCircle2 size={12} className="text-emerald-600" />
+                              Evaluated ({formatScoreNumber(selectedSub.existingScore.score)})
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Score Pill Buttons */}
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-stone-600 mb-2">
+                          Deliberation Vote ({selectedSub.current_round_name || "Interview Round"})
+                        </label>
+                        {renderScorePills(scoreVal, (val) => setScoreVal(val))}
+                      </div>
+
+                      {/* Notes / Deliberation Comments */}
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-stone-600 mb-2 flex items-center gap-1.5">
+                          <MessageSquare size={13} />
+                          Deliberation Notes & Thoughts (Optional)
+                        </label>
+                        <textarea
+                          rows={3}
+                          value={notesVal}
+                          onChange={(e) => setNotesVal(e.target.value)}
+                          placeholder="Share your feedback, impressions, strengths, or concerns about this applicant for the brotherhood..."
+                          className="w-full text-sm p-3.5 bg-stone-50 border border-stone-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#7A0C0C]/20 focus:border-[#7A0C0C] transition"
+                        />
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex items-center justify-between pt-2">
+                        {saveSuccess ? (
+                          <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg animate-in fade-in">
+                            <CheckCircle2 size={14} className="text-emerald-600" />
+                            Evaluation recorded successfully!
+                          </div>
+                        ) : (
+                          <span className="text-xs text-stone-400">
+                            {scoreVal === null ? "Select a vote above to submit" : "Ready to submit evaluation"}
+                          </span>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={handleSaveScore}
+                          disabled={scoreVal === null || savingScore}
+                          className="px-6 py-2.5 rounded-xl bg-[#7A0C0C] text-white text-sm font-semibold hover:bg-[#5C0A0A] disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm flex items-center gap-2 cursor-pointer"
+                        >
+                          {savingScore ? (
+                            <>
+                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              <span>Saving...</span>
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle2 size={16} />
+                              <span>Save Evaluation</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Candidate Details Card */}
                 <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-6 space-y-6">

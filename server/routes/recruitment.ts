@@ -164,6 +164,7 @@ export interface ApplicationScore {
   rater_id: string;
   rater_name: string;
   score: number;
+  criteria_scores?: Record<string, number> | null;
   note: string | null;
   rated_at: string;
 }
@@ -1132,7 +1133,7 @@ async function getAssignedSubmissionsForBrother(
           (SELECT json_agg(a.brother_email) FROM application_assignments a WHERE a.submission_id = s.id),
           '[]'::json
         ) as assigned_brothers,
-        (SELECT json_build_object('score', sc.score, 'note', sc.note, 'rated_at', sc.rated_at)
+        (SELECT json_build_object('score', sc.score, 'criteria_scores', sc.criteria_scores, 'note', sc.note, 'rated_at', sc.rated_at)
          FROM application_scores sc
          WHERE sc.submission_id = s.id AND LOWER(sc.rater_id) = $1
          LIMIT 1) as app_score,
@@ -1232,7 +1233,12 @@ async function getAssignedSubmissionsForBrother(
         candidateNumber: s.candidate_number ?? null,
         my_score: myScoreObj,
         existingScore: myScoreObj
-          ? { score: myScoreObj.score, notes: myScoreObj.note, round_name: current_round_name }
+          ? {
+              score: myScoreObj.score,
+              criteria_scores: myScoreObj.criteria_scores || null,
+              notes: myScoreObj.note,
+              round_name: current_round_name,
+            }
           : null,
       };
     };
@@ -1284,7 +1290,14 @@ async function getAssignedSubmissionsForBrother(
         const app = store.appScores.find(
           (sc) => sc.submission_id === s.id && sc.rater_id.toLowerCase() === normEmail,
         );
-        myScoreObj = app ? { score: app.score, note: app.note, rated_at: app.rated_at } : null;
+        myScoreObj = app
+          ? {
+              score: app.score,
+              criteria_scores: (app as any).criteria_scores || null,
+              note: app.note,
+              rated_at: app.rated_at,
+            }
+          : null;
       }
 
       let answers = s.answers || {};
@@ -1339,7 +1352,12 @@ async function getAssignedSubmissionsForBrother(
         candidateNumber: s.candidate_number ?? null,
         my_score: myScoreObj,
         existingScore: myScoreObj
-          ? { score: myScoreObj.score, notes: myScoreObj.note, round_name: current_round_name }
+          ? {
+              score: myScoreObj.score,
+              criteria_scores: myScoreObj.criteria_scores || null,
+              notes: myScoreObj.note,
+              round_name: current_round_name,
+            }
           : null,
       };
     });
@@ -1508,7 +1526,13 @@ export function isApplicantBba(
 }
 
 export function computeRoundNormalization(
-  ratings: Array<{ raterId: string; raterName: string; submissionId: number; score: number }>,
+  ratings: Array<{
+    raterId: string;
+    raterName: string;
+    submissionId: number;
+    score: number;
+    criteriaScores?: Record<string, number> | null;
+  }>,
   config: NormalizationConfig = DEFAULT_NORMALIZATION_CONFIG,
 ): {
   calibrationByRater: Record<string, RaterCalibration>;
@@ -1516,7 +1540,13 @@ export function computeRoundNormalization(
     number,
     {
       normalizedScore: number | null;
-      details: Array<{ raterId: string; raterName: string; rawScore: number; weight: number }>;
+      details: Array<{
+        raterId: string;
+        raterName: string;
+        rawScore: number;
+        weight: number;
+        criteriaScores?: Record<string, number> | null;
+      }>;
     }
   >;
 } {
@@ -1526,23 +1556,38 @@ export function computeRoundNormalization(
   const minW = typeof config.minWeight === "number" ? config.minWeight : 0.3;
   const maxW = typeof config.maxWeight === "number" ? config.maxWeight : 3.0;
 
-  // 1. Group ratings by rater
-  const raterRatings = new Map<string, { raterName: string; scores: number[] }>();
+  // 1. Group ratings and discrete grades by rater
+  const raterRatings = new Map<
+    string,
+    { raterName: string; discreteGrades: number[]; overallScores: number[] }
+  >();
   for (const r of ratings) {
     if (!raterRatings.has(r.raterId)) {
-      raterRatings.set(r.raterId, { raterName: r.raterName, scores: [] });
+      raterRatings.set(r.raterId, { raterName: r.raterName, discreteGrades: [], overallScores: [] });
     }
-    raterRatings.get(r.raterId)!.scores.push(Number(r.score));
+    const entry = raterRatings.get(r.raterId)!;
+    entry.overallScores.push(Number(r.score));
+
+    // If criteriaScores are provided, each discrete grade contributes to the rater's distribution calibration
+    if (r.criteriaScores && typeof r.criteriaScores === "object" && Object.keys(r.criteriaScores).length > 0) {
+      for (const val of Object.values(r.criteriaScores)) {
+        if (typeof val === "number" && !isNaN(val)) {
+          entry.discreteGrades.push(val);
+        }
+      }
+    } else {
+      entry.discreteGrades.push(Number(r.score));
+    }
   }
 
-  // 2. Compute calibration profiles per rater
+  // 2. Compute calibration profiles per rater using all discrete grades given
   const calibrationByRater: Record<string, RaterCalibration> = {};
   for (const [raterId, data] of raterRatings.entries()) {
-    const totalRatings = data.scores.length;
+    const totalRatings = data.discreteGrades.length;
     const counts: Record<string, number> = { "-1": 0, "-0.5": 0, "0": 0, "0.5": 0, "1": 0 };
     let scoreSum = 0;
 
-    for (const score of data.scores) {
+    for (const score of data.discreteGrades) {
       scoreSum += score;
       const key = (Math.round(score * 10) / 10).toString();
       if (counts[key] !== undefined) {
@@ -1620,8 +1665,16 @@ export function computeRoundNormalization(
     };
   }
 
-  // 3. Compute normalized scores per submission
-  const ratingsBySub = new Map<number, Array<{ raterId: string; raterName: string; score: number }>>();
+  // 3. Compute normalized scores per submission using the brother's overall score
+  const ratingsBySub = new Map<
+    number,
+    Array<{
+      raterId: string;
+      raterName: string;
+      score: number;
+      criteriaScores?: Record<string, number> | null;
+    }>
+  >();
   for (const r of ratings) {
     if (!ratingsBySub.has(r.submissionId)) {
       ratingsBySub.set(r.submissionId, []);
@@ -1630,6 +1683,7 @@ export function computeRoundNormalization(
       raterId: r.raterId,
       raterName: r.raterName,
       score: Number(r.score),
+      criteriaScores: r.criteriaScores || null,
     });
   }
 
@@ -1637,7 +1691,13 @@ export function computeRoundNormalization(
     number,
     {
       normalizedScore: number | null;
-      details: Array<{ raterId: string; raterName: string; rawScore: number; weight: number }>;
+      details: Array<{
+        raterId: string;
+        raterName: string;
+        rawScore: number;
+        weight: number;
+        criteriaScores?: Record<string, number> | null;
+      }>;
     }
   >();
 
@@ -1649,25 +1709,42 @@ export function computeRoundNormalization(
 
     let weightedSum = 0;
     let weightSum = 0;
-    const details: Array<{ raterId: string; raterName: string; rawScore: number; weight: number }> = [];
+    const details: Array<{
+      raterId: string;
+      raterName: string;
+      rawScore: number;
+      weight: number;
+      criteriaScores?: Record<string, number> | null;
+    }> = [];
 
     for (const r of subRatings) {
       const calib = calibrationByRater[r.raterId];
-      const scoreKey = (Math.round(r.score * 10) / 10).toString();
       let weight = 1.0;
-      if (calib && calib.weights[scoreKey] !== undefined) {
-        weight = calib.weights[scoreKey];
-      } else {
-        let closestKey = "0";
-        let minDiff = Infinity;
-        for (const vk of validScoreKeys) {
-          const diff = Math.abs(Number(vk) - r.score);
-          if (diff < minDiff) {
-            minDiff = diff;
-            closestKey = vk;
+      if (calib) {
+        const scoreKey = (Math.round(r.score * 10) / 10).toString();
+        if (calib.weights[scoreKey] !== undefined) {
+          weight = calib.weights[scoreKey];
+        } else {
+          // Linear interpolation between the two adjacent discrete scale points in [-1, -0.5, 0, 0.5, 1]
+          const numericKeys = [-1, -0.5, 0, 0.5, 1];
+          if (r.score <= numericKeys[0]) {
+            weight = calib.weights["-1"] ?? 1.0;
+          } else if (r.score >= numericKeys[numericKeys.length - 1]) {
+            weight = calib.weights["1"] ?? 1.0;
+          } else {
+            for (let i = 0; i < numericKeys.length - 1; i++) {
+              const low = numericKeys[i];
+              const high = numericKeys[i + 1];
+              if (r.score >= low && r.score <= high) {
+                const t = (r.score - low) / (high - low);
+                const wLow = calib.weights[low.toString()] ?? 1.0;
+                const wHigh = calib.weights[high.toString()] ?? 1.0;
+                weight = (1 - t) * wLow + t * wHigh;
+                break;
+              }
+            }
           }
         }
-        weight = calib ? calib.weights[closestKey] ?? 1.0 : 1.0;
       }
 
       weightedSum += weight * r.score;
@@ -1677,6 +1754,7 @@ export function computeRoundNormalization(
         raterName: r.raterName,
         rawScore: r.score,
         weight: Math.round(weight * 1000) / 1000,
+        criteriaScores: r.criteriaScores || null,
       });
     }
 
@@ -1749,7 +1827,7 @@ async function getRoundCandidates(
     let scoresRes: any[] = [];
     if (round === "application") {
       const res = await pool.query(
-        `SELECT submission_id, rater_id, rater_name, score::float as score, note, rated_at
+        `SELECT submission_id, rater_id, rater_name, score::float as score, criteria_scores, note, rated_at
          FROM application_scores WHERE submission_id = ANY($1::int[])`,
         [subIds],
       );
@@ -1765,7 +1843,7 @@ async function getRoundCandidates(
     }
 
     const raterMap = new Map<string, string>();
-    const scoresBySub = new Map<number, Record<string, { score: number; note: string | null; ratedAt: string }>>();
+    const scoresBySub = new Map<number, Record<string, { score: number; criteriaScores?: Record<string, number> | null; note: string | null; ratedAt: string }>>();
 
     for (const row of scoresRes) {
       raterMap.set(row.rater_id, row.rater_name);
@@ -1774,6 +1852,7 @@ async function getRoundCandidates(
       }
       scoresBySub.get(row.submission_id)![row.rater_id] = {
         score: Number(row.score),
+        criteriaScores: row.criteria_scores || null,
         note: row.note,
         ratedAt: row.rated_at,
       };
@@ -1791,6 +1870,7 @@ async function getRoundCandidates(
         raterName: r.rater_name,
         submissionId: r.submission_id,
         score: Number(r.score),
+        criteriaScores: r.criteria_scores || null,
       })),
       normConfig,
     );
@@ -1847,7 +1927,7 @@ async function getRoundCandidates(
         isOverridden,
         assignedBrothers: assignMap.get(s.id) ?? [],
         scores: rowScores,
-        referenceSum: Math.round(referenceSum * 10) / 10,
+        referenceSum: Math.round(referenceSum * 100) / 100,
         scoredCount: scoreValues.length,
         normalizedScore: candNorm?.normalizedScore ?? null,
         normalizedDetails: candNorm?.details ?? [],
@@ -1894,17 +1974,26 @@ async function getRoundCandidates(
 
     const subIds = new Set(eligible.map((s) => s.id));
     const raterMap = new Map<string, string>();
-    const scoresBySub = new Map<number, Record<string, { score: number; note: string | null; ratedAt: string }>>();
-    let allRoundScores: Array<{ rater_id: string; rater_name: string; submission_id: number; score: number }> = [];
+    const scoresBySub = new Map<number, Record<string, { score: number; criteriaScores?: Record<string, number> | null; note: string | null; ratedAt: string }>>();
+    let allRoundScores: Array<{ rater_id: string; rater_name: string; submission_id: number; score: number; criteria_scores?: Record<string, number> | null }> = [];
 
     if (round === "application") {
       const scores = store.appScores.filter((sc) => subIds.has(sc.submission_id));
-      allRoundScores = scores;
+      allRoundScores = scores.map((sc) => ({
+        rater_id: sc.rater_id,
+        rater_name: sc.rater_name,
+        submission_id: sc.submission_id,
+        score: Number(sc.score),
+        criteria_scores: (sc as any).criteria_scores || null,
+        note: sc.note,
+        rated_at: sc.rated_at,
+      }));
       for (const sc of scores) {
         raterMap.set(sc.rater_id, sc.rater_name);
         if (!scoresBySub.has(sc.submission_id)) scoresBySub.set(sc.submission_id, {});
         scoresBySub.get(sc.submission_id)![sc.rater_id] = {
-          score: sc.score,
+          score: Number(sc.score),
+          criteriaScores: (sc as any).criteria_scores || null,
           note: sc.note,
           ratedAt: sc.rated_at,
         };
@@ -1912,12 +2001,19 @@ async function getRoundCandidates(
     } else {
       const roundNum = round === "round1" ? 1 : 2;
       const scores = store.roundEvals.filter((sc) => subIds.has(sc.submission_id) && sc.round === roundNum);
-      allRoundScores = scores;
+      allRoundScores = scores.map((sc) => ({
+        rater_id: sc.rater_id,
+        rater_name: sc.rater_name,
+        submission_id: sc.submission_id,
+        score: Number(sc.score),
+        note: sc.note,
+        rated_at: sc.rated_at,
+      }));
       for (const sc of scores) {
         raterMap.set(sc.rater_id, sc.rater_name);
         if (!scoresBySub.has(sc.submission_id)) scoresBySub.set(sc.submission_id, {});
         scoresBySub.get(sc.submission_id)![sc.rater_id] = {
-          score: sc.score,
+          score: Number(sc.score),
           note: sc.note,
           ratedAt: sc.rated_at,
         };
@@ -1936,6 +2032,7 @@ async function getRoundCandidates(
         raterName: sc.rater_name,
         submissionId: sc.submission_id,
         score: sc.score,
+        criteriaScores: sc.criteria_scores || null,
       })),
       normConfig,
     );
@@ -1991,7 +2088,7 @@ async function getRoundCandidates(
         isOverridden,
         assignedBrothers,
         scores: rowScores,
-        referenceSum: Math.round(referenceSum * 10) / 10,
+        referenceSum: Math.round(referenceSum * 100) / 100,
         scoredCount: scoreValues.length,
         normalizedScore: candNorm?.normalizedScore ?? null,
         normalizedDetails: candNorm?.details ?? [],
@@ -2023,22 +2120,50 @@ async function upsertScore(params: {
   submissionId: number;
   raterId: string;
   raterName: string;
-  score: number;
+  score?: number;
+  criteriaScores?: Record<string, number> | null;
   note?: string;
 }): Promise<void> {
-  const { round, submissionId, raterId, raterName, score, note } = params;
-  if (!VALID_SCORES.has(score)) {
-    throw new Error(`Invalid score ${score}. Allowed: -1, -0.5, 0, 0.5, 1`);
+  const { round, submissionId, raterId, raterName, note } = params;
+  let finalScore: number;
+  let storedCriteriaScores: Record<string, number> | null = null;
+
+  if (round === "application" && params.criteriaScores && typeof params.criteriaScores === "object") {
+    const keys = ["artifact_passion", "business_feasibility", "business_creativity", "why_pgn_interest"];
+    const vals: number[] = [];
+    for (const k of keys) {
+      const v = Number(params.criteriaScores[k]);
+      if (!VALID_SCORES.has(v)) {
+        throw new Error(`Invalid score for criterion "${k}": ${params.criteriaScores[k]}. Allowed values: -1, -0.5, 0, 0.5, 1`);
+      }
+      vals.push(v);
+    }
+    // Arithmetic mean of 4 discrete criteria
+    finalScore = Math.round(((vals[0] + vals[1] + vals[2] + vals[3]) / 4) * 1000) / 1000;
+    storedCriteriaScores = {
+      artifact_passion: vals[0],
+      business_feasibility: vals[1],
+      business_creativity: vals[2],
+      why_pgn_interest: vals[3],
+    };
+  } else {
+    if (params.score === undefined || isNaN(params.score)) {
+      throw new Error("Score is required.");
+    }
+    if (!VALID_SCORES.has(params.score) && (params.score < -1 || params.score > 1)) {
+      throw new Error(`Invalid score ${params.score}. Allowed: -1, -0.5, 0, 0.5, 1`);
+    }
+    finalScore = Number(params.score);
   }
 
   if (useDb) {
     if (round === "application") {
       await pool.query(
-        `INSERT INTO application_scores (submission_id, rater_id, rater_name, score, note, rated_at)
-         VALUES ($1, $2, $3, $4, $5, NOW())
+        `INSERT INTO application_scores (submission_id, rater_id, rater_name, score, criteria_scores, note, rated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW())
          ON CONFLICT (submission_id, rater_id)
-         DO UPDATE SET score = EXCLUDED.score, note = EXCLUDED.note, rated_at = NOW()`,
-        [submissionId, raterId, raterName, score, note ?? null],
+         DO UPDATE SET score = EXCLUDED.score, criteria_scores = EXCLUDED.criteria_scores, note = EXCLUDED.note, rated_at = NOW()`,
+        [submissionId, raterId, raterName, finalScore, storedCriteriaScores ? JSON.stringify(storedCriteriaScores) : null, note ?? null],
       );
     } else {
       const roundNum = round === "round1" ? 1 : 2;
@@ -2047,7 +2172,7 @@ async function upsertScore(params: {
          VALUES ($1, $2, $3, $4, $5, $6, NOW())
          ON CONFLICT (submission_id, round, rater_id)
          DO UPDATE SET score = EXCLUDED.score, note = EXCLUDED.note, rated_at = NOW()`,
-        [submissionId, roundNum, raterId, raterName, score, note ?? null],
+        [submissionId, roundNum, raterId, raterName, finalScore, note ?? null],
       );
     }
   } else {
@@ -2057,7 +2182,8 @@ async function upsertScore(params: {
         (s) => s.submission_id === submissionId && s.rater_id === raterId,
       );
       if (existing) {
-        existing.score = score;
+        existing.score = finalScore;
+        (existing as any).criteria_scores = storedCriteriaScores;
         existing.note = note ?? null;
         existing.rated_at = new Date().toISOString();
       } else {
@@ -2066,7 +2192,8 @@ async function upsertScore(params: {
           submission_id: submissionId,
           rater_id: raterId,
           rater_name: raterName,
-          score,
+          score: finalScore,
+          criteria_scores: storedCriteriaScores,
           note: note ?? null,
           rated_at: new Date().toISOString(),
         });
@@ -2077,7 +2204,7 @@ async function upsertScore(params: {
         (s) => s.submission_id === submissionId && s.round === roundNum && s.rater_id === raterId,
       );
       if (existing) {
-        existing.score = score;
+        existing.score = finalScore;
         existing.note = note ?? null;
         existing.rated_at = new Date().toISOString();
       } else {
@@ -2087,7 +2214,7 @@ async function upsertScore(params: {
           round: roundNum,
           rater_id: raterId,
           rater_name: raterName,
-          score,
+          score: finalScore,
           note: note ?? null,
           rated_at: new Date().toISOString(),
         });
@@ -2132,6 +2259,50 @@ async function overrideSubmissionStatus(
     } else if (round === "round2") {
       sub.round_2_status = newStatus as any;
       sub.r2_override = true;
+    }
+    writeLocalStore(store);
+  }
+}
+
+async function batchOverrideSubmissions(
+  submissionIds: number[],
+  round: "application" | "round1" | "round2",
+  newStatus: string,
+): Promise<void> {
+  if (submissionIds.length === 0) return;
+  if (useDb) {
+    if (round === "application") {
+      await pool.query(
+        "UPDATE application_submissions SET application_status = $1, app_override = true WHERE id = ANY($2::int[])",
+        [newStatus, submissionIds],
+      );
+    } else if (round === "round1") {
+      await pool.query(
+        "UPDATE application_submissions SET round_1_status = $1, r1_override = true WHERE id = ANY($2::int[])",
+        [newStatus, submissionIds],
+      );
+    } else if (round === "round2") {
+      await pool.query(
+        "UPDATE application_submissions SET round_2_status = $1, r2_override = true WHERE id = ANY($2::int[])",
+        [newStatus, submissionIds],
+      );
+    }
+  } else {
+    const store = readLocalStore();
+    const idSet = new Set(submissionIds);
+    for (const sub of store.submissions) {
+      if (idSet.has(sub.id)) {
+        if (round === "application") {
+          sub.application_status = newStatus as any;
+          sub.app_override = true;
+        } else if (round === "round1") {
+          sub.round_1_status = newStatus as any;
+          sub.r1_override = true;
+        } else if (round === "round2") {
+          sub.round_2_status = newStatus as any;
+          sub.r2_override = true;
+        }
+      }
     }
     writeLocalStore(store);
   }
@@ -2624,16 +2795,17 @@ recruitmentRouter.get("/brother/assigned", requireBrother, async (req: AuthReque
 recruitmentRouter.post("/brother/score", requireBrother, async (req: AuthRequest, res: Response) => {
   const raterId = req.user?.email || "";
   const raterName = req.user?.name || raterId.split("@")[0];
-  const { submissionId, score, round, roundName } = req.body as {
+  const { submissionId, score, criteriaScores, round, roundName } = req.body as {
     submissionId?: number;
     score?: number;
+    criteriaScores?: Record<string, number>;
     round?: "application" | "round1" | "round2";
     roundName?: string;
   };
   const note = (req.body?.note ?? req.body?.notes) as string | undefined;
 
-  if (!submissionId || score === undefined) {
-    res.status(400).json({ error: "submissionId and score are required." });
+  if (!submissionId || (score === undefined && !criteriaScores)) {
+    res.status(400).json({ error: "submissionId and score (or criteriaScores) are required." });
     return;
   }
 
@@ -2669,7 +2841,8 @@ recruitmentRouter.post("/brother/score", requireBrother, async (req: AuthRequest
       submissionId: Number(submissionId),
       raterId,
       raterName,
-      score: Number(score),
+      score: score !== undefined ? Number(score) : undefined,
+      criteriaScores: criteriaScores || null,
       note,
     });
     res.json({ ok: true, round: targetRound });
@@ -2952,14 +3125,15 @@ recruitmentRouter.post(
     const raterId = req.user?.email || "admin@umich.edu";
     const raterName = req.user?.name || raterId.split("@")[0];
 
-    const { submissionId, score, note } = req.body as {
+    const { submissionId, score, criteriaScores, note } = req.body as {
       submissionId?: number;
       score?: number;
+      criteriaScores?: Record<string, number>;
       note?: string;
     };
 
-    if (!submissionId || score === undefined) {
-      res.status(400).json({ error: "submissionId and score are required." });
+    if (!submissionId || (score === undefined && !criteriaScores)) {
+      res.status(400).json({ error: "submissionId and score (or criteriaScores) are required." });
       return;
     }
 
@@ -2969,7 +3143,8 @@ recruitmentRouter.post(
         submissionId: Number(submissionId),
         raterId,
         raterName,
-        score: Number(score),
+        score: score !== undefined ? Number(score) : undefined,
+        criteriaScores: criteriaScores || null,
         note,
       });
       res.json({ ok: true });
@@ -3036,6 +3211,32 @@ recruitmentRouter.put(
     } catch (err) {
       console.error("Error setting candidate highlight:", err);
       res.status(500).json({ error: "Failed to set candidate highlight." });
+    }
+  },
+);
+
+// PUT /api/recruitment/submissions/batch-override-status  (Admin: batch manual override)
+recruitmentRouter.put(
+  "/submissions/batch-override-status",
+  requireAdmin,
+  async (req: Request, res: Response) => {
+    const { submissionIds, round, status } = req.body as {
+      submissionIds?: number[];
+      round?: "application" | "round1" | "round2";
+      status?: string;
+    };
+
+    if (!Array.isArray(submissionIds) || submissionIds.length === 0 || !round || !status) {
+      res.status(400).json({ error: "submissionIds array, round, and status are required." });
+      return;
+    }
+
+    try {
+      await batchOverrideSubmissions(submissionIds, round, status);
+      res.json({ ok: true, count: submissionIds.length });
+    } catch (err) {
+      console.error("Error batch overriding submission status:", err);
+      res.status(500).json({ error: "Failed to batch override status." });
     }
   },
 );

@@ -37,6 +37,8 @@ import {
   Check,
   GraduationCap,
   Shuffle,
+  UserCheck,
+  Undo2,
 } from "lucide-react";
 import { LoginGate } from "@/app/components/LoginGate";
 import { useAuth } from "@/app/context/AuthContext";
@@ -126,7 +128,7 @@ interface CandidateRow {
   answers: Record<string, any>;
   status: string;
   isOverridden: boolean;
-  scores: Record<string, { score: number; note: string | null; ratedAt: string }>;
+  scores: Record<string, { score: number; criteriaScores?: Record<string, number> | null; note: string | null; ratedAt: string }>;
   referenceSum: number;
   scoredCount: number;
   assignedBrothers?: string[];
@@ -136,6 +138,7 @@ interface CandidateRow {
     raterName: string;
     rawScore: number;
     weight: number;
+    criteriaScores?: Record<string, number> | null;
   }>;
   highlight?: "green" | "yellow" | "red" | null;
   isBba: boolean;
@@ -840,9 +843,12 @@ function RoundReviewTab({
   const [assignError, setAssignError] = useState("");
   const [showMassAssignModal, setShowMassAssignModal] = useState(false);
   const [questionLabels, setQuestionLabels] = useState<Record<string, string>>({});
+  const [selectedSubmissionIds, setSelectedSubmissionIds] = useState<Set<number>>(new Set());
+  const [batchAdvancing, setBatchAdvancing] = useState(false);
 
   useEffect(() => {
     setMajorPool(round === "application" ? "all" : "bba");
+    setSelectedSubmissionIds(new Set());
     loadData();
   }, [cycleId, round]);
 
@@ -880,17 +886,59 @@ function RoundReviewTab({
     }
   }
 
-  // Manual override handler
+  // Manual override handler (with immediate optimistic update)
   async function handleOverride(submissionId: number, newStatus: string) {
+    setCandidates((prev) =>
+      prev.map((c) => (c.submissionId === submissionId ? { ...c, status: newStatus, isOverridden: true } : c))
+    );
+    if (selectedCandidate && selectedCandidate.submissionId === submissionId) {
+      setSelectedCandidate((prev) => (prev ? { ...prev, status: newStatus, isOverridden: true } : null));
+    }
     try {
-      await fetch(`/api/recruitment/submissions/${submissionId}/override-status`, {
+      const res = await fetch(`/api/recruitment/submissions/${submissionId}/override-status`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ round, status: newStatus }),
       });
+      if (!res.ok) throw new Error("Failed to override status");
       await loadData();
     } catch (err) {
       console.error("Failed to override status:", err);
+      await loadData();
+    }
+  }
+
+  // Batch advance handler for selected candidates
+  async function handleBatchAdvance() {
+    if (selectedSubmissionIds.size === 0) return;
+    const ids = Array.from(selectedSubmissionIds);
+    setBatchAdvancing(true);
+    setCandidates((prev) =>
+      prev.map((c) =>
+        selectedSubmissionIds.has(c.submissionId)
+          ? { ...c, status: advanceStatusKey, isOverridden: true }
+          : c,
+      ),
+    );
+    if (selectedCandidate && selectedSubmissionIds.has(selectedCandidate.submissionId)) {
+      setSelectedCandidate((prev) =>
+        prev ? { ...prev, status: advanceStatusKey, isOverridden: true } : null,
+      );
+    }
+    try {
+      const res = await fetch("/api/recruitment/submissions/batch-override-status", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ submissionIds: ids, round, status: advanceStatusKey }),
+      });
+      if (!res.ok) throw new Error("Failed to batch advance submissions");
+      setSelectedSubmissionIds(new Set());
+      await loadData();
+    } catch (err) {
+      console.error("Failed to batch advance:", err);
+      await loadData();
+    } finally {
+      setBatchAdvancing(false);
     }
   }
 
@@ -1639,14 +1687,71 @@ function RoundReviewTab({
           </p>
         </div>
       ) : (
-        <div className="bg-white rounded-2xl border border-stone-200 shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-stone-700">
-              <thead className="bg-stone-50/80 border-b border-stone-200 text-stone-500 font-bold uppercase tracking-wider text-[10px]">
-                <tr>
-                  <th className="px-2.5 py-3.5 whitespace-nowrap text-center w-12 font-extrabold text-stone-700">
-                    Rank
-                  </th>
+        <>
+          {/* Multi-Applicant Batch Advance Bar */}
+          {selectedSubmissionIds.size > 0 && (
+            <div className="bg-stone-900 text-white px-5 py-3 rounded-2xl mb-4 flex flex-wrap items-center justify-between gap-3 shadow-lg animate-in fade-in slide-in-from-top-2 duration-150">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span className="text-xs font-bold font-mono">
+                  {selectedSubmissionIds.size} {selectedSubmissionIds.size === 1 ? "candidate" : "candidates"} selected
+                </span>
+                <span className="text-stone-500">•</span>
+                <span className="text-xs text-stone-300">
+                  Ready to advance to {advanceStatusLabel}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={batchAdvancing}
+                  onClick={handleBatchAdvance}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs transition active:scale-95 disabled:opacity-50 cursor-pointer"
+                >
+                  <UserCheck size={14} />
+                  <span>
+                    {batchAdvancing
+                      ? "Advancing Candidates…"
+                      : `Advance Selected (${selectedSubmissionIds.size}) to Next Round`}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedSubmissionIds(new Set())}
+                  className="px-3 py-2 text-xs font-semibold text-stone-300 hover:text-white rounded-xl hover:bg-stone-800 transition cursor-pointer"
+                >
+                  Deselect All
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="bg-white rounded-2xl border border-stone-200 shadow-xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-stone-700">
+                <thead className="bg-stone-50/80 border-b border-stone-200 text-stone-500 font-bold uppercase tracking-wider text-[10px]">
+                  <tr>
+                    <th className="px-3 py-3.5 whitespace-nowrap text-center w-10">
+                      <input
+                        type="checkbox"
+                        aria-label="Select all visible candidates"
+                        checked={
+                          filteredCandidates.length > 0 &&
+                          filteredCandidates.every((c) => selectedSubmissionIds.has(c.submissionId))
+                        }
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedSubmissionIds(new Set(filteredCandidates.map((c) => c.submissionId)));
+                          } else {
+                            setSelectedSubmissionIds(new Set());
+                          }
+                        }}
+                        className="w-4 h-4 rounded text-[#7A0C0C] focus:ring-[#7A0C0C] cursor-pointer"
+                      />
+                    </th>
+                    <th className="px-2.5 py-3.5 whitespace-nowrap text-center w-12 font-extrabold text-stone-700">
+                      Rank
+                    </th>
                   <th
                     onClick={() => {
                       if (sortColumn === "candNum") {
@@ -1743,7 +1848,7 @@ function RoundReviewTab({
                       />
                     </div>
                   </th>
-                  <th className="px-5 py-3.5 whitespace-nowrap">Round Status</th>
+                  <th className="px-5 py-3.5 whitespace-nowrap">Round Status & Advance</th>
                   <th className="px-4 py-3.5 text-right">Actions</th>
                 </tr>
               </thead>
@@ -1763,6 +1868,28 @@ function RoundReviewTab({
 
                   return (
                     <tr key={c.submissionId} className={`group/row transition-colors ${rowStyle}`}>
+                      {/* Selection Checkbox */}
+                      <td className="px-3 py-4 text-center whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${c.applicantName}`}
+                          checked={selectedSubmissionIds.has(c.submissionId)}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            setSelectedSubmissionIds((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(c.submissionId)) {
+                                next.delete(c.submissionId);
+                              } else {
+                                next.add(c.submissionId);
+                              }
+                              return next;
+                            });
+                          }}
+                          className="w-4 h-4 rounded text-[#7A0C0C] focus:ring-[#7A0C0C] cursor-pointer"
+                        />
+                      </td>
+
                       {/* Rank in Active Pool */}
                       <td className="px-3 py-4 text-center whitespace-nowrap font-mono font-bold">
                         {(() => {
@@ -2006,6 +2133,11 @@ function RoundReviewTab({
                       {/* Current Admin Interactive Score Pill Selector */}
                       <td className="px-4 py-4 text-center whitespace-nowrap bg-amber-50/30">
                         <div className="inline-flex items-center gap-1">
+                          {myScore !== null && !SCORE_OPTIONS.includes(myScore) && (
+                            <span className="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded bg-amber-100 text-[#7A0C0C] border border-amber-300" title="Overall score from criteria grading">
+                              {myScore > 0 ? `+${myScore}` : myScore}
+                            </span>
+                          )}
                           {SCORE_OPTIONS.map((val) => {
                             const isSelected = myScore === val;
                             return (
@@ -2114,10 +2246,39 @@ function RoundReviewTab({
                       {/* Round Status & Override indicator */}
                       <td className="px-5 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-2">
+                          {c.status === advanceStatusKey ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleOverride(
+                                  c.submissionId,
+                                  round === "application" ? "pending_review" : "pending",
+                                )
+                              }
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 transition-colors cursor-pointer group shadow-2xs"
+                              title="Candidate is advanced to next round. Click to undo."
+                            >
+                              <Check size={12} className="text-emerald-700 group-hover:hidden" />
+                              <span className="group-hover:hidden">Advanced ✓</span>
+                              <span className="hidden group-hover:inline text-[11px] font-bold">Undo</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleOverride(c.submissionId, advanceStatusKey)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs hover:shadow-sm transition-all cursor-pointer active:scale-95"
+                              title={`Manually advance ${c.applicantName} to ${advanceStatusLabel}`}
+                            >
+                              <UserCheck size={13} />
+                              <span>Advance</span>
+                            </button>
+                          )}
+
                           <select
                             value={c.status}
                             onChange={(e) => handleOverride(c.submissionId, e.target.value)}
-                            className={`text-[11px] font-bold rounded-lg px-2.5 py-1 border outline-none ${
+                            aria-label="Change candidate round status"
+                            className={`text-[11px] font-medium rounded-lg px-2 py-1 border outline-none transition cursor-pointer ${
                               c.status === advanceStatusKey
                                 ? "bg-emerald-50 text-emerald-800 border-emerald-200"
                                 : c.status === rejectStatusKey
@@ -2169,6 +2330,7 @@ function RoundReviewTab({
             </table>
           </div>
         </div>
+        </>
       )}
 
       {/* ── Cutoff & Highlight Tool Modal ── */}
@@ -2683,6 +2845,39 @@ function RoundReviewTab({
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    {/* Manual Advance to Next Round Button */}
+                    {selectedCandidate.status === advanceStatusKey ? (
+                      <div className="inline-flex items-center gap-1.5">
+                        <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-100 text-emerald-900 border border-emerald-300 shadow-2xs">
+                          <Check size={14} className="text-emerald-700" />
+                          <span>Advanced to Next Round ✓</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleOverride(
+                              selectedCandidate.submissionId,
+                              round === "application" ? "pending_review" : "pending",
+                            )
+                          }
+                          className="text-xs text-stone-400 hover:text-rose-600 underline px-1 cursor-pointer font-medium"
+                          title="Revert advance back to pending"
+                        >
+                          Undo
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleOverride(selectedCandidate.submissionId, advanceStatusKey)}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs hover:shadow-md transition active:scale-95 cursor-pointer"
+                        title={`Advance candidate to ${advanceStatusLabel}`}
+                      >
+                        <UserCheck size={15} />
+                        <span>{advanceStatusLabel}</span>
+                      </button>
+                    )}
+
                     {info.resumeUrl && (
                       <a
                         href={info.resumeUrl}
@@ -2763,11 +2958,77 @@ function RoundReviewTab({
 
                   {/* Status & Highlight Tier Selector Card */}
                   <div className="p-4 bg-stone-50 rounded-xl border border-stone-200 flex flex-col justify-between gap-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-stone-700">Current Round Status</span>
-                      <span className="px-3 py-1 bg-amber-50 border border-amber-200 rounded-full text-xs font-bold text-[#7A0C0C]">
-                        {selectedCandidate.status}
-                      </span>
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div>
+                        <span className="text-xs font-bold text-stone-700 block">Current Round Status</span>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+                              selectedCandidate.status === advanceStatusKey
+                                ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                : selectedCandidate.status === rejectStatusKey
+                                ? "bg-stone-100 text-stone-600 border-stone-200"
+                                : "bg-amber-50 text-amber-800 border-amber-200"
+                            }`}
+                          >
+                            {selectedCandidate.status === advanceStatusKey
+                              ? advanceStatusLabel
+                              : selectedCandidate.status === rejectStatusKey
+                              ? rejectStatusLabel
+                              : selectedCandidate.status}
+                          </span>
+                          {selectedCandidate.isOverridden && (
+                            <span
+                              title="Status was manually overridden by an admin"
+                              className="text-[9px] font-bold uppercase tracking-wider bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-md"
+                            >
+                              Overridden
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Advance & Status selector buttons */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {selectedCandidate.status === advanceStatusKey ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleOverride(
+                                selectedCandidate.submissionId,
+                                round === "application" ? "pending_review" : "pending",
+                              )
+                            }
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 transition cursor-pointer group shadow-2xs"
+                            title="Candidate is advanced to next round. Click to undo."
+                          >
+                            <Check size={13} className="text-emerald-700 group-hover:hidden" />
+                            <span className="group-hover:hidden font-medium">Advanced ✓</span>
+                            <span className="hidden group-hover:inline text-[11px] font-bold">Undo Advance</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleOverride(selectedCandidate.submissionId, advanceStatusKey)}
+                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs hover:shadow-sm transition cursor-pointer active:scale-95"
+                          >
+                            <UserCheck size={14} />
+                            <span>{advanceStatusLabel}</span>
+                          </button>
+                        )}
+
+                        <select
+                          value={selectedCandidate.status}
+                          onChange={(e) => handleOverride(selectedCandidate.submissionId, e.target.value)}
+                          aria-label="Override candidate status"
+                          className="text-[11px] font-medium border border-stone-200 bg-white rounded-lg px-2 py-1 outline-none cursor-pointer"
+                        >
+                          <option value={advanceStatusKey}>{advanceStatusLabel}</option>
+                          <option value={rejectStatusKey}>{rejectStatusLabel}</option>
+                          <option value="pending">Pending</option>
+                          <option value="pending_review">Pending Review</option>
+                        </select>
+                      </div>
                     </div>
 
                     <div>
@@ -2861,25 +3122,38 @@ function RoundReviewTab({
                         (d) => d.raterId === r.raterId,
                       );
                       return (
-                        <div key={r.raterId} className="flex items-center justify-between text-xs py-1 border-b border-stone-100 last:border-0">
-                          <span className="text-stone-600 font-medium">{r.raterName}</span>
-                          <span className="font-semibold text-stone-900 font-mono flex items-center gap-2">
-                            {sc ? (
-                              <>
-                                <span className={sc.score > 0 ? "text-emerald-700" : sc.score < 0 ? "text-rose-700" : "text-stone-700"}>
-                                  {sc.score > 0 ? `+${sc.score}` : sc.score}
-                                </span>
-                                {detail && (
-                                  <span className="text-[10px] font-normal text-stone-400">
-                                    (wt {detail.weight.toFixed(2)}x)
+                        <div key={r.raterId} className="flex flex-col py-1.5 border-b border-stone-100 last:border-0 text-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="text-stone-600 font-medium">{r.raterName}</span>
+                            <span className="font-semibold text-stone-900 font-mono flex items-center gap-2">
+                              {sc ? (
+                                <>
+                                  <span className={sc.score > 0 ? "text-emerald-700" : sc.score < 0 ? "text-rose-700" : "text-stone-700"}>
+                                    {sc.score > 0 ? `+${sc.score}` : sc.score}
                                   </span>
-                                )}
-                              </>
-                            ) : (
-                              <span className="text-stone-300 font-normal">Not scored</span>
-                            )}
-                            {sc?.note && <span className="text-stone-400 text-[10px] ml-1.5 font-sans">({sc.note})</span>}
-                          </span>
+                                  {detail && (
+                                    <span className="text-[10px] font-normal text-stone-400">
+                                      (wt {detail.weight.toFixed(2)}x)
+                                    </span>
+                                  )}
+                                </>
+                              ) : (
+                                <span className="text-stone-300 font-normal">Not scored</span>
+                              )}
+                              {sc?.note && <span className="text-stone-400 text-[10px] ml-1.5 font-sans">({sc.note})</span>}
+                            </span>
+                          </div>
+                          {sc?.criteriaScores && (
+                            <div className="flex items-center gap-2 mt-1 text-[10px] text-stone-500 font-mono bg-white p-1.5 rounded-lg border border-stone-200/60 flex-wrap">
+                              <span title="Personal meaning / passion">Passion: <strong className="text-stone-800">{sc.criteriaScores.artifact_passion > 0 ? `+${sc.criteriaScores.artifact_passion}` : sc.criteriaScores.artifact_passion}</strong></span>
+                              <span>•</span>
+                              <span title="Demonstrated understanding of feasibility of business">Feasibility: <strong className="text-stone-800">{sc.criteriaScores.business_feasibility > 0 ? `+${sc.criteriaScores.business_feasibility}` : sc.criteriaScores.business_feasibility}</strong></span>
+                              <span>•</span>
+                              <span title="Creativity">Creativity: <strong className="text-stone-800">{sc.criteriaScores.business_creativity > 0 ? `+${sc.criteriaScores.business_creativity}` : sc.criteriaScores.business_creativity}</strong></span>
+                              <span>•</span>
+                              <span title="Genuine interest in PGN">Why PGN: <strong className="text-stone-800">{sc.criteriaScores.why_pgn_interest > 0 ? `+${sc.criteriaScores.why_pgn_interest}` : sc.criteriaScores.why_pgn_interest}</strong></span>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
