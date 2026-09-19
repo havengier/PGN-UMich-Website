@@ -90,7 +90,78 @@ try {
   fs.mkdirSync(primaryUploadsDir, { recursive: true });
 } catch {}
 
-// Route for serving uploaded files with multi-dir, case-insensitive, prefix, and database fallback
+// Recursive file finder across candidate root directories
+function findFileDeep(roots: string[], targetName: string, maxDepth = 4): string | null {
+  const normTarget = targetName.toLowerCase();
+  const targetBase = normTarget.replace(/\.[^/.]+$/, "");
+
+  function scanDir(dir: string, depth: number): string | null {
+    if (depth > maxDepth) return null;
+    try {
+      if (!fs.existsSync(dir)) return null;
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+
+      // Pass 1: exact or case-insensitive filename match
+      for (const entry of entries) {
+        if (entry.isFile()) {
+          if (entry.name.toLowerCase() === normTarget) {
+            return path.join(dir, entry.name);
+          }
+        }
+      }
+
+      // Pass 2: match base name (without extension) or prefix
+      if (targetBase.length > 5) {
+        for (const entry of entries) {
+          if (entry.isFile()) {
+            const entryBase = entry.name.toLowerCase().replace(/\.[^/.]+$/, "");
+            if (entryBase === targetBase || entry.name.toLowerCase().startsWith(targetBase)) {
+              return path.join(dir, entry.name);
+            }
+          }
+        }
+      }
+
+      // Pass 3: recurse into subdirectories
+      for (const entry of entries) {
+        if (entry.isDirectory() && entry.name !== "node_modules" && entry.name !== ".git") {
+          const res = scanDir(path.join(dir, entry.name), depth + 1);
+          if (res) return res;
+        }
+      }
+    } catch {}
+    return null;
+  }
+
+  for (const root of roots) {
+    const found = scanDir(root, 0);
+    if (found) return found;
+  }
+  return null;
+}
+
+function getAllFilesRecursive(dir: string, maxDepth = 4): string[] {
+  const results: string[] = [];
+  function walk(current: string, depth: number) {
+    if (depth > maxDepth) return;
+    try {
+      if (!fs.existsSync(current)) return;
+      const entries = fs.readdirSync(current, { withFileTypes: true });
+      for (const e of entries) {
+        const full = path.join(current, e.name);
+        if (e.isFile()) {
+          results.push(full);
+        } else if (e.isDirectory() && e.name !== "node_modules" && e.name !== ".git") {
+          walk(full, depth + 1);
+        }
+      }
+    } catch {}
+  }
+  walk(dir, 0);
+  return results;
+}
+
+// Route for serving uploaded files with multi-dir, case-insensitive, prefix, recursive disk search, and database fallback
 app.get(["/uploads/:filename", "/uploads/*"], async (req, res) => {
   const rawParam = (req.params as any)[0] || (req.params as any).filename || "";
   if (!rawParam) {
@@ -106,30 +177,41 @@ app.get(["/uploads/:filename", "/uploads/*"], async (req, res) => {
 
   const candidateDirs = getCandidateUploadDirs();
 
-  // 1. Exact match on disk
+  // 1. Direct and case-insensitive search in candidate directories
   for (const dir of candidateDirs) {
     try {
-      const fullPath = path.join(dir, safeFilename);
-      if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
+      if (!fs.existsSync(dir)) continue;
+      const directPath = path.join(dir, safeFilename);
+      if (fs.existsSync(directPath) && fs.statSync(directPath).isFile()) {
         res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
-        return res.sendFile(fullPath);
+        return res.sendFile(directPath);
+      }
+      const files = fs.readdirSync(dir);
+      const match = files.find((f) => f.toLowerCase() === safeFilename.toLowerCase());
+      if (match) {
+        const matchPath = path.join(dir, match);
+        if (fs.statSync(matchPath).isFile()) {
+          res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+          return res.sendFile(matchPath);
+        }
       }
     } catch {}
   }
 
-  // 2. Case-insensitive match on disk
-  for (const dir of candidateDirs) {
+  // 2. Deep recursive search across /data, /app, and current working directory
+  const searchRoots = Array.from(new Set(["/data", "/app", process.cwd(), ...candidateDirs]));
+  const deepFound = findFileDeep(searchRoots, safeFilename);
+  if (deepFound) {
     try {
-      if (!fs.existsSync(dir)) continue;
-      const files = fs.readdirSync(dir);
-      const match = files.find((f) => f.toLowerCase() === safeFilename.toLowerCase());
-      if (match) {
-        const fullPath = path.join(dir, match);
-        if (fs.statSync(fullPath).isFile()) {
-          res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
-          return res.sendFile(fullPath);
-        }
+      // Cache copy to primary upload dir for faster subsequent requests
+      const primaryTarget = path.join(primaryUploadsDir, safeFilename);
+      if (!fs.existsSync(primaryTarget)) {
+        try {
+          fs.copyFileSync(deepFound, primaryTarget);
+        } catch {}
       }
+      res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+      return res.sendFile(deepFound);
     } catch {}
   }
 
@@ -157,12 +239,12 @@ app.get(["/uploads/:filename", "/uploads/*"], async (req, res) => {
     }
   }
 
-  // 4. Check PostgreSQL uploaded_files table (exact and case-insensitive)
+  // 4. Check PostgreSQL uploaded_files table (exact, case-insensitive, and prefix match)
   if (pool) {
     try {
       const dbRes = await pool.query(
-        "SELECT filename, mime_type, data FROM uploaded_files WHERE filename = $1 OR LOWER(filename) = LOWER($1) LIMIT 1",
-        [safeFilename],
+        "SELECT filename, mime_type, data FROM uploaded_files WHERE filename = $1 OR LOWER(filename) = LOWER($1) OR filename LIKE $2 LIMIT 1",
+        [safeFilename, `${baseWithoutExt}%`],
       );
       if (dbRes.rows.length > 0) {
         const fileRow = dbRes.rows[0];
@@ -185,7 +267,7 @@ app.get(["/uploads/:filename", "/uploads/*"], async (req, res) => {
     }
   }
 
-  // 5. Collect available files from candidate dirs for diagnostics
+  // 5. Collect available files from candidate dirs and recursive scan for diagnostics
   const allAvailableFiles: string[] = [];
   for (const dir of candidateDirs) {
     try {
@@ -198,6 +280,8 @@ app.get(["/uploads/:filename", "/uploads/*"], async (req, res) => {
     } catch {}
   }
 
+  const allRecursiveFiles = getAllFilesRecursive("/data");
+
   // 6. Return 404 with helpful diagnostics
   res.status(404).json({
     error: "File not found.",
@@ -205,6 +289,8 @@ app.get(["/uploads/:filename", "/uploads/*"], async (req, res) => {
     searchedFilename: safeFilename,
     availableFilesCount: allAvailableFiles.length,
     availableFiles: allAvailableFiles,
+    recursiveDataFilesCount: allRecursiveFiles.length,
+    recursiveDataFiles: allRecursiveFiles,
   });
 });
 
@@ -241,6 +327,11 @@ app.get("/health", async (_req, res) => {
     }
   }
 
+  const recursiveDataFiles = getAllFilesRecursive("/data");
+  for (const f of recursiveDataFiles) {
+    allDiskFiles.add(path.basename(f));
+  }
+
   let dbUploadCount = 0;
   let dbFilesList: string[] = [];
   if (pool) {
@@ -255,7 +346,7 @@ app.get("/health", async (_req, res) => {
   if (pool) {
     try {
       const subRes = await pool.query(
-        "SELECT id, applicant_name, applicant_email, photo_url, resume_url, answers FROM application_submissions ORDER BY id ASC",
+        "SELECT id, applicant_name, applicant_email, answers, submitted_at FROM application_submissions ORDER BY id ASC",
       );
       submissionsSummary = subRes.rows.map((sub: any) => {
         let answersObj = sub.answers;
@@ -281,8 +372,7 @@ app.get("/health", async (_req, res) => {
           id: sub.id,
           name: sub.applicant_name,
           email: sub.applicant_email,
-          photo_url: sub.photo_url,
-          resume_url: sub.resume_url,
+          submitted_at: sub.submitted_at,
           fileReferences,
         };
       });
@@ -297,6 +387,7 @@ app.get("/health", async (_req, res) => {
     uploadsDirEnv: process.env.UPLOADS_DIR || "not set",
     totalDiskFiles: allDiskFiles.size,
     diskFiles: Array.from(allDiskFiles),
+    recursiveDataFiles,
     dbUploadCount,
     dbFilesList,
     dirs: dirReport,
