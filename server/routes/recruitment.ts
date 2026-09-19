@@ -2729,10 +2729,52 @@ recruitmentRouter.post("/upload", requireAuth, async (req: AuthRequest, res: Res
 
     const prefix = isImage ? "photo" : "resume";
     const safeName = `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}${ext}`;
-    const targetPath = path.join(UPLOADS_DIR, safeName);
-    fs.writeFileSync(targetPath, buffer);
-    const fileUrl = `/uploads/${safeName}`;
 
+    // Write to all candidate directories
+    const candidateDirs = Array.from(
+      new Set([
+        process.env.UPLOADS_DIR,
+        "/data/uploads",
+        "/data",
+        "/app/data/uploads",
+        "/app/data",
+        "/app/public/uploads",
+        "/app/uploads",
+        path.resolve(__dirname, "../../public/uploads"),
+        path.resolve(__dirname, "../public/uploads"),
+        path.resolve(process.cwd(), "public/uploads"),
+        path.resolve(process.cwd(), "uploads"),
+      ].filter((d): d is string => Boolean(d)))
+    );
+
+    for (const dir of candidateDirs) {
+      try {
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, safeName), buffer);
+      } catch {}
+    }
+
+    // Persist to PostgreSQL uploaded_files table
+    const mimeType = isImage
+      ? `image/${ext.replace(".", "").replace("jpg", "jpeg")}`
+      : ext === ".pdf"
+      ? "application/pdf"
+      : "application/octet-stream";
+
+    if (pool) {
+      try {
+        await pool.query(
+          `INSERT INTO uploaded_files (filename, mime_type, data)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (filename) DO UPDATE SET data = EXCLUDED.data, mime_type = EXCLUDED.mime_type`,
+          [safeName, mimeType, buffer],
+        );
+      } catch (dbErr) {
+        console.error("Error persisting uploaded file to database:", dbErr);
+      }
+    }
+
+    const fileUrl = `/uploads/${safeName}`;
     res.json({ ok: true, fileUrl, filename: safeName });
   } catch (err) {
     console.error("File upload error:", err);

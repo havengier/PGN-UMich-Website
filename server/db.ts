@@ -166,5 +166,13 @@ export async function runMigrations() {
       CONSTRAINT uq_app_brother_assign UNIQUE (submission_id, brother_email)
     )
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS uploaded_files (
+      filename VARCHAR(255) PRIMARY KEY,
+      mime_type VARCHAR(100) NOT NULL,
+      data BYTEA NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
   console.log("Database migrations complete.");
 }
