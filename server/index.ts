@@ -83,18 +83,30 @@ const getCandidateUploadDirs = (): string[] => {
 };
 
 // Ensure primary upload directory exists
-const primaryUploadsDir = process.env.UPLOADS_DIR || (process.env.NODE_ENV === "production" ? "/data/uploads" : path.resolve(__dirname, "../public/uploads"));
+const primaryUploadsDir =
+  process.env.UPLOADS_DIR ||
+  (fs.existsSync("/data/uploads") || fs.existsSync("/data") ? "/data/uploads" : path.resolve(__dirname, "../public/uploads"));
 try {
   fs.mkdirSync(primaryUploadsDir, { recursive: true });
 } catch {}
 
-// Route for serving uploaded files with multi-dir and database fallback
-app.get("/uploads/:filename", async (req, res) => {
-  const rawFilename = req.params.filename;
-  const safeFilename = path.basename(rawFilename);
+// Route for serving uploaded files with multi-dir, case-insensitive, prefix, and database fallback
+app.get(["/uploads/:filename", "/uploads/*"], async (req, res) => {
+  const rawParam = (req.params as any)[0] || (req.params as any).filename || "";
+  if (!rawParam) {
+    return res.status(404).json({ error: "File not found.", reason: "Empty filename parameter" });
+  }
 
-  // 1. Search across all candidate disk directories
+  // Strip query parameters or hash fragments
+  const cleanParam = String(rawParam).split("?")[0].split("#")[0];
+  let safeFilename = path.basename(cleanParam);
+  try {
+    safeFilename = path.basename(decodeURIComponent(cleanParam));
+  } catch {}
+
   const candidateDirs = getCandidateUploadDirs();
+
+  // 1. Exact match on disk
   for (const dir of candidateDirs) {
     try {
       const fullPath = path.join(dir, safeFilename);
@@ -102,28 +114,66 @@ app.get("/uploads/:filename", async (req, res) => {
         res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
         return res.sendFile(fullPath);
       }
-    } catch {
-      // Continue searching
+    } catch {}
+  }
+
+  // 2. Case-insensitive match on disk
+  for (const dir of candidateDirs) {
+    try {
+      if (!fs.existsSync(dir)) continue;
+      const files = fs.readdirSync(dir);
+      const match = files.find((f) => f.toLowerCase() === safeFilename.toLowerCase());
+      if (match) {
+        const fullPath = path.join(dir, match);
+        if (fs.statSync(fullPath).isFile()) {
+          res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+          return res.sendFile(fullPath);
+        }
+      }
+    } catch {}
+  }
+
+  // 3. Prefix / extension-agnostic match on disk (e.g. matching photo_123.jpg with photo_123.png/jpeg)
+  const baseWithoutExt = safeFilename.replace(/\.[^/.]+$/, "");
+  if (baseWithoutExt && baseWithoutExt.length > 5) {
+    for (const dir of candidateDirs) {
+      try {
+        if (!fs.existsSync(dir)) continue;
+        const files = fs.readdirSync(dir);
+        const match = files.find(
+          (f) =>
+            f.toLowerCase().startsWith(baseWithoutExt.toLowerCase()) &&
+            f !== "lost+found" &&
+            !fs.statSync(path.join(dir, f)).isDirectory(),
+        );
+        if (match) {
+          const fullPath = path.join(dir, match);
+          if (fs.statSync(fullPath).isFile()) {
+            res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+            return res.sendFile(fullPath);
+          }
+        }
+      } catch {}
     }
   }
 
-  // 2. Check PostgreSQL uploaded_files table
+  // 4. Check PostgreSQL uploaded_files table (exact and case-insensitive)
   if (pool) {
     try {
       const dbRes = await pool.query(
-        "SELECT mime_type, data FROM uploaded_files WHERE filename = $1 LIMIT 1",
+        "SELECT filename, mime_type, data FROM uploaded_files WHERE filename = $1 OR LOWER(filename) = LOWER($1) LIMIT 1",
         [safeFilename],
       );
       if (dbRes.rows.length > 0) {
         const fileRow = dbRes.rows[0];
-        res.setHeader("Content-Type", fileRow.mime_type);
+        res.setHeader("Content-Type", fileRow.mime_type || "application/octet-stream");
         res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
 
         // Cache back to disk
         for (const dir of candidateDirs) {
           try {
             fs.mkdirSync(dir, { recursive: true });
-            fs.writeFileSync(path.join(dir, safeFilename), fileRow.data);
+            fs.writeFileSync(path.join(dir, fileRow.filename || safeFilename), fileRow.data);
             break;
           } catch {}
         }
@@ -135,8 +185,27 @@ app.get("/uploads/:filename", async (req, res) => {
     }
   }
 
-  // 3. Not found: return 404 (do NOT fall through to SPA index.html)
-  res.status(404).json({ error: "File not found." });
+  // 5. Collect available files from candidate dirs for diagnostics
+  const allAvailableFiles: string[] = [];
+  for (const dir of candidateDirs) {
+    try {
+      if (fs.existsSync(dir)) {
+        const list = fs.readdirSync(dir).filter((f) => f !== "lost+found");
+        for (const f of list) {
+          if (!allAvailableFiles.includes(f)) allAvailableFiles.push(f);
+        }
+      }
+    } catch {}
+  }
+
+  // 6. Return 404 with helpful diagnostics
+  res.status(404).json({
+    error: "File not found.",
+    requested: rawParam,
+    searchedFilename: safeFilename,
+    availableFilesCount: allAvailableFiles.length,
+    availableFiles: allAvailableFiles,
+  });
 });
 
 // Also keep express.static fallback for any nested paths
@@ -154,11 +223,16 @@ for (const dir of getCandidateUploadDirs()) {
 app.get("/health", async (_req, res) => {
   const dirs = getCandidateUploadDirs();
   const dirReport: Record<string, any> = {};
+  const allDiskFiles = new Set<string>();
+
   for (const dir of dirs) {
     try {
       if (fs.existsSync(dir)) {
         const files = fs.readdirSync(dir);
-        dirReport[dir] = { exists: true, count: files.length, sample: files.slice(0, 15) };
+        dirReport[dir] = { exists: true, count: files.length, sample: files.slice(0, 20) };
+        for (const f of files) {
+          if (f !== "lost+found") allDiskFiles.add(f);
+        }
       } else {
         dirReport[dir] = { exists: false };
       }
@@ -168,19 +242,66 @@ app.get("/health", async (_req, res) => {
   }
 
   let dbUploadCount = 0;
+  let dbFilesList: string[] = [];
   if (pool) {
     try {
-      const q = await pool.query("SELECT COUNT(*) FROM uploaded_files");
-      dbUploadCount = Number(q.rows[0].count);
+      const q = await pool.query("SELECT filename FROM uploaded_files");
+      dbUploadCount = q.rows.length;
+      dbFilesList = q.rows.map((r: any) => r.filename);
     } catch {}
+  }
+
+  let submissionsSummary: any[] = [];
+  if (pool) {
+    try {
+      const subRes = await pool.query(
+        "SELECT id, applicant_name, applicant_email, photo_url, resume_url, answers FROM application_submissions ORDER BY id ASC",
+      );
+      submissionsSummary = subRes.rows.map((sub: any) => {
+        let answersObj = sub.answers;
+        if (typeof answersObj === "string") {
+          try {
+            answersObj = JSON.parse(answersObj);
+          } catch {}
+        }
+        const fileReferences: Record<string, { url: string; onDisk: boolean; inDb: boolean }> = {};
+        if (typeof answersObj === "object" && answersObj !== null) {
+          for (const [key, val] of Object.entries(answersObj)) {
+            if (typeof val === "string" && (val.includes("/uploads/") || val.includes("photo_") || val.includes("resume_"))) {
+              const fname = path.basename(val.split("?")[0].split("#")[0]);
+              fileReferences[key] = {
+                url: val,
+                onDisk: allDiskFiles.has(fname),
+                inDb: dbFilesList.includes(fname),
+              };
+            }
+          }
+        }
+        return {
+          id: sub.id,
+          name: sub.applicant_name,
+          email: sub.applicant_email,
+          photo_url: sub.photo_url,
+          resume_url: sub.resume_url,
+          fileReferences,
+        };
+      });
+    } catch (err: any) {
+      submissionsSummary = [{ error: err.message }];
+    }
   }
 
   res.json({
     ok: true,
     nodeEnv: process.env.NODE_ENV || "not set",
     uploadsDirEnv: process.env.UPLOADS_DIR || "not set",
+    totalDiskFiles: allDiskFiles.size,
+    diskFiles: Array.from(allDiskFiles),
     dbUploadCount,
+    dbFilesList,
     dirs: dirReport,
+    submissionsCount: submissionsSummary.length,
+    submissions: submissionsSummary,
   });
 });
 

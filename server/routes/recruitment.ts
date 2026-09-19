@@ -11,8 +11,9 @@ import { requireBrother } from "../middleware/brother.js";
 import { DEFAULT_APPLY_CONFIG } from "./apply-config.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const LOCAL_STORE_PATH = path.resolve(__dirname, "../data/recruitment-store.json");
-const UPLOADS_DIR = process.env.UPLOADS_DIR || (process.env.NODE_ENV === "production" ? "/data/uploads" : path.resolve(__dirname, "../../public/uploads"));
+const UPLOADS_DIR =
+  process.env.UPLOADS_DIR ||
+  (fs.existsSync("/data/uploads") || fs.existsSync("/data") ? "/data/uploads" : path.resolve(__dirname, "../../public/uploads"));
 
 function getOptionalAuthUser(req: Request): AuthUser | null {
   const token = (req.cookies as Record<string, string>)?.auth_token;
