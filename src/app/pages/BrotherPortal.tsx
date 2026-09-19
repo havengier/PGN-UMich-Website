@@ -583,6 +583,10 @@ function BrotherPortalInner() {
                   const displayMajor = sub.major || sub.answers?.major || "Undeclared";
                   const displayGrad = sub.grad_term || sub.answers?.grad_term;
                   const isAssigned = isCandidateAssignedToMe(sub);
+                  const candidatePhoto =
+                    sub.photo_url ||
+                    resolveApplicantPhoto(sub.responses || sub.answers || {}, sub.question_labels || {}) ||
+                    "";
                   return (
                     <div
                       key={sub.id}
@@ -594,16 +598,30 @@ function BrotherPortalInner() {
                       }`}
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <h4 className={`text-sm font-semibold truncate ${isSelected ? "text-white" : "text-stone-900"}`}>
-                            {displayName}
-                          </h4>
-                          <p className={`text-xs truncate mt-0.5 ${isSelected ? "text-stone-300" : "text-stone-500"}`}>
-                            {displayMajor} {displayGrad ? `• Class of '${String(displayGrad).slice(-2)}` : ""}
-                          </p>
-                          <p className={`text-[11px] truncate mt-0.5 ${isSelected ? "text-stone-400" : "text-stone-400"}`}>
-                            {displayEmail}
-                          </p>
+                        <div className="flex items-start gap-3 min-w-0">
+                          {candidatePhoto ? (
+                            <img
+                              src={candidatePhoto}
+                              alt={displayName}
+                              className="w-10 h-10 rounded-xl object-cover border border-stone-200 shrink-0 mt-0.5"
+                            />
+                          ) : (
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm shrink-0 mt-0.5 font-serif ${
+                              isSelected ? "bg-white/10 text-white border border-white/20" : "bg-stone-100 text-stone-500 border border-stone-200"
+                            }`}>
+                              {displayName.charAt(0) || "P"}
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <h4 className={`text-sm font-semibold truncate ${isSelected ? "text-white" : "text-stone-900"}`}>
+                              {displayName}
+                            </h4>
+                            <p className={`text-xs truncate mt-0.5 ${isSelected ? "text-stone-300" : "text-stone-500"}`}>
+                              {displayMajor} {displayGrad ? `• Class of '${String(displayGrad).slice(-2)}` : ""}
+                            </p>
+                            <p className={`text-[11px] truncate mt-0.5 ${isSelected ? "text-stone-400" : "text-stone-400"}`}>
+                              {displayEmail}
+                            </p>
                           <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
                             {sub.current_round_name && (
                               <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-md ${
@@ -632,6 +650,7 @@ function BrotherPortalInner() {
                             )}
                           </div>
                         </div>
+                      </div>
 
                         <div className="flex flex-col items-end gap-1.5 shrink-0">
                           {hasScore ? (
@@ -735,6 +754,11 @@ function BrotherPortalInner() {
                     </div>
                   );
 
+                  const candidatePhoto =
+                    selectedSub.photo_url ||
+                    resolveApplicantPhoto(parsedResponses, selectedSub.question_labels || {}) ||
+                    "";
+
                   if (isAppRound) {
                     const { artifactFile, frq1, frq2, frq3 } = extractFRQData(
                       parsedResponses,
@@ -745,18 +769,45 @@ function BrotherPortalInner() {
                       <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-6 space-y-6">
                         {/* Header */}
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-100 pb-4">
-                          <div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <h3 className="text-base font-semibold text-stone-900">
-                                Application FRQ Rubric
-                              </h3>
-                              <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-50 text-[#7A0C0C] border border-amber-200">
-                                4 Criteria Evaluation
-                              </span>
+                          <div className="flex items-center gap-3.5">
+                            {candidatePhoto ? (
+                              <a
+                                href={candidatePhoto}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="group relative shrink-0"
+                                title="Click to view full-size photo"
+                              >
+                                <img
+                                  src={candidatePhoto}
+                                  alt={selectedSub.full_name}
+                                  className="w-12 h-12 rounded-xl object-cover border-2 border-stone-200 shadow-2xs group-hover:opacity-90 transition"
+                                />
+                                <div className="absolute inset-0 rounded-xl bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center transition text-white">
+                                  <ExternalLink size={12} />
+                                </div>
+                              </a>
+                            ) : (
+                              <div className="w-12 h-12 rounded-xl bg-stone-100 border border-stone-200 flex items-center justify-center text-stone-400 font-bold text-base shrink-0 font-serif">
+                                {selectedSub.full_name?.charAt(0) || "P"}
+                              </div>
+                            )}
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h3 className="text-base font-semibold text-stone-900">
+                                  Application FRQ Rubric
+                                </h3>
+                                <span className="text-xs text-stone-500 font-medium">
+                                  • {selectedSub.full_name}
+                                </span>
+                                <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-50 text-[#7A0C0C] border border-amber-200">
+                                  4 Criteria Evaluation
+                                </span>
+                              </div>
+                              <p className="text-xs text-stone-500 mt-1">
+                                Evaluate all 3 FRQs across 4 distinct criteria. Your overall candidate score is the arithmetic mean of these 4 grades.
+                              </p>
                             </div>
-                            <p className="text-xs text-stone-500 mt-1">
-                              Evaluate all 3 FRQs across 4 distinct criteria. Your overall candidate score is the arithmetic mean of these 4 grades.
-                            </p>
                           </div>
 
                           <div className="flex items-center gap-2 shrink-0 flex-wrap">
@@ -1126,13 +1177,37 @@ function BrotherPortalInner() {
                   return (
                     <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-6 space-y-5">
                       <div className="flex items-center justify-between border-b border-stone-100 pb-4">
-                        <div>
-                          <h3 className="text-base font-semibold text-stone-900">
-                            Candidate Deliberation Vote
-                          </h3>
-                          <p className="text-xs text-stone-500 mt-0.5">
-                            Assign your vote for {selectedSub.full_name}. This goes directly into the deliberations pool.
-                          </p>
+                        <div className="flex items-center gap-3.5">
+                          {candidatePhoto ? (
+                            <a
+                              href={candidatePhoto}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="group relative shrink-0"
+                              title="Click to view full-size photo"
+                            >
+                              <img
+                                src={candidatePhoto}
+                                alt={selectedSub.full_name}
+                                className="w-12 h-12 rounded-xl object-cover border-2 border-stone-200 shadow-2xs group-hover:opacity-90 transition"
+                              />
+                              <div className="absolute inset-0 rounded-xl bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center transition text-white">
+                                <ExternalLink size={12} />
+                              </div>
+                            </a>
+                          ) : (
+                            <div className="w-12 h-12 rounded-xl bg-stone-100 border border-stone-200 flex items-center justify-center text-stone-400 font-bold text-base shrink-0 font-serif">
+                              {selectedSub.full_name?.charAt(0) || "P"}
+                            </div>
+                          )}
+                          <div>
+                            <h3 className="text-base font-semibold text-stone-900">
+                              Candidate Deliberation Vote
+                            </h3>
+                            <p className="text-xs text-stone-500 mt-0.5">
+                              Assign your vote for {selectedSub.full_name}. This goes directly into the deliberations pool.
+                            </p>
+                          </div>
                         </div>
 
                         <div className="flex items-center gap-2 flex-wrap">
@@ -1244,25 +1319,13 @@ function BrotherPortalInner() {
                       return false;
                     };
 
-                    // Professional headshots are strictly hidden in Brother Portal to prevent bias during review.
-                    // Personal artifacts (e.g. photos of drawings, poems, songs) remain visible.
+                    // Resolve professional headshot (distinguished from personal artifact via resolveApplicantPhoto)
                     const resolvedHeadshot =
-                      resolveApplicantPhoto(parsedResponses, selectedSub.question_labels || {}) ||
                       selectedSub.photo_url ||
+                      resolveApplicantPhoto(parsedResponses, selectedSub.question_labels || {}) ||
                       "";
 
-                    const visibleResponses = Object.entries(parsedResponses).filter(([key, value]: [string, any]) => {
-                      const prompt = (selectedSub.question_labels?.[key] || key).toLowerCase();
-                      const strVal = typeof value === "string" ? value.trim() : "";
-                      const isHeadshot =
-                        (resolvedHeadshot && strVal === resolvedHeadshot) ||
-                        ((/professional.*(picture|photo|headshot|portrait)/i.test(prompt) ||
-                          /head\s*shot/i.test(prompt) ||
-                          /(picture|photo)\s*of\s*yourself/i.test(prompt) ||
-                          /^(headshot|photo_headshot|professional_headshot)$/i.test(key.toLowerCase())) &&
-                         !/artifact|portfolio|poem|song|story|creative/i.test(prompt));
-                      return !isHeadshot;
-                    });
+                    const visibleResponses = Object.entries(parsedResponses);
 
                     const candidateResume = selectedSub.resume_url || (() => {
                       for (const [k, v] of Object.entries(parsedResponses)) {
@@ -1325,9 +1388,28 @@ function BrotherPortalInner() {
                         {/* Candidate Profile Header */}
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-stone-100">
                           <div className="flex items-center gap-3.5 sm:gap-4">
-                            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-stone-100 border border-stone-200 flex items-center justify-center text-stone-400 font-bold text-xl shrink-0 font-serif">
-                              {selectedSub.full_name?.charAt(0) || "P"}
-                            </div>
+                            {resolvedHeadshot ? (
+                              <a
+                                href={resolvedHeadshot}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="group relative shrink-0"
+                                title="Click to view full-size photo"
+                              >
+                                <img
+                                  src={resolvedHeadshot}
+                                  alt={selectedSub.full_name}
+                                  className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl object-cover border-2 border-stone-200 shadow-xs group-hover:opacity-90 transition"
+                                />
+                                <div className="absolute inset-0 rounded-2xl bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center transition text-white">
+                                  <ExternalLink size={14} />
+                                </div>
+                              </a>
+                            ) : (
+                              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-stone-100 border border-stone-200 flex items-center justify-center text-stone-400 font-bold text-xl shrink-0 font-serif">
+                                {selectedSub.full_name?.charAt(0) || "P"}
+                              </div>
+                            )}
 
                             <div>
                               <div className="flex items-center gap-2 flex-wrap">
@@ -1363,6 +1445,17 @@ function BrotherPortalInner() {
                           </div>
 
                           <div className="flex flex-wrap items-center gap-2 shrink-0">
+                            {resolvedHeadshot && (
+                              <a
+                                href={resolvedHeadshot}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-stone-100 text-stone-700 text-xs font-semibold hover:bg-stone-200 transition border border-stone-200 shadow-2xs cursor-pointer"
+                              >
+                                <span>Headshot</span>
+                                <ExternalLink size={12} className="text-stone-400" />
+                              </a>
+                            )}
                             {candidateResume && (
                               <a
                                 href={candidateResume}
