@@ -22,6 +22,7 @@ import {
   Plus,
   ShieldAlert,
   Image as ImageIcon,
+  RefreshCw,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { LoginGate } from "@/app/components/LoginGate";
@@ -247,13 +248,33 @@ function DynamicFileInput({
   field,
   value,
   onChange,
+  onUploadingChange,
 }: {
   field: ConfigField;
   value: string;
   onChange: (v: string) => void;
+  onUploadingChange?: (uploading: boolean) => void;
 }) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [isExpired, setIsExpired] = useState(false);
+
+  // If restoring a draft with a previous upload URL, verify it still exists on the server
+  useEffect(() => {
+    if (!value || !value.startsWith("/uploads/")) return;
+    let active = true;
+    fetch(value, { method: "HEAD" })
+      .then((res) => {
+        if (active && res.status === 404) {
+          setIsExpired(true);
+          onChange("");
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [value]);
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -265,7 +286,9 @@ function DynamicFileInput({
     }
 
     setUploading(true);
+    onUploadingChange?.(true);
     setUploadError(null);
+    setIsExpired(false);
 
     const reader = new FileReader();
     reader.onload = async () => {
@@ -286,7 +309,13 @@ function DynamicFileInput({
         setUploadError("Upload network error. Please try again.");
       } finally {
         setUploading(false);
+        onUploadingChange?.(false);
       }
+    };
+    reader.onerror = () => {
+      setUploadError("Failed to read file.");
+      setUploading(false);
+      onUploadingChange?.(false);
     };
     reader.readAsDataURL(file);
   }
@@ -323,7 +352,7 @@ function DynamicFileInput({
             <button
               type="button"
               onClick={() => onChange("")}
-              className="text-xs text-gray-400 hover:text-red-600 transition-colors"
+              className="text-xs text-gray-400 hover:text-red-600 transition-colors cursor-pointer"
             >
               Change
             </button>
@@ -347,65 +376,174 @@ function DynamicFileInput({
         </label>
       )}
 
+      {isExpired && (
+        <div className="p-3.5 bg-red-50 border border-red-200/80 rounded-xl flex items-start gap-3">
+          <AlertCircle size={17} className="text-[#7A0C0C] flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-xs font-bold text-red-900">Saved Document Expired</p>
+            <p className="text-xs text-red-700 mt-0.5">
+              Your previously uploaded document is no longer available on the server. Please select and re-upload your file to complete your application.
+            </p>
+          </div>
+        </div>
+      )}
+
       {uploadError && <p className="text-xs text-red-600 mt-1">{uploadError}</p>}
     </div>
   );
+}
+
+/**
+ * Compresses an image client-side to max dimensions (1920px) and standardizes to JPEG.
+ * Automatically handles high-resolution phone cameras and formats (HEIC/PNG/WEBP/JPG).
+ */
+async function compressAndNormalizeImage(
+  file: File,
+  maxDimension = 1920,
+  quality = 0.85,
+): Promise<{ fileData: string; filename: string }> {
+  return new Promise((resolve) => {
+    // If not an image (or unsupported extension), fallback to standard FileReader
+    if (!file.type.startsWith("image/") && !/\.(jpe?g|png|webp|heic|heif|avif|gif)$/i.test(file.name)) {
+      const reader = new FileReader();
+      reader.onload = () => resolve({ fileData: reader.result as string, filename: file.name });
+      reader.onerror = () => resolve({ fileData: "", filename: file.name });
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      try {
+        let width = img.naturalWidth || img.width;
+        let height = img.naturalHeight || img.height;
+
+        if (!width || !height) {
+          throw new Error("Invalid image dimensions");
+        }
+
+        // Downscale large camera photos while maintaining aspect ratio
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          } else {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("Could not get canvas context");
+
+        ctx.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL("image/jpeg", quality);
+
+        const baseName = file.name.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_");
+        resolve({
+          fileData: dataUrl,
+          filename: `${baseName || "photo"}.jpg`,
+        });
+      } catch {
+        // Fallback to reading file directly
+        const reader = new FileReader();
+        reader.onload = () => resolve({ fileData: reader.result as string, filename: file.name });
+        reader.onerror = () => resolve({ fileData: "", filename: file.name });
+        reader.readAsDataURL(file);
+      }
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      const reader = new FileReader();
+      reader.onload = () => resolve({ fileData: reader.result as string, filename: file.name });
+      reader.onerror = () => resolve({ fileData: "", filename: file.name });
+      reader.readAsDataURL(file);
+    };
+
+    img.src = objectUrl;
+  });
 }
 
 function DynamicPhotoUpload({
   field,
   value,
   onChange,
+  onUploadingChange,
 }: {
   field: ConfigField;
   value: string;
   onChange: (v: string) => void;
+  onUploadingChange?: (uploading: boolean) => void;
 }) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [isExpired, setIsExpired] = useState(false);
+
+  // If restoring a draft with a previous photo URL, verify it still exists on the server
+  useEffect(() => {
+    if (!value || !value.startsWith("/uploads/")) return;
+    let active = true;
+    fetch(value, { method: "HEAD" })
+      .then((res) => {
+        if (active && res.status === 404) {
+          setIsExpired(true);
+          onChange("");
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [value]);
 
   async function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Strictly enforce 2MB max upload size
-    const MAX_PHOTO_SIZE = 2 * 1024 * 1024; // 2 MB
+    // Support photos up to 10MB (canvas compression will scale to <1MB fast JPEG)
+    const MAX_PHOTO_SIZE = 10 * 1024 * 1024; // 10 MB
     if (file.size > MAX_PHOTO_SIZE) {
       const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
-      setUploadError(`Photo exceeds the 2MB limit (${sizeMB}MB). Please choose an image under 2MB.`);
-      return;
-    }
-
-    if (!file.type.startsWith("image/")) {
-      setUploadError("Please upload a valid image file (JPG, PNG, or WEBP).");
+      setUploadError(`Photo exceeds 10MB limit (${sizeMB}MB). Please choose an image under 10MB.`);
       return;
     }
 
     setUploading(true);
+    onUploadingChange?.(true);
     setUploadError(null);
+    setIsExpired(false);
 
-    const reader = new FileReader();
-    reader.onload = async () => {
-      try {
-        const fileData = reader.result as string;
-        const res = await fetch("/api/recruitment/upload", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ filename: file.name, fileData }),
-        });
-        const data = await res.json();
-        if (res.ok && data.fileUrl) {
-          onChange(data.fileUrl);
-        } else {
-          setUploadError(data.error || "Failed to upload photo.");
-        }
-      } catch {
-        setUploadError("Upload network error. Please try again.");
-      } finally {
-        setUploading(false);
+    try {
+      // Compress and convert to standard JPEG
+      const { fileData, filename } = await compressAndNormalizeImage(file, 1920, 0.85);
+      if (!fileData) {
+        throw new Error("Could not process selected image.");
       }
-    };
-    reader.readAsDataURL(file);
+
+      const res = await fetch("/api/recruitment/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename, fileData }),
+      });
+      const data = await res.json();
+      if (res.ok && data.fileUrl) {
+        onChange(data.fileUrl);
+      } else {
+        setUploadError(data.error || "Failed to upload photo.");
+      }
+    } catch (err: any) {
+      setUploadError(err.message || "Upload network error. Please try again.");
+    } finally {
+      setUploading(false);
+      onUploadingChange?.(false);
+    }
   }
 
   return (
@@ -424,7 +562,15 @@ function DynamicPhotoUpload({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-amber-50/70 border border-amber-200/80 rounded-2xl gap-4">
           <div className="flex items-center gap-3.5">
             <div className="w-16 h-16 rounded-xl overflow-hidden border border-amber-300/80 bg-white shadow-xs flex-shrink-0">
-              <img src={value} alt="Uploaded preview" className="w-full h-full object-cover" />
+              <img
+                src={value}
+                alt="Uploaded preview"
+                className="w-full h-full object-cover"
+                onError={() => {
+                  setIsExpired(true);
+                  onChange("");
+                }}
+              />
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -458,23 +604,39 @@ function DynamicPhotoUpload({
       ) : (
         <label className="border-2 border-dashed border-gray-300 hover:border-[#7A0C0C]/50 rounded-2xl p-6 flex flex-col items-center justify-center cursor-pointer bg-white hover:bg-stone-50/50 transition-all group">
           <div className="w-12 h-12 rounded-full bg-stone-100 group-hover:bg-[#7A0C0C]/10 flex items-center justify-center mb-2.5 transition-colors">
-            <ImageIcon size={22} className="text-gray-400 group-hover:text-[#7A0C0C] transition-colors" />
+            {uploading ? (
+              <RefreshCw size={22} className="text-[#7A0C0C] animate-spin" />
+            ) : (
+              <ImageIcon size={22} className="text-gray-400 group-hover:text-[#7A0C0C] transition-colors" />
+            )}
           </div>
           <span className="text-xs font-semibold text-gray-800 group-hover:text-[#7A0C0C] transition-colors text-center">
-            {uploading ? "Uploading photo…" : "Click to select a photo (Max 2MB)"}
+            {uploading ? "Optimizing & uploading photo…" : "Click to select a photo (Max 10MB)"}
           </span>
           <span className="text-[11px] text-gray-400 mt-1 text-center">
-            PNG, JPG, or WEBP • Maximum file size 2MB
+            JPG, PNG, HEIC, or WEBP • Automatically optimized
           </span>
           <input
             type="file"
-            accept="image/png,image/jpeg,image/jpg,image/webp"
+            accept="image/*,.heic,.heif"
             required={field.required && !value}
             disabled={uploading}
             onChange={handlePhotoChange}
             className="hidden"
           />
         </label>
+      )}
+
+      {isExpired && (
+        <div className="p-3.5 bg-red-50 border border-red-200/80 rounded-xl flex items-start gap-3">
+          <AlertCircle size={17} className="text-[#7A0C0C] flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-xs font-bold text-red-900">Saved Photo Expired</p>
+            <p className="text-xs text-red-700 mt-0.5">
+              Your previously uploaded photo is no longer available on the server. Please select and re-upload your photo to complete your application.
+            </p>
+          </div>
+        </div>
       )}
 
       {uploadError && (
@@ -992,6 +1154,11 @@ function ApplyContent() {
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [uploadingFilesCount, setUploadingFilesCount] = useState(0);
+
+  const handleUploadingChange = (isUploading: boolean) => {
+    setUploadingFilesCount((prev) => (isUploading ? prev + 1 : Math.max(0, prev - 1)));
+  };
 
   // Draft auto-saving state
   const [draftRestored, setDraftRestored] = useState(false);
@@ -1202,8 +1369,44 @@ function ApplyContent() {
     e.preventDefault();
     if (!cycle) return;
 
+    if (uploadingFilesCount > 0) {
+      setSubmitError("Please wait for your photo or document to finish uploading before submitting.");
+      return;
+    }
+
     setSubmitting(true);
     setSubmitError(null);
+
+    // Explicit client-side validation for all required fields (ensures hidden file inputs are never bypassed)
+    if (form?.questions) {
+      for (const section of form.questions) {
+        for (const field of section.fields || []) {
+          const val = formData[field.id];
+          const labelShort = field.label.split("\n")[0].trim() || field.label;
+          if (field.required) {
+            if (val === undefined || val === null || String(val).trim() === "") {
+              setSubmitError(`Please complete required field: "${labelShort}"`);
+              setSubmitting(false);
+              window.scrollTo({ top: 380, behavior: "smooth" });
+              return;
+            }
+          }
+
+          // Verify that any file uploaded from a previous draft still exists on the server
+          if (typeof val === "string" && val.startsWith("/uploads/")) {
+            try {
+              const headRes = await fetch(val, { method: "HEAD" });
+              if (headRes.status === 404) {
+                setSubmitError(`The file for "${labelShort}" is no longer available on the server. Please select and re-upload your file before submitting.`);
+                setSubmitting(false);
+                window.scrollTo({ top: 380, behavior: "smooth" });
+                return;
+              }
+            } catch {}
+          }
+        }
+      }
+    }
 
     // Validate word limits on all text & textarea fields
     if (form?.questions) {
@@ -1632,6 +1835,7 @@ function ApplyContent() {
                                 field={field}
                                 value={getValue(field.id)}
                                 onChange={(val) => setValue(field.id, val)}
+                                onUploadingChange={handleUploadingChange}
                               />
                             );
                           }
@@ -1642,6 +1846,7 @@ function ApplyContent() {
                                 field={field}
                                 value={getValue(field.id)}
                                 onChange={(val) => setValue(field.id, val)}
+                                onUploadingChange={handleUploadingChange}
                               />
                             );
                           }
@@ -1672,11 +1877,15 @@ function ApplyContent() {
                     </p>
                     <button
                       type="submit"
-                      disabled={submitting || hasWordLimitViolations}
+                      disabled={submitting || hasWordLimitViolations || uploadingFilesCount > 0}
                       className="w-full sm:w-auto px-10 py-3.5 bg-[#7A0C0C] hover:bg-[#5C0A0A] text-white text-xs font-bold tracking-widest uppercase rounded-full shadow-sm hover:shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                       style={{ fontFamily: "'Inter', sans-serif" }}
                     >
-                      {submitting ? "Submitting Application…" : "Submit Application"}
+                      {uploadingFilesCount > 0
+                        ? "Uploading Files…"
+                        : submitting
+                        ? "Submitting Application…"
+                        : "Submit Application"}
                     </button>
                   </div>
                 </form>

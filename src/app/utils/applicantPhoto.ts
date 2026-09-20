@@ -6,7 +6,7 @@ export function isCandidateImageUrl(val: unknown): boolean {
   const s = val.trim();
   if (s.startsWith("data:image/")) return true;
   if (s.startsWith("/uploads/photo_")) return true;
-  if (/\.(jpe?g|png|webp|gif|avif|bmp|svg)(\?.*)?$/i.test(s)) return true;
+  if (/\.(jpe?g|png|webp|gif|avif|bmp|svg|heic|heif)(\?.*)?$/i.test(s)) return true;
   if (s.startsWith("http://") || s.startsWith("https://") || s.startsWith("/uploads/")) {
     const isDoc = /\.(pdf|docx?|doc|txt|xlsx?|pptx?|csv)(\?.*)?$/i.test(s) || s.includes("resume_");
     return !isDoc;
@@ -79,7 +79,7 @@ export function resolveApplicantPhoto(
     const isExplicitImg =
       strVal.startsWith("data:image/") ||
       strVal.startsWith("/uploads/photo_") ||
-      /\.(jpe?g|png|webp|gif|avif|bmp|svg)(\?.*)?$/i.test(strVal);
+      /\.(jpe?g|png|webp|gif|avif|bmp|svg|heic|heif)(\?.*)?$/i.test(strVal);
 
     let score = 0;
 

@@ -962,7 +962,7 @@ export function resolveApplicantPhoto(
     const isExplicitImg =
       strVal.startsWith("data:image/") ||
       strVal.startsWith("/uploads/photo_") ||
-      /\.(jpe?g|png|webp|gif|avif|bmp|svg)(\?.*)?$/i.test(strVal);
+      /\.(jpe?g|png|webp|gif|avif|bmp|svg|heic|heif)(\?.*)?$/i.test(strVal);
 
     const isGenericUrl =
       strVal.startsWith("http://") ||
@@ -2549,6 +2549,52 @@ recruitmentRouter.get("/my-submission", requireAuth, async (req: AuthRequest, re
   }
 });
 
+async function checkUploadedFileExists(filenameOrUrl: string): Promise<boolean> {
+  const rawParam = filenameOrUrl.split("?")[0].split("#")[0];
+  const safeFilename = path.basename(rawParam);
+  if (!safeFilename) return false;
+
+  // 1. Check PostgreSQL uploaded_files table
+  if (pool) {
+    try {
+      const baseWithoutExt = safeFilename.replace(/\.[^/.]+$/, "");
+      const dbCheck = await pool.query(
+        "SELECT filename FROM uploaded_files WHERE filename = $1 OR LOWER(filename) = LOWER($1) OR filename LIKE $2 LIMIT 1",
+        [safeFilename, `${baseWithoutExt}%`]
+      );
+      if (dbCheck.rows.length > 0) return true;
+    } catch {}
+  }
+
+  // 2. Check candidate directories on disk
+  const candidateDirs = Array.from(
+    new Set([
+      process.env.UPLOADS_DIR,
+      "/data/uploads",
+      "/data",
+      "/app/data/uploads",
+      "/app/data",
+      "/app/public/uploads",
+      "/app/uploads",
+      path.resolve(__dirname, "../../public/uploads"),
+      path.resolve(__dirname, "../public/uploads"),
+      path.resolve(process.cwd(), "public/uploads"),
+      path.resolve(process.cwd(), "uploads"),
+    ].filter((d): d is string => Boolean(d)))
+  );
+
+  for (const dir of candidateDirs) {
+    try {
+      const fullPath = path.join(dir, safeFilename);
+      if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
+        return true;
+      }
+    } catch {}
+  }
+
+  return false;
+}
+
 // 3. POST /api/recruitment/submit  (Requires @umich.edu auth)
 recruitmentRouter.post("/submit", requireAuth, async (req: AuthRequest, res: Response) => {
   const userEmail = req.user?.email;
@@ -2669,6 +2715,21 @@ recruitmentRouter.post("/submit", requireAuth, async (req: AuthRequest, res: Res
       : userEmail;
 
     const questionLabels = extractQuestionLabels(sections);
+
+    // Validate that all referenced files still exist in database or on disk
+    for (const [key, val] of Object.entries(answers)) {
+      if (typeof val === "string" && (val.startsWith("/uploads/") || val.includes("photo_") || val.includes("resume_"))) {
+        const fileExists = await checkUploadedFileExists(val);
+        if (!fileExists) {
+          const fieldLabel = questionLabels[key] || "Uploaded File";
+          res.status(400).json({
+            error: `The file for "${fieldLabel}" is missing or expired. Please re-upload your file before submitting.`,
+          });
+          return;
+        }
+      }
+    }
+
     const submission = await createSubmission({
       cycleId: cycle.id,
       applicantUserId,
@@ -2704,11 +2765,11 @@ recruitmentRouter.post("/upload", requireAuth, async (req: AuthRequest, res: Res
 
     const ext = path.extname(filename).toLowerCase();
     const isDoc = [".pdf", ".docx", ".doc"].includes(ext);
-    const isImage = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif"].includes(ext);
+    const isImage = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif", ".heic", ".heif"].includes(ext);
 
     if (!isDoc && !isImage) {
       res.status(400).json({
-        error: "Unsupported file format. Allowed formats: PDF, DOCX, JPG, PNG, WEBP.",
+        error: "Unsupported file format. Allowed formats: PDF, DOCX, JPG, PNG, WEBP, HEIC.",
       });
       return;
     }
@@ -2757,7 +2818,17 @@ recruitmentRouter.post("/upload", requireAuth, async (req: AuthRequest, res: Res
 
     // Persist to PostgreSQL uploaded_files table
     const mimeType = isImage
-      ? `image/${ext.replace(".", "").replace("jpg", "jpeg")}`
+      ? ext === ".png"
+        ? "image/png"
+        : ext === ".webp"
+        ? "image/webp"
+        : ext === ".gif"
+        ? "image/gif"
+        : ext === ".heic"
+        ? "image/heic"
+        : ext === ".heif"
+        ? "image/heif"
+        : "image/jpeg"
       : ext === ".pdf"
       ? "application/pdf"
       : "application/octet-stream";
