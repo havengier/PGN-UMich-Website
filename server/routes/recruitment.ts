@@ -2717,9 +2717,9 @@ recruitmentRouter.post("/upload", requireAuth, async (req: AuthRequest, res: Res
     const base64Clean = fileData.replace(/^data:([A-Za-z-+\/]+);base64,/, "");
     const buffer = Buffer.from(base64Clean, "base64");
 
-    // Strictly enforce 2MB limit for photos and 10MB for documents
-    if (isImage && buffer.length > 2 * 1024 * 1024) {
-      res.status(400).json({ error: "Photo exceeds the maximum allowed size of 2MB." });
+    // Strictly enforce 10MB limit for photos and documents
+    if (isImage && buffer.length > 10 * 1024 * 1024) {
+      res.status(400).json({ error: "Photo exceeds the maximum allowed size of 10MB." });
       return;
     }
 
@@ -3304,6 +3304,94 @@ recruitmentRouter.put(
     } catch (err) {
       console.error("Failed to update BBA status:", err);
       res.status(500).json({ error: "Failed to update BBA status." });
+    }
+  },
+);
+
+// PUT /api/recruitment/submissions/:id/replace-file  (Admin: replace an uploaded file for a candidate)
+recruitmentRouter.put(
+  "/submissions/:id/replace-file",
+  requireAdmin,
+  async (req: Request, res: Response) => {
+    const submissionId = Number(req.params.id);
+    const { fieldKey, fileUrl } = req.body as {
+      fieldKey?: string;
+      fileUrl?: string;
+    };
+
+    if (!fieldKey || typeof fieldKey !== "string" || !fileUrl || typeof fileUrl !== "string") {
+      res.status(400).json({ error: "fieldKey and fileUrl are required strings." });
+      return;
+    }
+
+    try {
+      if (useDb) {
+        const subRes = await pool.query(
+          "SELECT id, answers, cycle_id FROM application_submissions WHERE id = $1",
+          [submissionId],
+        );
+        if (subRes.rows.length === 0) {
+          res.status(404).json({ error: "Candidate submission not found." });
+          return;
+        }
+
+        let answers = subRes.rows[0].answers || {};
+        if (typeof answers === "string") {
+          try {
+            answers = JSON.parse(answers);
+          } catch {
+            answers = {};
+          }
+        }
+
+        // ONLY mutate the target fieldKey; 100% of all other answers, metrics, and responses are strictly preserved
+        const updatedAnswers = {
+          ...answers,
+          [fieldKey]: fileUrl.trim(),
+        };
+
+        await pool.query(
+          "UPDATE application_submissions SET answers = $1 WHERE id = $2",
+          [JSON.stringify(updatedAnswers), submissionId],
+        );
+
+        res.json({
+          ok: true,
+          submissionId,
+          fieldKey,
+          fileUrl: fileUrl.trim(),
+          answers: updatedAnswers,
+        });
+      } else {
+        const store = readLocalStore();
+        const sub = store.submissions.find((s) => s.id === submissionId);
+        if (!sub) {
+          res.status(404).json({ error: "Candidate submission not found." });
+          return;
+        }
+        let answers = sub.answers || {};
+        if (typeof answers === "string") {
+          try {
+            answers = JSON.parse(answers);
+          } catch {
+            answers = {};
+          }
+        }
+        answers[fieldKey] = fileUrl.trim();
+        sub.answers = answers;
+        writeLocalStore(store);
+
+        res.json({
+          ok: true,
+          submissionId,
+          fieldKey,
+          fileUrl: fileUrl.trim(),
+          answers,
+        });
+      }
+    } catch (err) {
+      console.error("Failed to replace application file:", err);
+      res.status(500).json({ error: "Failed to replace application file." });
     }
   },
 );

@@ -40,6 +40,7 @@ import {
   UserCheck,
   UserX,
   Undo2,
+  Upload,
 } from "lucide-react";
 import { LoginGate } from "@/app/components/LoginGate";
 import { useAuth } from "@/app/context/AuthContext";
@@ -228,6 +229,65 @@ function resolveApplicantInfo(c: CandidateRow, questionLabels: Record<string, st
   }
 
   return { photoUrl, resumeUrl, major, minor, gpa, gradTerm, phone, pronouns };
+}
+
+function findCandidateFileKey(
+  rawAnswers: Record<string, any> | string | undefined,
+  labels: Record<string, string>,
+  targetType: "photo" | "resume",
+): string {
+  let answers: Record<string, any> = {};
+  if (typeof rawAnswers === "string") {
+    try {
+      answers = JSON.parse(rawAnswers);
+    } catch {
+      answers = {};
+    }
+  } else if (typeof rawAnswers === "object" && rawAnswers !== null) {
+    answers = rawAnswers;
+  }
+
+  for (const [key, val] of Object.entries(answers)) {
+    const lbl = (labels[key] || "").toLowerCase();
+    const kl = key.toLowerCase();
+    const sv = typeof val === "string" ? val : "";
+
+    if (targetType === "photo") {
+      if (
+        /headshot|portrait|picture|photo/i.test(lbl) ||
+        /headshot|portrait|picture|photo/i.test(kl) ||
+        sv.startsWith("/uploads/photo_") ||
+        sv.startsWith("data:image/")
+      ) {
+        return key;
+      }
+    } else {
+      if (
+        /resume|cv|curriculum/i.test(lbl) ||
+        /resume|cv/i.test(kl) ||
+        sv.startsWith("/uploads/resume_") ||
+        (sv.startsWith("/uploads/") && /\.(pdf|docx?)$/i.test(sv))
+      ) {
+        return key;
+      }
+    }
+  }
+
+  for (const [key, lbl] of Object.entries(labels)) {
+    const l = lbl.toLowerCase();
+    const kl = key.toLowerCase();
+    if (
+      targetType === "photo" &&
+      (/headshot|portrait|picture|photo/i.test(l) || /headshot|portrait|picture|photo/i.test(kl))
+    ) {
+      return key;
+    }
+    if (targetType === "resume" && (/resume|cv/i.test(l) || /resume|cv/i.test(kl))) {
+      return key;
+    }
+  }
+
+  return targetType === "photo" ? "photo" : "resume";
 }
 
 // ── Admin Apply Main Component ────────────────────────────────────────────────
@@ -854,6 +914,18 @@ function RoundReviewTab({
   const [batchAdvancing, setBatchAdvancing] = useState(false);
   const [batchRejecting, setBatchRejecting] = useState(false);
 
+  // File replacement state (allows admin to upload replacement files/photos from backup)
+  const [replacingFileKey, setReplacingFileKey] = useState<string | null>(null);
+  const [replaceFileError, setReplaceFileError] = useState<string | null>(null);
+  const [replaceSuccessMsg, setReplaceSuccessMsg] = useState<string | null>(null);
+  const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
+  const replaceFileInputRef = useRef<HTMLInputElement>(null);
+  const [targetReplacementField, setTargetReplacementField] = useState<{
+    submissionId: number;
+    fieldKey: string;
+    fieldLabel: string;
+  } | null>(null);
+
   useEffect(() => {
     setMajorPool(round === "application" ? "all" : "bba");
     setSelectedSubmissionIds(new Set());
@@ -1091,6 +1163,121 @@ function RoundReviewTab({
       }
     } catch (err: any) {
       alert("Error deleting application: " + (err.message || "Failed to delete"));
+    }
+  }
+
+  // Admin file replacement handlers
+  function triggerFileReplace(submissionId: number, fieldKey: string, fieldLabel: string) {
+    setTargetReplacementField({ submissionId, fieldKey, fieldLabel });
+    setReplaceFileError(null);
+    setReplaceSuccessMsg(null);
+    if (replaceFileInputRef.current) {
+      replaceFileInputRef.current.value = "";
+      replaceFileInputRef.current.click();
+    }
+  }
+
+  async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !targetReplacementField) return;
+    const { submissionId, fieldKey, fieldLabel } = targetReplacementField;
+    await executeFileReplacement(submissionId, fieldKey, fieldLabel, file);
+  }
+
+  async function executeFileReplacement(
+    submissionId: number,
+    fieldKey: string,
+    fieldLabel: string,
+    file: File,
+  ) {
+    setReplacingFileKey(fieldKey);
+    setReplaceFileError(null);
+    setReplaceSuccessMsg(null);
+
+    try {
+      // 1. Read file as base64 data URL
+      const base64Data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error("Failed to read file from your computer."));
+        reader.readAsDataURL(file);
+      });
+
+      // 2. Upload file to server
+      const uploadRes = await fetch("/api/recruitment/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: file.name,
+          fileData: base64Data,
+        }),
+      });
+
+      const uploadData = await uploadRes.json();
+      if (!uploadRes.ok || !uploadData.fileUrl) {
+        throw new Error(uploadData.error || "Failed to upload file to server.");
+      }
+
+      const newFileUrl: string = uploadData.fileUrl;
+
+      // 3. Link replacement file to submission (preserving 100% of other candidate data)
+      const replaceRes = await fetch(`/api/recruitment/submissions/${submissionId}/replace-file`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fieldKey,
+          fileUrl: newFileUrl,
+        }),
+      });
+
+      const replaceData = await replaceRes.json();
+      if (!replaceRes.ok) {
+        throw new Error(replaceData.error || "Failed to link replaced file to submission.");
+      }
+
+      // 4. Optimistically update local candidate list and selectedCandidate state
+      const updatedAnswers = replaceData.answers || {
+        ...(typeof selectedCandidate?.answers === "object" ? selectedCandidate.answers : {}),
+        [fieldKey]: newFileUrl,
+      };
+
+      const updateRow = (c: CandidateRow): CandidateRow => {
+        const newInfo = resolveApplicantInfo({ ...c, answers: updatedAnswers }, questionLabels);
+        return {
+          ...c,
+          answers: updatedAnswers,
+          photoUrl: newInfo.photoUrl,
+          resumeUrl: newInfo.resumeUrl,
+        };
+      };
+
+      setCandidates((prev) =>
+        prev.map((c) => (c.submissionId === submissionId ? updateRow(c) : c)),
+      );
+      setSelectedCandidate((prev) =>
+        prev && prev.submissionId === submissionId ? updateRow(prev) : prev,
+      );
+
+      // Clear any failed image indicator for this fieldKey
+      setFailedImages((prev) => {
+        const next = { ...prev };
+        delete next[fieldKey];
+        delete next[`${submissionId}_${fieldKey}`];
+        delete next[`${submissionId}_photo`];
+        return next;
+      });
+
+      setReplaceSuccessMsg(
+        `Successfully replaced file for "${fieldLabel || fieldKey}"!`,
+      );
+      setTimeout(() => setReplaceSuccessMsg(null), 5000);
+    } catch (err: any) {
+      console.error("Error replacing candidate file:", err);
+      setReplaceFileError(err.message || "Failed to replace file.");
+      setTimeout(() => setReplaceFileError(null), 7000);
+    } finally {
+      setReplacingFileKey(null);
+      setTargetReplacementField(null);
     }
   }
 
@@ -2841,26 +3028,81 @@ function RoundReviewTab({
               <div className="p-6 pb-5 border-b border-stone-100 bg-white">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div className="flex items-center gap-3.5 sm:gap-4">
-                    {info.photoUrl ? (
-                      <a
-                        href={info.photoUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="group relative shrink-0"
-                        title="Click to view full-size photo"
-                      >
-                        <img
-                          src={info.photoUrl}
-                          alt={selectedCandidate.applicantName}
-                          className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl object-cover border-2 border-stone-200 shadow-xs group-hover:opacity-90 transition"
-                        />
-                        <div className="absolute inset-0 rounded-2xl bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center transition text-white">
-                          <ExternalLink size={14} />
-                        </div>
-                      </a>
+                    {info.photoUrl && !failedImages[`${selectedCandidate.submissionId}_photo`] ? (
+                      <div className="relative group shrink-0">
+                        <a
+                          href={info.photoUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block"
+                          title="Click to view full-size photo"
+                        >
+                          <img
+                            src={info.photoUrl}
+                            alt={selectedCandidate.applicantName}
+                            onError={() =>
+                              setFailedImages((prev) => ({
+                                ...prev,
+                                [`${selectedCandidate.submissionId}_photo`]: true,
+                              }))
+                            }
+                            className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl object-cover border-2 border-stone-200 shadow-xs group-hover:opacity-90 transition"
+                          />
+                        </a>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const photoKey = findCandidateFileKey(selectedCandidate.answers, questionLabels, "photo");
+                            triggerFileReplace(selectedCandidate.submissionId, photoKey, "Candidate Headshot");
+                          }}
+                          disabled={Boolean(replacingFileKey)}
+                          className="absolute -bottom-1 -right-1 bg-stone-900 hover:bg-black text-white p-1.5 rounded-full shadow-md border-2 border-white text-[10px] transition cursor-pointer active:scale-95"
+                          title="Upload replacement photo from backup"
+                        >
+                          {replacingFileKey ? <RefreshCw size={11} className="animate-spin" /> : <Upload size={11} />}
+                        </button>
+                      </div>
                     ) : (
-                      <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-stone-100 border border-stone-200 flex items-center justify-center text-stone-400 font-bold text-xl shrink-0 font-serif">
-                        {selectedCandidate.applicantName?.charAt(0) || "P"}
+                      <div className="relative group shrink-0">
+                        <div
+                          onClick={() => {
+                            const photoKey = findCandidateFileKey(selectedCandidate.answers, questionLabels, "photo");
+                            triggerFileReplace(selectedCandidate.submissionId, photoKey, "Candidate Headshot");
+                          }}
+                          className={`w-14 h-14 sm:w-16 sm:h-16 rounded-2xl border flex flex-col items-center justify-center text-center p-1 cursor-pointer transition ${
+                            failedImages[`${selectedCandidate.submissionId}_photo`]
+                              ? "bg-amber-50 border-amber-300 text-amber-800 hover:bg-amber-100"
+                              : "bg-stone-100 border-stone-200 text-stone-400 font-bold text-xl font-serif hover:bg-stone-200"
+                          }`}
+                          title={
+                            failedImages[`${selectedCandidate.submissionId}_photo`]
+                              ? "Photo missing on server - click to upload replacement from backup"
+                              : "Click to upload candidate photo"
+                          }
+                        >
+                          {failedImages[`${selectedCandidate.submissionId}_photo`] ? (
+                            <>
+                              <AlertTriangle size={15} className="text-amber-600 mb-0.5" />
+                              <span className="text-[9px] font-bold uppercase tracking-tight">Missing</span>
+                            </>
+                          ) : (
+                            selectedCandidate.applicantName?.charAt(0) || "P"
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const photoKey = findCandidateFileKey(selectedCandidate.answers, questionLabels, "photo");
+                            triggerFileReplace(selectedCandidate.submissionId, photoKey, "Candidate Headshot");
+                          }}
+                          disabled={Boolean(replacingFileKey)}
+                          className="absolute -bottom-1 -right-1 bg-amber-600 hover:bg-amber-700 text-white p-1.5 rounded-full shadow-md border-2 border-white text-[10px] transition cursor-pointer active:scale-95"
+                          title="Upload candidate photo from backup"
+                        >
+                          {replacingFileKey ? <RefreshCw size={11} className="animate-spin" /> : <Upload size={11} />}
+                        </button>
                       </div>
                     )}
 
@@ -2997,27 +3239,53 @@ function RoundReviewTab({
                     )}
 
                     {info.resumeUrl && (
-                      <a
-                        href={info.resumeUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-stone-100 text-stone-800 text-xs font-semibold hover:bg-stone-200 transition border border-stone-200 shadow-2xs cursor-pointer"
-                      >
-                        <FileText size={14} className="text-[#7A0C0C]" />
-                        <span>View Resume PDF</span>
-                        <ExternalLink size={12} className="text-stone-400" />
-                      </a>
+                      <div className="inline-flex items-center rounded-xl bg-stone-100 border border-stone-200 overflow-hidden shadow-2xs">
+                        <a
+                          href={info.resumeUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-2 text-stone-800 text-xs font-semibold hover:bg-stone-200 transition"
+                        >
+                          <FileText size={14} className="text-[#7A0C0C]" />
+                          <span>View Resume PDF</span>
+                          <ExternalLink size={12} className="text-stone-400" />
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const resumeKey = findCandidateFileKey(selectedCandidate.answers, questionLabels, "resume");
+                            triggerFileReplace(selectedCandidate.submissionId, resumeKey, "Candidate Resume");
+                          }}
+                          className="px-2.5 py-2 border-l border-stone-200 hover:bg-stone-200 text-stone-600 hover:text-stone-900 transition text-xs cursor-pointer"
+                          title="Upload replacement resume file from your backup"
+                        >
+                          <Upload size={13} />
+                        </button>
+                      </div>
                     )}
                     {info.photoUrl && (
-                      <a
-                        href={info.photoUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-stone-100 text-stone-700 text-xs font-semibold hover:bg-stone-200 transition border border-stone-200 shadow-2xs cursor-pointer"
-                      >
-                        <span>Headshot</span>
-                        <ExternalLink size={12} className="text-stone-400" />
-                      </a>
+                      <div className="inline-flex items-center rounded-xl bg-stone-100 border border-stone-200 overflow-hidden shadow-2xs">
+                        <a
+                          href={info.photoUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-2 text-stone-700 text-xs font-semibold hover:bg-stone-200 transition"
+                        >
+                          <span>Headshot</span>
+                          <ExternalLink size={12} className="text-stone-400" />
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const photoKey = findCandidateFileKey(selectedCandidate.answers, questionLabels, "photo");
+                            triggerFileReplace(selectedCandidate.submissionId, photoKey, "Candidate Headshot");
+                          }}
+                          className="px-2.5 py-2 border-l border-stone-200 hover:bg-stone-200 text-stone-600 hover:text-stone-900 transition text-xs cursor-pointer"
+                          title="Upload replacement photo file from your backup"
+                        >
+                          <Upload size={13} />
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -3025,6 +3293,38 @@ function RoundReviewTab({
 
               {/* Scrollable Modal Content */}
               <div ref={modalBodyRef} className="p-6 overflow-y-auto flex-1 space-y-6">
+                {/* Feedback notifications */}
+                {replaceSuccessMsg && (
+                  <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs rounded-xl flex items-center justify-between gap-2 shadow-xs animate-in fade-in">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle size={16} className="text-emerald-600 shrink-0" />
+                      <span className="font-semibold">{replaceSuccessMsg}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setReplaceSuccessMsg(null)}
+                      className="text-emerald-700 hover:text-emerald-900 text-xs cursor-pointer p-0.5"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                )}
+                {replaceFileError && (
+                  <div className="p-3 bg-rose-50 border border-rose-300 text-rose-900 text-xs rounded-xl flex items-center justify-between gap-2 shadow-xs animate-in fade-in">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle size={16} className="text-rose-600 shrink-0" />
+                      <span className="font-semibold">{replaceFileError}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setReplaceFileError(null)}
+                      className="text-rose-700 hover:text-rose-900 text-xs cursor-pointer p-0.5"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                )}
+
                 {/* Status, Classification & Highlight Controls Bar */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* Major & BBA Classification Card */}
@@ -3342,7 +3642,12 @@ function RoundReviewTab({
 
                 {/* Candidate Answers */}
                 <div className="space-y-3 pt-2">
-                  <h4 className="font-bold text-stone-900 text-sm">Application Responses</h4>
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-bold text-stone-900 text-sm">Application Responses</h4>
+                    <span className="text-[11px] text-stone-400 font-medium">
+                      Admins can upload/replace any file or photo response from backup
+                    </span>
+                  </div>
                   {(() => {
                     const answersObj: Record<string, any> = (() => {
                       if (!selectedCandidate.answers) return {};
@@ -3357,14 +3662,75 @@ function RoundReviewTab({
                       return typeof selectedCandidate.answers === "object" ? selectedCandidate.answers : {};
                     })();
 
-                    if (Object.keys(answersObj).length === 0) {
+                    // Collect all question keys from answers AND any file questions in questionLabels
+                    const allKeys = Array.from(
+                      new Set([
+                        ...Object.keys(answersObj),
+                        ...Object.keys(questionLabels).filter((k) => {
+                          const lbl = (questionLabels[k] || "").toLowerCase();
+                          const kl = k.toLowerCase();
+                          return (
+                            /resume|cv|headshot|photo|picture|portfolio|file|document|artifact|upload/i.test(lbl) ||
+                            /resume|cv|headshot|photo|picture|portfolio|file|document|artifact|upload/i.test(kl)
+                          );
+                        }),
+                      ])
+                    );
+
+                    if (allKeys.length === 0) {
                       return (
                         <p className="text-stone-400 italic text-xs">No application responses found.</p>
                       );
                     }
 
-                    return Object.entries(answersObj).map(([key, rawVal]) => {
-                      if (rawVal === undefined || rawVal === null) return null;
+                    return allKeys.map((key) => {
+                      const rawVal = answersObj[key];
+                      const rawLabel = questionLabels[key];
+                      const cleanTitle = rawLabel || key
+                        .replace(/_/g, " ")
+                        .replace(/([A-Z])/g, " $1")
+                        .replace(/^./, (str) => str.toUpperCase());
+
+                      const labelLower = (rawLabel || "").toLowerCase();
+                      const keyLower = key.toLowerCase();
+                      const isFileQuestion =
+                        /resume|cv|headshot|photo|picture|portfolio|file|document|artifact|upload/i.test(labelLower) ||
+                        /resume|cv|headshot|photo|picture|portfolio|file|document|artifact|upload/i.test(keyLower);
+
+                      if (rawVal === undefined || rawVal === null || rawVal === "") {
+                        if (isFileQuestion) {
+                          return (
+                            <div key={key} className="p-3.5 bg-stone-50/70 rounded-xl border border-stone-200/80 text-xs">
+                              <span className="text-[11px] font-bold text-[#7A0C0C] block mb-1 whitespace-pre-wrap">
+                                {cleanTitle}
+                              </span>
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mt-1.5 p-3 bg-amber-50/70 border border-amber-200/80 rounded-lg">
+                                <span className="text-stone-600 text-[11px] italic">
+                                  No file attached to this question yet.
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => triggerFileReplace(selectedCandidate.submissionId, key, cleanTitle)}
+                                  disabled={replacingFileKey === key}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-2xs transition cursor-pointer shrink-0"
+                                >
+                                  {replacingFileKey === key ? (
+                                    <>
+                                      <RefreshCw size={12} className="animate-spin" /> Uploading...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Upload size={12} /> Upload File From Backup
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }
+
                       const val = typeof rawVal === "object"
                         ? (Array.isArray(rawVal) ? rawVal.join(", ") : JSON.stringify(rawVal, null, 2))
                         : String(rawVal);
@@ -3376,46 +3742,117 @@ function RoundReviewTab({
                         val.startsWith("/uploads/photo_") ||
                         /\.(jpe?g|png|webp|gif|avif|bmp|svg)(\?.*)?$/i.test(val)
                       );
-                      const rawLabel = questionLabels[key];
-                      const cleanTitle = rawLabel || key
-                        .replace(/_/g, " ")
-                        .replace(/([A-Z])/g, " $1")
-                        .replace(/^./, (str) => str.toUpperCase());
+
+                      const failedKey = `${selectedCandidate.submissionId}_${key}`;
+                      const isImageFailed = Boolean(
+                        failedImages[failedKey] ||
+                        (isImage && failedImages[`${selectedCandidate.submissionId}_photo`] && /headshot|photo|picture/i.test(labelLower))
+                      );
 
                       return (
                         <div key={key} className="p-3.5 bg-stone-50/70 rounded-xl border border-stone-200/80 text-xs">
-                          <span className="text-[11px] font-bold text-[#7A0C0C] block mb-1 whitespace-pre-wrap">
-                            {cleanTitle}
-                          </span>
+                          <div className="flex items-start justify-between gap-2 mb-1">
+                            <span className="text-[11px] font-bold text-[#7A0C0C] block whitespace-pre-wrap">
+                              {cleanTitle}
+                            </span>
+                            {(isUrl || isFileQuestion) && (
+                              <button
+                                type="button"
+                                onClick={() => triggerFileReplace(selectedCandidate.submissionId, key, cleanTitle)}
+                                disabled={replacingFileKey === key}
+                                className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md border border-stone-200 bg-white hover:bg-stone-100 text-stone-700 hover:text-stone-900 shadow-2xs transition cursor-pointer shrink-0"
+                                title="Upload replacement file from your backup"
+                              >
+                                {replacingFileKey === key ? (
+                                  <>
+                                    <RefreshCw size={11} className="animate-spin text-[#7A0C0C]" />
+                                    <span>Uploading...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Upload size={11} className="text-[#7A0C0C]" />
+                                    <span>Replace File</span>
+                                  </>
+                                )}
+                              </button>
+                            )}
+                          </div>
+
                           {isImage ? (
-                            <div className="space-y-2 mt-1">
-                              <a href={val} target="_blank" rel="noopener noreferrer" className="block w-fit group">
-                                <img
-                                  src={val}
-                                  alt={key}
-                                  className="max-h-48 rounded-lg border border-stone-200 object-cover shadow-xs group-hover:opacity-90 transition-opacity"
-                                />
-                              </a>
-                              <div className="flex items-center gap-3">
-                                <a
-                                  href={val}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-[#7A0C0C] font-semibold underline inline-flex items-center gap-1 text-[11px]"
-                                >
-                                  View Full Photo <ExternalLink size={12} />
-                                </a>
-                                <a
-                                  href={val}
-                                  download
-                                  className="text-stone-600 hover:text-stone-900 inline-flex items-center gap-1 text-[11px] font-medium"
-                                >
-                                  <Download size={12} /> Download
-                                </a>
+                            isImageFailed ? (
+                              <div className="p-3.5 bg-amber-50/90 rounded-xl border border-amber-300 text-amber-950 space-y-2 mt-1.5">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                  <div className="flex items-start gap-2.5">
+                                    <AlertTriangle size={17} className="text-amber-600 shrink-0 mt-0.5" />
+                                    <div>
+                                      <p className="font-bold text-xs text-amber-900">
+                                        Image unavailable on server
+                                      </p>
+                                      <p className="text-[11px] text-amber-700 font-mono break-all mt-0.5">
+                                        {val}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => triggerFileReplace(selectedCandidate.submissionId, key, cleanTitle)}
+                                    disabled={replacingFileKey === key}
+                                    className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg shadow-xs flex items-center gap-1.5 shrink-0 transition cursor-pointer"
+                                  >
+                                    {replacingFileKey === key ? (
+                                      <>
+                                        <RefreshCw size={12} className="animate-spin" /> Uploading...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Upload size={12} /> Upload Backup Photo
+                                      </>
+                                    )}
+                                  </button>
+                                </div>
+                                <p className="text-[11px] text-amber-800">
+                                  Click "Upload Backup Photo" to restore this applicant's headshot from your local backup files.
+                                </p>
                               </div>
-                            </div>
+                            ) : (
+                              <div className="space-y-2 mt-1">
+                                <a href={val} target="_blank" rel="noopener noreferrer" className="block w-fit group">
+                                  <img
+                                    src={val}
+                                    alt={key}
+                                    onError={() => {
+                                      setFailedImages((prev) => ({
+                                        ...prev,
+                                        [failedKey]: true,
+                                        ...(/headshot|photo|picture/i.test(labelLower)
+                                          ? { [`${selectedCandidate.submissionId}_photo`]: true }
+                                          : {}),
+                                      }));
+                                    }}
+                                    className="max-h-48 rounded-lg border border-stone-200 object-cover shadow-xs group-hover:opacity-90 transition-opacity"
+                                  />
+                                </a>
+                                <div className="flex flex-wrap items-center gap-3">
+                                  <a
+                                    href={val}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[#7A0C0C] font-semibold underline inline-flex items-center gap-1 text-[11px]"
+                                  >
+                                    View Full Photo <ExternalLink size={12} />
+                                  </a>
+                                  <a
+                                    href={val}
+                                    download
+                                    className="text-stone-600 hover:text-stone-900 inline-flex items-center gap-1 text-[11px] font-medium"
+                                  >
+                                    <Download size={12} /> Download
+                                  </a>
+                                </div>
+                              </div>
+                            )
                           ) : isUrl ? (
-                            <div className="flex items-center gap-3 mt-1">
+                            <div className="flex flex-wrap items-center gap-3 mt-1">
                               <a
                                 href={val}
                                 target="_blank"
@@ -3433,7 +3870,7 @@ function RoundReviewTab({
                               </a>
                             </div>
                           ) : (
-                            <p className="text-stone-700 whitespace-pre-wrap leading-relaxed">{val}</p>
+                            <p className="text-stone-700 whitespace-pre-wrap leading-relaxed mt-1">{val}</p>
                           )}
                         </div>
                       );
@@ -3655,6 +4092,16 @@ function RoundReviewTab({
         onSuccess={async () => {
           await loadData();
         }}
+      />
+
+      {/* Hidden file input for admin manual replacement/upload */}
+      <input
+        type="file"
+        ref={replaceFileInputRef}
+        onChange={handleFileSelected}
+        accept="image/*,.pdf,.docx,.doc"
+        className="hidden"
+        aria-hidden="true"
       />
     </div>
   );
