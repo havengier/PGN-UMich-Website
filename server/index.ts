@@ -13,6 +13,7 @@ import { membersApiRouter } from "./routes/members-api.js";
 import { applyConfigRouter } from "./routes/apply-config.js";
 import { recruitmentRouter } from "./routes/recruitment.js";
 import { runMigrations, pool } from "./db.js";
+import { applyHeicBackfill } from "./heic-backfill.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT ?? 3000;
@@ -239,16 +240,18 @@ app.get(["/uploads/:filename", "/uploads/*"], async (req, res) => {
     }
   }
 
-  // 4. Check PostgreSQL uploaded_files table (exact, case-insensitive, and prefix match)
+  // 4. Check PostgreSQL uploaded_files table (exact, case-insensitive, heic-to-jpg alias, and prefix match)
   if (pool) {
     try {
+      const jpgAlias = safeFilename.replace(/\.heic$/i, ".jpg");
       const dbRes = await pool.query(
-        "SELECT filename, mime_type, data FROM uploaded_files WHERE filename = $1 OR LOWER(filename) = LOWER($1) OR filename LIKE $2 LIMIT 1",
-        [safeFilename, `${baseWithoutExt}%`],
+        "SELECT filename, mime_type, data FROM uploaded_files WHERE filename = $1 OR LOWER(filename) = LOWER($1) OR filename = $2 OR filename LIKE $3 LIMIT 1",
+        [safeFilename, jpgAlias, `${baseWithoutExt}%`],
       );
       if (dbRes.rows.length > 0) {
         const fileRow = dbRes.rows[0];
-        res.setHeader("Content-Type", fileRow.mime_type || "application/octet-stream");
+        const isJpgServingHeic = safeFilename.toLowerCase().endsWith(".heic") && fileRow.mime_type === "image/jpeg";
+        res.setHeader("Content-Type", isJpgServingHeic ? "image/jpeg" : (fileRow.mime_type || "application/octet-stream"));
         res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
 
         // Cache back to disk
@@ -405,6 +408,7 @@ app.get("*", (_req, res) => {
 
 async function main() {
   await runMigrations();
+  await applyHeicBackfill();
   app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 }
 

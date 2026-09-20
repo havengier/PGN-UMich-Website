@@ -461,6 +461,11 @@ async function compressAndNormalizeImage(
 
     img.onerror = () => {
       URL.revokeObjectURL(objectUrl);
+      if (/\.(heic|heif)$/i.test(file.name)) {
+        // Web browsers cannot decode Apple HEIC natively in canvas
+        resolve({ fileData: "", filename: file.name });
+        return;
+      }
       const reader = new FileReader();
       reader.onload = () => resolve({ fileData: reader.result as string, filename: file.name });
       reader.onerror = () => resolve({ fileData: "", filename: file.name });
@@ -524,7 +529,10 @@ function DynamicPhotoUpload({
       // Compress and convert to standard JPEG
       const { fileData, filename } = await compressAndNormalizeImage(file, 1920, 0.85);
       if (!fileData) {
-        throw new Error("Could not process selected image.");
+        if (/\.(heic|heif)$/i.test(file.name)) {
+          throw new Error("This image is in Apple HEIC format, which web browsers cannot display. Please choose a JPG or PNG image, or take the photo using the camera.");
+        }
+        throw new Error("Could not process selected image. Please choose a JPG or PNG file.");
       }
 
       const res = await fetch("/api/recruitment/upload", {
@@ -614,11 +622,11 @@ function DynamicPhotoUpload({
             {uploading ? "Optimizing & uploading photo…" : "Click to select a photo (Max 10MB)"}
           </span>
           <span className="text-[11px] text-gray-400 mt-1 text-center">
-            JPG, PNG, HEIC, or WEBP • Automatically optimized
+            JPG, PNG, or WEBP • Automatically optimized
           </span>
           <input
             type="file"
-            accept="image/*,.heic,.heif"
+            accept="image/png,image/jpeg,image/webp"
             required={field.required && !value}
             disabled={uploading}
             onChange={handlePhotoChange}
