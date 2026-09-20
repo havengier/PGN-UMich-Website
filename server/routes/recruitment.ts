@@ -2765,11 +2765,18 @@ recruitmentRouter.post("/upload", requireAuth, async (req: AuthRequest, res: Res
 
     const ext = path.extname(filename).toLowerCase();
     const isDoc = [".pdf", ".docx", ".doc"].includes(ext);
-    const isImage = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif", ".heic", ".heif"].includes(ext);
+    const isImage = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif"].includes(ext);
+
+    if (ext === ".heic" || ext === ".heif") {
+      res.status(400).json({
+        error: "Apple HEIC photos cannot be displayed by web browsers. Please select a JPG, PNG, or WEBP image.",
+      });
+      return;
+    }
 
     if (!isDoc && !isImage) {
       res.status(400).json({
-        error: "Unsupported file format. Allowed formats: PDF, DOCX, JPG, PNG, WEBP, HEIC.",
+        error: "Unsupported file format. Allowed formats: PDF, DOCX, JPG, PNG, WEBP.",
       });
       return;
     }

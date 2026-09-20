@@ -178,12 +178,82 @@ app.get(["/uploads/:filename", "/uploads/*"], async (req, res) => {
 
   const candidateDirs = getCandidateUploadDirs();
 
-  // 1. Direct and case-insensitive search in candidate directories
+  const ext = path.extname(safeFilename).toLowerCase();
+  const isImageReq = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif", ".heic", ".heif"].includes(ext);
+  const baseWithoutExt = safeFilename.replace(/\.[^/.]+$/, "");
+  const jpgAlias = safeFilename.replace(/\.hei[cf]$/i, ".jpg");
+
+  function isHeicHeader(buf: Buffer): boolean {
+    if (!buf || buf.length < 12) return false;
+    const brand = buf.toString("ascii", 4, 12);
+    return brand.includes("ftyp");
+  }
+
+  function isValidDiskFile(filePath: string, requestedExt: string): boolean {
+    try {
+      if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) return false;
+      // If client requested a standard image, ensure file on disk is not a raw HEIC file
+      if ([".jpg", ".jpeg", ".png", ".webp"].includes(requestedExt)) {
+        const fd = fs.openSync(filePath, "r");
+        const headerBuf = Buffer.alloc(16);
+        fs.readSync(fd, headerBuf, 0, 16, 0);
+        fs.closeSync(fd);
+        if (isHeicHeader(headerBuf)) {
+          return false;
+        }
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // 1. Check PostgreSQL uploaded_files table FIRST (exact, case-insensitive, and .heic -> .jpg alias)
+  // PostgreSQL is the single source of truth for all uploaded and backfilled files!
+  if (pool) {
+    try {
+      const dbRes = await pool.query(
+        "SELECT filename, mime_type, data FROM uploaded_files WHERE filename = $1 OR LOWER(filename) = LOWER($1) OR filename = $2 LIMIT 1",
+        [safeFilename, jpgAlias],
+      );
+      if (dbRes.rows.length > 0) {
+        const fileRow = dbRes.rows[0];
+        const isHeic = isHeicHeader(fileRow.data);
+        // Do not serve raw HEIC bytes if client requests a web image (jpg/png)
+        if (!isHeic || ext === ".heic" || ext === ".heif") {
+          const mimeType = isHeic && (ext === ".heic" || ext === ".heif")
+            ? "image/heic"
+            : (fileRow.mime_type || "application/octet-stream");
+          res.setHeader("Content-Type", mimeType);
+          res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+
+          // Cache back to disk
+          for (const dir of candidateDirs) {
+            try {
+              fs.mkdirSync(dir, { recursive: true });
+              fs.writeFileSync(path.join(dir, fileRow.filename || safeFilename), fileRow.data);
+              if (jpgAlias !== safeFilename) {
+                fs.writeFileSync(path.join(dir, jpgAlias), fileRow.data);
+              }
+              break;
+            } catch {}
+          }
+
+          return res.send(fileRow.data);
+        }
+      }
+    } catch (err) {
+      console.error("Error querying uploaded_files from DB:", err);
+    }
+  }
+
+  // 2. Direct and case-insensitive search in candidate directories (with HEIC byte-safety check)
   for (const dir of candidateDirs) {
     try {
       if (!fs.existsSync(dir)) continue;
       const directPath = path.join(dir, safeFilename);
-      if (fs.existsSync(directPath) && fs.statSync(directPath).isFile()) {
+      if (isValidDiskFile(directPath, ext)) {
         res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
         return res.sendFile(directPath);
       }
@@ -191,18 +261,27 @@ app.get(["/uploads/:filename", "/uploads/*"], async (req, res) => {
       const match = files.find((f) => f.toLowerCase() === safeFilename.toLowerCase());
       if (match) {
         const matchPath = path.join(dir, match);
-        if (fs.statSync(matchPath).isFile()) {
+        if (isValidDiskFile(matchPath, ext)) {
           res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
           return res.sendFile(matchPath);
+        }
+      }
+      // If client requested .heic, check if .jpg exists on disk
+      if (ext === ".heic" || ext === ".heif") {
+        const jpgPath = path.join(dir, jpgAlias);
+        if (isValidDiskFile(jpgPath, ".jpg")) {
+          res.setHeader("Content-Type", "image/jpeg");
+          res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+          return res.sendFile(jpgPath);
         }
       }
     } catch {}
   }
 
-  // 2. Deep recursive search across /data, /app, and current working directory
+  // 3. Deep recursive search across /data, /app, and current working directory
   const searchRoots = Array.from(new Set(["/data", "/app", process.cwd(), ...candidateDirs]));
   const deepFound = findFileDeep(searchRoots, safeFilename);
-  if (deepFound) {
+  if (deepFound && isValidDiskFile(deepFound, ext)) {
     try {
       // Cache copy to primary upload dir for faster subsequent requests
       const primaryTarget = path.join(primaryUploadsDir, safeFilename);
@@ -216,8 +295,7 @@ app.get(["/uploads/:filename", "/uploads/*"], async (req, res) => {
     } catch {}
   }
 
-  // 3. Prefix / extension-agnostic match on disk (e.g. matching photo_123.jpg with photo_123.png/jpeg)
-  const baseWithoutExt = safeFilename.replace(/\.[^/.]+$/, "");
+  // 4. Prefix / extension-agnostic match on disk (e.g. matching photo_123.jpg with photo_123.png/jpeg, NEVER .heic)
   if (baseWithoutExt && baseWithoutExt.length > 5) {
     for (const dir of candidateDirs) {
       try {
@@ -226,47 +304,19 @@ app.get(["/uploads/:filename", "/uploads/*"], async (req, res) => {
         const match = files.find(
           (f) =>
             f.toLowerCase().startsWith(baseWithoutExt.toLowerCase()) &&
+            !f.toLowerCase().endsWith(".heic") &&
+            !f.toLowerCase().endsWith(".heif") &&
             f !== "lost+found" &&
             !fs.statSync(path.join(dir, f)).isDirectory(),
         );
         if (match) {
           const fullPath = path.join(dir, match);
-          if (fs.statSync(fullPath).isFile()) {
+          if (isValidDiskFile(fullPath, ext)) {
             res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
             return res.sendFile(fullPath);
           }
         }
       } catch {}
-    }
-  }
-
-  // 4. Check PostgreSQL uploaded_files table (exact, case-insensitive, heic-to-jpg alias, and prefix match)
-  if (pool) {
-    try {
-      const jpgAlias = safeFilename.replace(/\.heic$/i, ".jpg");
-      const dbRes = await pool.query(
-        "SELECT filename, mime_type, data FROM uploaded_files WHERE filename = $1 OR LOWER(filename) = LOWER($1) OR filename = $2 OR filename LIKE $3 LIMIT 1",
-        [safeFilename, jpgAlias, `${baseWithoutExt}%`],
-      );
-      if (dbRes.rows.length > 0) {
-        const fileRow = dbRes.rows[0];
-        const isJpgServingHeic = safeFilename.toLowerCase().endsWith(".heic") && fileRow.mime_type === "image/jpeg";
-        res.setHeader("Content-Type", isJpgServingHeic ? "image/jpeg" : (fileRow.mime_type || "application/octet-stream"));
-        res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
-
-        // Cache back to disk
-        for (const dir of candidateDirs) {
-          try {
-            fs.mkdirSync(dir, { recursive: true });
-            fs.writeFileSync(path.join(dir, fileRow.filename || safeFilename), fileRow.data);
-            break;
-          } catch {}
-        }
-
-        return res.send(fileRow.data);
-      }
-    } catch (err) {
-      console.error("Error querying uploaded_files from DB:", err);
     }
   }
 
