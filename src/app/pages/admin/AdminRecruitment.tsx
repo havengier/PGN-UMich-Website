@@ -55,8 +55,7 @@ const DEFAULTS = {
   "recruitment.cycle_ended": "false",
   "recruitment.cycle_ended_title": "This recruitment cycle has ended. See you next semester!",
   "recruitment.cycle_ended_subtitle":
-    "Follow our Instagram @pgnmichigan to stay up to date on future recruitment cycles, coffee chats, and application timelines.",
-  "recruitment.cycle_ended_show_contact": "true",
+    "Follow our Instagram @pgnuofm to stay up to date on future recruitment cycles, coffee chats, and application timelines.",
   "recruitment.banner.hide_image": "false",
   "recruitment.banner.image_url": "",
   "recruitment.side_image.hide_image": "false",
@@ -209,7 +208,7 @@ function AdminRecruitmentContent() {
                   </span>
                 </div>
                 <p className="text-xs text-gray-600 leading-relaxed max-w-xl">
-                  Switch this ON when the current recruitment cycle has concluded. The public recruitment page will switch to display the logo and{" "}
+                  Switch this ON when the current recruitment cycle has concluded. The banner, rush chair information, and events are hidden, and the public recruitment page displays the logo and{" "}
                   <strong className="text-gray-800 font-semibold">&ldquo;This recruitment cycle has ended. See you next semester!&rdquo;</strong>
                 </p>
               </div>
@@ -255,33 +254,9 @@ function AdminRecruitmentContent() {
                     onChange={set("recruitment.cycle_ended_subtitle")}
                     rows={2}
                     className={textareaCls}
-                    placeholder="Follow our Instagram @pgnmichigan to stay up to date on future recruitment cycles, coffee chats, and application timelines."
+                    placeholder="Follow our Instagram @pgnuofm to stay up to date on future recruitment cycles, coffee chats, and application timelines."
                   />
                 </Field>
-
-                <div className="flex items-center justify-between p-3.5 rounded-xl bg-white border border-stone-200">
-                  <div>
-                    <p className="text-xs font-semibold text-gray-800">Show Rush Chairs & Inquiries Section</p>
-                    <p className="text-[11px] text-gray-500">
-                      Keep rush chair profiles and the official contact box visible below the announcement so prospective applicants can still reach out.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={fields["recruitment.cycle_ended_show_contact"] !== "false"}
-                    onClick={toggleHide("recruitment.cycle_ended_show_contact")}
-                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                      fields["recruitment.cycle_ended_show_contact"] !== "false" ? "bg-[#7A0C0C]" : "bg-gray-300"
-                    }`}
-                  >
-                    <span
-                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                        fields["recruitment.cycle_ended_show_contact"] !== "false" ? "translate-x-5" : "translate-x-0"
-                      }`}
-                    />
-                  </button>
-                </div>
 
                 {/* Live Preview */}
                 <div className="mt-4 p-6 sm:p-8 rounded-2xl bg-[#1a0303] text-center border border-white/10 shadow-xl relative overflow-hidden">
@@ -302,12 +277,15 @@ function AdminRecruitmentContent() {
                   </h4>
                   {fields["recruitment.cycle_ended_subtitle"] && (
                     <p
-                      className="text-white/60 text-xs sm:text-sm max-w-md mx-auto leading-relaxed"
+                      className="text-white/60 text-xs sm:text-sm max-w-md mx-auto leading-relaxed mb-4"
                       style={{ fontFamily: "'Inter', sans-serif" }}
                     >
                       {fields["recruitment.cycle_ended_subtitle"]}
                     </p>
                   )}
+                  <div className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-white/10 text-white/80 text-xs font-semibold border border-white/20">
+                    Follow @pgnuofm
+                  </div>
                 </div>
               </div>
             )}

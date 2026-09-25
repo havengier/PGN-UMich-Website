@@ -282,9 +282,8 @@ export default function Recruitment() {
   );
   const cycleEndedSubtitle = get(
     "recruitment.cycle_ended_subtitle",
-    "Follow our Instagram @pgnmichigan to stay up to date on future recruitment cycles, coffee chats, and application timelines.",
+    "Follow our Instagram @pgnuofm to stay up to date on future recruitment cycles, coffee chats, and application timelines.",
   );
-  const cycleEndedShowContact = get("recruitment.cycle_ended_show_contact", "true") !== "false";
 
   const hideBannerImage = get("recruitment.banner.hide_image", "false") === "true";
   const bannerImageUrl = hideBannerImage ? "" : get("recruitment.banner.image_url", "");
@@ -364,38 +363,40 @@ export default function Recruitment() {
   return (
     <div className="min-h-screen bg-[#1a0303] flex flex-col">
       {/* ── Hero Banner ──────────────────────────────────────────────────── */}
-      <div className="relative w-full h-[52vh] overflow-hidden">
-        {bannerImageUrl ? (
-          <img src={bannerImageUrl} alt="Recruitment Banner" className="absolute inset-0 w-full h-full object-cover" />
-        ) : (
-          <>
-            <div className="absolute inset-0 bg-gradient-to-br from-stone-600 via-stone-700 to-stone-800" />
-            <div
-              className="absolute inset-0 opacity-40"
-              style={{
-                backgroundImage:
-                  "radial-gradient(ellipse at 25% 60%, #78350f 0%, transparent 55%), radial-gradient(ellipse at 75% 35%, #44403c 0%, transparent 50%)",
-              }}
-            />
-          </>
-        )}
-        <div className="absolute inset-0 bg-black/45" />
-        <div className="relative z-10 h-full flex items-end px-8 md:px-16 pb-12 pt-20">
-          <motion.h1
-            className="text-white font-normal leading-none"
-            style={{ fontFamily: "'Playfair Display', serif", fontSize: "clamp(3rem, 7vw, 5.5rem)" }}
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, ease: "easeOut" }}
-          >
-            Recruitment
-          </motion.h1>
+      {!isCycleEnded && (
+        <div className="relative w-full h-[52vh] overflow-hidden">
+          {bannerImageUrl ? (
+            <img src={bannerImageUrl} alt="Recruitment Banner" className="absolute inset-0 w-full h-full object-cover" />
+          ) : (
+            <>
+              <div className="absolute inset-0 bg-gradient-to-br from-stone-600 via-stone-700 to-stone-800" />
+              <div
+                className="absolute inset-0 opacity-40"
+                style={{
+                  backgroundImage:
+                    "radial-gradient(ellipse at 25% 60%, #78350f 0%, transparent 55%), radial-gradient(ellipse at 75% 35%, #44403c 0%, transparent 50%)",
+                }}
+              />
+            </>
+          )}
+          <div className="absolute inset-0 bg-black/45" />
+          <div className="relative z-10 h-full flex items-end px-8 md:px-16 pb-12 pt-20">
+            <motion.h1
+              className="text-white font-normal leading-none"
+              style={{ fontFamily: "'Playfair Display', serif", fontSize: "clamp(3rem, 7vw, 5.5rem)" }}
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.7, ease: "easeOut" }}
+            >
+              Recruitment
+            </motion.h1>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ── Recruitment Content Section ─────────────────────────────────── */}
       {isCycleEnded ? (
-        <section className="relative flex-1 flex items-center justify-center py-20 md:py-32 px-6 md:px-12 overflow-hidden">
+        <section className="relative flex-1 min-h-screen flex items-center justify-center pt-32 pb-20 md:pt-40 md:pb-28 px-6 md:px-12 overflow-hidden">
           {/* Background Layers */}
           <div className="absolute inset-0 bg-[#1a0303]" />
           <div
@@ -472,13 +473,13 @@ export default function Recruitment() {
               transition={{ duration: 0.6, delay: 0.45, ease: "easeOut" }}
             >
               <a
-                href="https://www.instagram.com/pgnmichigan/"
+                href="https://www.instagram.com/pgnuofm/"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 px-7 py-3.5 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs md:text-sm font-semibold tracking-wider uppercase border border-white/20 hover:border-white/40 transition-all duration-200 shadow-md hover:shadow-lg backdrop-blur-sm group"
               >
                 <Instagram size={16} className="text-[#F5A623] group-hover:scale-110 transition-transform" />
-                <span>Follow @pgnmichigan</span>
+                <span>Follow @pgnuofm</span>
               </a>
 
               {contactEmail && (
@@ -587,7 +588,7 @@ export default function Recruitment() {
       )}
 
       {/* ── Rush Chairs & Inquiries Section ─────────────────────────────── */}
-      {(!isCycleEnded || cycleEndedShowContact) && (
+      {!isCycleEnded && (
         <section className="relative py-20 md:py-28 px-6 md:px-16 overflow-hidden border-t border-white/15 border-b border-black/50 bg-[#250505]">
         {/* Deep rich wine / burgundy velvet gradient layers */}
         <div className="absolute inset-0 bg-gradient-to-br from-[#2c0707] via-[#200404] to-[#360909]" />
