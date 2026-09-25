@@ -1,9 +1,34 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import { pool } from "../db.js";
 import { requireAdmin } from "../middleware/admin.js";
 
 export const contentRouter = Router();
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const LOCAL_CONTENT_FILE = path.resolve(__dirname, "../data/content-store.json");
+
+function getLocalContent(): Record<string, string> {
+  try {
+    if (fs.existsSync(LOCAL_CONTENT_FILE)) {
+      return JSON.parse(fs.readFileSync(LOCAL_CONTENT_FILE, "utf-8"));
+    }
+  } catch {}
+  return {};
+}
+
+function saveLocalContent(content: Record<string, string>) {
+  try {
+    const dir = path.dirname(LOCAL_CONTENT_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(LOCAL_CONTENT_FILE, JSON.stringify(content, null, 2), "utf-8");
+  } catch (err) {
+    console.error("Failed to save local content store:", err);
+  }
+}
 
 function isValidHttpUrl(url: string): boolean {
   if (url === "#" || url.startsWith("/") || url.startsWith("#")) return true;
@@ -18,6 +43,17 @@ function isValidHttpUrl(url: string): boolean {
 // GET /api/content?ns=home  — public, no auth required
 contentRouter.get("/", async (req: Request, res: Response) => {
   const ns = typeof req.query.ns === "string" ? req.query.ns : null;
+  if (!process.env.DATABASE_URL) {
+    const local = getLocalContent();
+    const result: Record<string, string> = {};
+    for (const [key, value] of Object.entries(local)) {
+      if (!ns || key.startsWith(`${ns}.`)) {
+        result[key] = value;
+      }
+    }
+    res.json(result);
+    return;
+  }
   try {
     const { rows } = ns
       ? await pool.query("SELECT key, value FROM site_content WHERE key LIKE $1", [`${ns}.%`])
@@ -32,10 +68,6 @@ contentRouter.get("/", async (req: Request, res: Response) => {
 
 // PUT /api/content  — admin only, batch upsert { [key]: value }
 contentRouter.put("/", requireAdmin, async (req: Request, res: Response) => {
-  if (!process.env.DATABASE_URL) {
-    res.status(503).json({ error: "Database not configured" });
-    return;
-  }
   const updates = req.body as Record<string, string>;
   if (typeof updates !== "object" || Array.isArray(updates) || updates === null) {
     res.status(400).json({ error: "Body must be a plain object" });
@@ -55,6 +87,16 @@ contentRouter.put("/", requireAdmin, async (req: Request, res: Response) => {
       res.status(400).json({ error: `Invalid URL for key: ${key}` });
       return;
     }
+  }
+
+  if (!process.env.DATABASE_URL) {
+    const local = getLocalContent();
+    for (const [key, value] of Object.entries(updates)) {
+      local[key] = value;
+    }
+    saveLocalContent(local);
+    res.json({ ok: true });
+    return;
   }
 
   let client;

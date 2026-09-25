@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router";
-import { ArrowLeft, Save, CheckCircle, AlertCircle, Plus, Trash2, Calendar, MapPin, Image as ImageIcon } from "lucide-react";
+import { ArrowLeft, Save, CheckCircle, AlertCircle, Plus, Trash2, Calendar, MapPin, Image as ImageIcon, Sparkles } from "lucide-react";
 import { LoginGate } from "@/app/components/LoginGate";
 import { toEasternDateTimeLocal, fromEasternDateTimeLocal } from "@/app/utils/timezone";
+import pgnLogo from "@/imports/pgn_logo_1__1_.png";
 
 const NS = "recruitment";
 
@@ -51,6 +52,11 @@ const DEFAULT_EVENTS: RecruitmentEvent[] = [
 ];
 
 const DEFAULTS = {
+  "recruitment.cycle_ended": "false",
+  "recruitment.cycle_ended_title": "This recruitment cycle has ended. See you next semester!",
+  "recruitment.cycle_ended_subtitle":
+    "Follow our Instagram @pgnmichigan to stay up to date on future recruitment cycles, coffee chats, and application timelines.",
+  "recruitment.cycle_ended_show_contact": "true",
   "recruitment.banner.hide_image": "false",
   "recruitment.banner.image_url": "",
   "recruitment.side_image.hide_image": "false",
@@ -185,6 +191,129 @@ function AdminRecruitmentContent() {
       </div>
 
       <div className="px-8 md:px-16 py-12 max-w-4xl space-y-6">
+        {/* ── Recruitment Cycle Status Switch ── */}
+        <Section title="Recruitment Cycle Status">
+          <div className="p-5 rounded-2xl bg-amber-50/70 border border-amber-200/80 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2.5 mb-1">
+                  <h3 className="text-sm font-bold text-gray-900">Recruitment Cycle Ended</h3>
+                  <span
+                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wider uppercase border ${
+                      fields["recruitment.cycle_ended"] === "true"
+                        ? "bg-amber-100 text-amber-900 border-amber-300"
+                        : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                    }`}
+                  >
+                    {fields["recruitment.cycle_ended"] === "true" ? "Cycle Ended Mode" : "Standard Active Mode"}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-600 leading-relaxed max-w-xl">
+                  Switch this ON when the current recruitment cycle has concluded. The public recruitment page will switch to display the logo and{" "}
+                  <strong className="text-gray-800 font-semibold">&ldquo;This recruitment cycle has ended. See you next semester!&rdquo;</strong>
+                </p>
+              </div>
+
+              <button
+                type="button"
+                role="switch"
+                aria-checked={fields["recruitment.cycle_ended"] === "true"}
+                onClick={toggleHide("recruitment.cycle_ended")}
+                className={`relative inline-flex h-7 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  fields["recruitment.cycle_ended"] === "true" ? "bg-[#7A0C0C]" : "bg-gray-300"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                    fields["recruitment.cycle_ended"] === "true" ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+
+            {fields["recruitment.cycle_ended"] === "true" && (
+              <div className="pt-4 border-t border-amber-200/60 space-y-4">
+                <Field
+                  label="Headline message"
+                  hint="Prominently displayed beneath the logo on the recruitment page."
+                >
+                  <input
+                    type="text"
+                    value={fields["recruitment.cycle_ended_title"]}
+                    onChange={set("recruitment.cycle_ended_title")}
+                    className={inputCls}
+                    placeholder="This recruitment cycle has ended. See you next semester!"
+                  />
+                </Field>
+
+                <Field
+                  label="Supporting subtext (optional)"
+                  hint="Secondary message or instructions for prospective applicants."
+                >
+                  <textarea
+                    value={fields["recruitment.cycle_ended_subtitle"]}
+                    onChange={set("recruitment.cycle_ended_subtitle")}
+                    rows={2}
+                    className={textareaCls}
+                    placeholder="Follow our Instagram @pgnmichigan to stay up to date on future recruitment cycles, coffee chats, and application timelines."
+                  />
+                </Field>
+
+                <div className="flex items-center justify-between p-3.5 rounded-xl bg-white border border-stone-200">
+                  <div>
+                    <p className="text-xs font-semibold text-gray-800">Show Rush Chairs & Inquiries Section</p>
+                    <p className="text-[11px] text-gray-500">
+                      Keep rush chair profiles and the official contact box visible below the announcement so prospective applicants can still reach out.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={fields["recruitment.cycle_ended_show_contact"] !== "false"}
+                    onClick={toggleHide("recruitment.cycle_ended_show_contact")}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      fields["recruitment.cycle_ended_show_contact"] !== "false" ? "bg-[#7A0C0C]" : "bg-gray-300"
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        fields["recruitment.cycle_ended_show_contact"] !== "false" ? "translate-x-5" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {/* Live Preview */}
+                <div className="mt-4 p-6 sm:p-8 rounded-2xl bg-[#1a0303] text-center border border-white/10 shadow-xl relative overflow-hidden">
+                  <div className="absolute top-3 right-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#F5A623]/20 text-[#F5A623] text-[10px] uppercase font-bold tracking-wider border border-[#F5A623]/30">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#F5A623] animate-pulse" />
+                    Live Preview
+                  </div>
+                  <img
+                    src={pgnLogo}
+                    alt="Phi Gamma Nu"
+                    className="h-10 sm:h-12 w-auto mx-auto brightness-0 invert object-contain mb-4 opacity-90 drop-shadow-md"
+                  />
+                  <h4
+                    className="text-white text-xl sm:text-2xl font-normal leading-snug max-w-lg mx-auto mb-2"
+                    style={{ fontFamily: "'Playfair Display', serif" }}
+                  >
+                    {fields["recruitment.cycle_ended_title"] || "This recruitment cycle has ended. See you next semester!"}
+                  </h4>
+                  {fields["recruitment.cycle_ended_subtitle"] && (
+                    <p
+                      className="text-white/60 text-xs sm:text-sm max-w-md mx-auto leading-relaxed"
+                      style={{ fontFamily: "'Inter', sans-serif" }}
+                    >
+                      {fields["recruitment.cycle_ended_subtitle"]}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </Section>
+
         <Section title="Hero Banner">
           <ImageField
             label="Banner background image URL"

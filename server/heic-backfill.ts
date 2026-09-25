@@ -59,7 +59,7 @@ export async function applyHeicBackfill() {
       }
 
       // 2. Update PostgreSQL uploaded_files table
-      if (pool) {
+      if (process.env.DATABASE_URL && pool) {
         await pool.query(
           `INSERT INTO uploaded_files (filename, mime_type, data)
            VALUES ($1, 'image/jpeg', $2)

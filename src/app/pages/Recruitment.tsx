@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion } from "motion/react";
-import { Calendar, MapPin, Clock, Sparkles, Mail, Check, Copy, Linkedin, ArrowRight } from "lucide-react";
+import { Calendar, MapPin, Clock, Sparkles, Mail, Check, Copy, Linkedin, ArrowRight, Instagram } from "lucide-react";
 import pgnLogo from "@/imports/pgn_logo_1__1_.png";
 import { useContent } from "@/app/hooks/useContent";
 
@@ -275,6 +275,17 @@ function RushChairCard({ chair, index }: { chair: RushChair; index: number }) {
 export default function Recruitment() {
   const { get } = useContent("recruitment");
 
+  const isCycleEnded = get("recruitment.cycle_ended", "false") === "true";
+  const cycleEndedTitle = get(
+    "recruitment.cycle_ended_title",
+    "This recruitment cycle has ended. See you next semester!",
+  );
+  const cycleEndedSubtitle = get(
+    "recruitment.cycle_ended_subtitle",
+    "Follow our Instagram @pgnmichigan to stay up to date on future recruitment cycles, coffee chats, and application timelines.",
+  );
+  const cycleEndedShowContact = get("recruitment.cycle_ended_show_contact", "true") !== "false";
+
   const hideBannerImage = get("recruitment.banner.hide_image", "false") === "true";
   const bannerImageUrl = hideBannerImage ? "" : get("recruitment.banner.image_url", "");
 
@@ -383,99 +394,201 @@ export default function Recruitment() {
       </div>
 
       {/* ── Recruitment Content Section ─────────────────────────────────── */}
-      <section className="relative flex-1 flex items-center justify-center py-20 md:py-28 px-8 overflow-hidden">
-        {/* Background Layers */}
-        <div className="absolute inset-0 bg-[#1a0303]" />
-        <div
-          className="absolute inset-0"
-          style={{
-            backgroundImage:
-              "radial-gradient(ellipse at 20% 50%, rgba(180,30,10,0.45) 0%, transparent 55%), radial-gradient(ellipse at 80% 30%, rgba(210,80,10,0.3) 0%, transparent 50%), radial-gradient(ellipse at 55% 80%, rgba(245,166,35,0.15) 0%, transparent 45%)",
-          }}
-        />
-        <div
-          className="absolute inset-0 opacity-[0.04]"
-          style={{
-            backgroundImage:
-              "repeating-linear-gradient(45deg, #fff 0px, #fff 1px, transparent 1px, transparent 8px)",
-          }}
-        />
-
-        <div
-          className={`relative z-10 w-full max-w-6xl mx-auto flex flex-col ${
-            !hideSideImage
-              ? "md:flex-row items-center gap-12 lg:gap-16"
-              : "items-center text-center max-w-2xl"
-          }`}
-        >
-          {/* Left Content (Logo, Text, Button) */}
+      {isCycleEnded ? (
+        <section className="relative flex-1 flex items-center justify-center py-20 md:py-32 px-6 md:px-12 overflow-hidden">
+          {/* Background Layers */}
+          <div className="absolute inset-0 bg-[#1a0303]" />
           <div
-            className={`flex-1 flex flex-col ${
-              !hideSideImage ? "items-start text-left" : "items-center text-center"
-            }`}
-          >
-            <motion.img
-              src={pgnLogo}
-              alt="Phi Gamma Nu"
-              className={`w-full brightness-0 invert object-contain ${
-                !hideSideImage ? "max-w-[26rem] lg:max-w-[32rem] mb-10" : "max-w-[36rem] lg:max-w-[48rem] mb-12"
-              }`}
-              initial={{ opacity: 0, scale: 0.85 }}
+            className="absolute inset-0"
+            style={{
+              backgroundImage:
+                "radial-gradient(ellipse at 50% 30%, rgba(180,30,10,0.42) 0%, transparent 60%), radial-gradient(ellipse at 80% 65%, rgba(245,166,35,0.14) 0%, transparent 50%), radial-gradient(ellipse at 20% 75%, rgba(180,30,10,0.25) 0%, transparent 55%)",
+            }}
+          />
+          <div
+            className="absolute inset-0 opacity-[0.035]"
+            style={{
+              backgroundImage:
+                "repeating-linear-gradient(45deg, #fff 0px, #fff 1px, transparent 1px, transparent 8px)",
+            }}
+          />
+
+          <div className="relative z-10 w-full max-w-4xl mx-auto flex flex-col items-center text-center">
+            {/* Prominent Official Logo */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.88 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.7, ease: "easeOut" }}
-            />
+              className="relative mb-8 md:mb-10 flex items-center justify-center"
+            >
+              <div className="absolute -inset-6 bg-[#F5A623]/10 rounded-full blur-2xl pointer-events-none" />
+              <img
+                src={pgnLogo}
+                alt="Phi Gamma Nu"
+                className="w-full max-w-[22rem] sm:max-w-[28rem] md:max-w-[34rem] brightness-0 invert object-contain drop-shadow-[0_12px_36px_rgba(0,0,0,0.65)]"
+              />
+            </motion.div>
 
-            <motion.p
-              className="text-white/70 text-base md:text-lg leading-relaxed mb-10 max-w-xl"
-              style={{ fontFamily: "'Inter', sans-serif" }}
-              initial={{ opacity: 0, y: 16 }}
+            {/* Status Pill Badge */}
+            <motion.div
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.15, ease: "easeOut" }}
+              className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#F5A623]/15 border border-[#F5A623]/30 text-[#F5A623] text-xs font-semibold tracking-[0.2em] uppercase mb-6 backdrop-blur-md shadow-inner"
+            >
+              <span className="w-2 h-2 rounded-full bg-[#F5A623] animate-pulse" />
+              <span>Cycle Concluded</span>
+            </motion.div>
+
+            {/* Main Headline */}
+            <motion.h2
+              className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-normal text-white mb-6 leading-tight max-w-3xl"
+              style={{ fontFamily: "'Playfair Display', serif" }}
+              initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.25, ease: "easeOut" }}
             >
-              {body}
-            </motion.p>
+              {cycleEndedTitle}
+            </motion.h2>
 
-            <motion.a
-              href={interestFormUrl}
-              target={interestFormUrl !== "#" ? "_blank" : undefined}
-              rel="noopener noreferrer"
-              className="px-8 py-3.5 rounded-full border-2 border-[#F5A623] text-[#F5A623] text-sm font-bold tracking-widest uppercase hover:bg-[#F5A623] hover:text-[#1a0303] transition-all duration-200 inline-block cursor-pointer shadow-md hover:shadow-lg"
-              style={{ fontFamily: "'Inter', sans-serif" }}
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.4, ease: "easeOut" }}
-            >
-              {ctaText}
-            </motion.a>
-          </div>
+            {/* Subtitle / Explanatory Note */}
+            {cycleEndedSubtitle && (
+              <motion.p
+                className="text-white/70 text-base md:text-lg leading-relaxed max-w-2xl mb-10"
+                style={{ fontFamily: "'Inter', sans-serif" }}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.35, ease: "easeOut" }}
+              >
+                {cycleEndedSubtitle}
+              </motion.p>
+            )}
 
-          {/* Right Content (Side Image) */}
-          {!hideSideImage && (
+            {/* Quick Action Links */}
             <motion.div
-              className="w-full md:w-[420px] lg:w-[480px] flex-shrink-0 aspect-[4/3] sm:aspect-[4/5] rounded-2xl overflow-hidden shadow-2xl border border-white/10 bg-white/5 backdrop-blur-sm flex items-center justify-center relative"
-              initial={{ opacity: 0, x: 40 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true, amount: 0.3 }}
-              transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
+              className="flex flex-wrap items-center justify-center gap-4"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.45, ease: "easeOut" }}
             >
-              {sideImageUrl ? (
-                <img src={sideImageUrl} alt="Recruitment" className="w-full h-full object-cover" />
-              ) : (
-                <div className="flex flex-col items-center justify-center p-8 text-center text-white/50">
-                  <div className="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center mb-3 border border-white/10 shadow-inner">
-                    <img src={pgnLogo} alt="" className="h-7 w-auto brightness-0 invert opacity-60" />
-                  </div>
-                  <span className="text-xs font-semibold tracking-wider uppercase text-white/70">Recruitment Photo</span>
-                  <p className="text-[11px] text-white/40 mt-1">Add an image URL in the admin portal</p>
-                </div>
+              <a
+                href="https://www.instagram.com/pgnmichigan/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-7 py-3.5 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs md:text-sm font-semibold tracking-wider uppercase border border-white/20 hover:border-white/40 transition-all duration-200 shadow-md hover:shadow-lg backdrop-blur-sm group"
+              >
+                <Instagram size={16} className="text-[#F5A623] group-hover:scale-110 transition-transform" />
+                <span>Follow @pgnmichigan</span>
+              </a>
+
+              {contactEmail && (
+                <a
+                  href={`mailto:${contactEmail}`}
+                  className="inline-flex items-center gap-2 px-7 py-3.5 rounded-full bg-[#F5A623] hover:bg-[#e59b20] text-[#1a0303] text-xs md:text-sm font-bold tracking-wider uppercase transition-all duration-200 shadow-md hover:shadow-lg"
+                >
+                  <Mail size={16} />
+                  <span>Email Inquiries</span>
+                </a>
               )}
             </motion.div>
-          )}
-        </div>
-      </section>
+          </div>
+        </section>
+      ) : (
+        <section className="relative flex-1 flex items-center justify-center py-20 md:py-28 px-8 overflow-hidden">
+          {/* Background Layers */}
+          <div className="absolute inset-0 bg-[#1a0303]" />
+          <div
+            className="absolute inset-0"
+            style={{
+              backgroundImage:
+                "radial-gradient(ellipse at 20% 50%, rgba(180,30,10,0.45) 0%, transparent 55%), radial-gradient(ellipse at 80% 30%, rgba(210,80,10,0.3) 0%, transparent 50%), radial-gradient(ellipse at 55% 80%, rgba(245,166,35,0.15) 0%, transparent 45%)",
+            }}
+          />
+          <div
+            className="absolute inset-0 opacity-[0.04]"
+            style={{
+              backgroundImage:
+                "repeating-linear-gradient(45deg, #fff 0px, #fff 1px, transparent 1px, transparent 8px)",
+            }}
+          />
+
+          <div
+            className={`relative z-10 w-full max-w-6xl mx-auto flex flex-col ${
+              !hideSideImage
+                ? "md:flex-row items-center gap-12 lg:gap-16"
+                : "items-center text-center max-w-2xl"
+            }`}
+          >
+            {/* Left Content (Logo, Text, Button) */}
+            <div
+              className={`flex-1 flex flex-col ${
+                !hideSideImage ? "items-start text-left" : "items-center text-center"
+              }`}
+            >
+              <motion.img
+                src={pgnLogo}
+                alt="Phi Gamma Nu"
+                className={`w-full brightness-0 invert object-contain ${
+                  !hideSideImage ? "max-w-[26rem] lg:max-w-[32rem] mb-10" : "max-w-[36rem] lg:max-w-[48rem] mb-12"
+                }`}
+                initial={{ opacity: 0, scale: 0.85 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.7, ease: "easeOut" }}
+              />
+
+              <motion.p
+                className="text-white/70 text-base md:text-lg leading-relaxed mb-10 max-w-xl"
+                style={{ fontFamily: "'Inter', sans-serif" }}
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.25, ease: "easeOut" }}
+              >
+                {body}
+              </motion.p>
+
+              <motion.a
+                href={interestFormUrl}
+                target={interestFormUrl !== "#" ? "_blank" : undefined}
+                rel="noopener noreferrer"
+                className="px-8 py-3.5 rounded-full border-2 border-[#F5A623] text-[#F5A623] text-sm font-bold tracking-widest uppercase hover:bg-[#F5A623] hover:text-[#1a0303] transition-all duration-200 inline-block cursor-pointer shadow-md hover:shadow-lg"
+                style={{ fontFamily: "'Inter', sans-serif" }}
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.4, ease: "easeOut" }}
+              >
+                {ctaText}
+              </motion.a>
+            </div>
+
+            {/* Right Content (Side Image) */}
+            {!hideSideImage && (
+              <motion.div
+                className="w-full md:w-[420px] lg:w-[480px] flex-shrink-0 aspect-[4/3] sm:aspect-[4/5] rounded-2xl overflow-hidden shadow-2xl border border-white/10 bg-white/5 backdrop-blur-sm flex items-center justify-center relative"
+                initial={{ opacity: 0, x: 40 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true, amount: 0.3 }}
+                transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
+              >
+                {sideImageUrl ? (
+                  <img src={sideImageUrl} alt="Recruitment" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="flex flex-col items-center justify-center p-8 text-center text-white/50">
+                    <div className="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center mb-3 border border-white/10 shadow-inner">
+                      <img src={pgnLogo} alt="" className="h-7 w-auto brightness-0 invert opacity-60" />
+                    </div>
+                    <span className="text-xs font-semibold tracking-wider uppercase text-white/70">Recruitment Photo</span>
+                    <p className="text-[11px] text-white/40 mt-1">Add an image URL in the admin portal</p>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* ── Rush Chairs & Inquiries Section ─────────────────────────────── */}
-      <section className="relative py-20 md:py-28 px-6 md:px-16 overflow-hidden border-t border-white/15 border-b border-black/50 bg-[#250505]">
+      {(!isCycleEnded || cycleEndedShowContact) && (
+        <section className="relative py-20 md:py-28 px-6 md:px-16 overflow-hidden border-t border-white/15 border-b border-black/50 bg-[#250505]">
         {/* Deep rich wine / burgundy velvet gradient layers */}
         <div className="absolute inset-0 bg-gradient-to-br from-[#2c0707] via-[#200404] to-[#360909]" />
 
@@ -617,52 +730,55 @@ export default function Recruitment() {
           </div>
         </div>
       </section>
+      )}
 
       {/* ── Upcoming Events Section ─────────────────────────────────────── */}
-      <section className="relative py-20 md:py-28 px-6 md:px-16 border-t border-white/10 bg-gradient-to-b from-[#140202] to-[#100101]">
-        <div className="max-w-6xl mx-auto">
-          {/* Header */}
-          <div className="text-center max-w-2xl mx-auto mb-16">
-            <motion.p
-              className="text-[#F5A623] text-xs font-bold tracking-[0.25em] uppercase mb-3"
-              style={{ fontFamily: "'Inter', sans-serif" }}
-              initial={{ opacity: 0, y: 15 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, amount: 0.3 }}
-              transition={{ duration: 0.5 }}
-            >
-              {eventsSubtitle}
-            </motion.p>
-            <motion.h2
-              className="text-3xl md:text-5xl font-normal text-white mb-4"
-              style={{ fontFamily: "'Playfair Display', serif" }}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, amount: 0.3 }}
-              transition={{ duration: 0.6, delay: 0.1 }}
-            >
-              {eventsHeading}
-            </motion.h2>
-            <motion.p
-              className="text-white/60 text-sm md:text-base leading-relaxed"
-              style={{ fontFamily: "'Inter', sans-serif" }}
-              initial={{ opacity: 0, y: 15 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, amount: 0.3 }}
-              transition={{ duration: 0.6, delay: 0.15 }}
-            >
-              Join us at our upcoming recruitment events to connect with brothers, discover our four pillars, and learn about the application process.
-            </motion.p>
-          </div>
+      {!isCycleEnded && (
+        <section className="relative py-20 md:py-28 px-6 md:px-16 border-t border-white/10 bg-gradient-to-b from-[#140202] to-[#100101]">
+          <div className="max-w-6xl mx-auto">
+            {/* Header */}
+            <div className="text-center max-w-2xl mx-auto mb-16">
+              <motion.p
+                className="text-[#F5A623] text-xs font-bold tracking-[0.25em] uppercase mb-3"
+                style={{ fontFamily: "'Inter', sans-serif" }}
+                initial={{ opacity: 0, y: 15 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, amount: 0.3 }}
+                transition={{ duration: 0.5 }}
+              >
+                {eventsSubtitle}
+              </motion.p>
+              <motion.h2
+                className="text-3xl md:text-5xl font-normal text-white mb-4"
+                style={{ fontFamily: "'Playfair Display', serif" }}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, amount: 0.3 }}
+                transition={{ duration: 0.6, delay: 0.1 }}
+              >
+                {eventsHeading}
+              </motion.h2>
+              <motion.p
+                className="text-white/60 text-sm md:text-base leading-relaxed"
+                style={{ fontFamily: "'Inter', sans-serif" }}
+                initial={{ opacity: 0, y: 15 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, amount: 0.3 }}
+                transition={{ duration: 0.6, delay: 0.15 }}
+              >
+                Join us at our upcoming recruitment events to connect with brothers, discover our four pillars, and learn about the application process.
+              </motion.p>
+            </div>
 
-          {/* Chronologically Sorted Events Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {sortedEvents.map((event, index) => (
-              <EventCard key={event.id || index} event={event} index={index} />
-            ))}
+            {/* Chronologically Sorted Events Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {sortedEvents.map((event, index) => (
+                <EventCard key={event.id || index} event={event} index={index} />
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
     </div>
   );
 }
