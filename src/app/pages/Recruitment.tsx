@@ -477,7 +477,7 @@ export default function Recruitment() {
                   className="inline-flex items-center gap-2 px-7 py-3.5 rounded-full bg-[#F5A623] hover:bg-[#e59b20] text-[#1a0303] text-xs md:text-sm font-bold tracking-wider uppercase transition-all duration-200 shadow-md hover:shadow-lg"
                 >
                   <Mail size={16} />
-                  <span>Email Inquiries</span>
+                  <span>Email</span>
                 </a>
               )}
             </motion.div>
