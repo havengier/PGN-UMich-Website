@@ -430,17 +430,6 @@ export default function Recruitment() {
               />
             </motion.div>
 
-            {/* Status Pill Badge */}
-            <motion.div
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.15, ease: "easeOut" }}
-              className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#F5A623]/15 border border-[#F5A623]/30 text-[#F5A623] text-xs font-semibold tracking-[0.2em] uppercase mb-6 backdrop-blur-md shadow-inner"
-            >
-              <span className="w-2 h-2 rounded-full bg-[#F5A623] animate-pulse" />
-              <span>Cycle Concluded</span>
-            </motion.div>
-
             {/* Main Headline */}
             <motion.h2
               className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-normal text-white mb-6 leading-tight max-w-3xl"
